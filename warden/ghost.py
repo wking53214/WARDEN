@@ -43,7 +43,9 @@ def load_report(path: Path) -> "Findings":
         except RuntimeError as exc:
             raise ValueError(f"{path}: {exc}") from exc
     if isinstance(raw, list) and all(isinstance(f, dict) for f in raw):
-        return Findings(raw)
+        old = Findings(raw)
+        old.version_unverified = True
+        return old
     raise ValueError(f"{path}: not a Ghost Tools findings JSON (a list of records)")
 
 
@@ -68,6 +70,11 @@ class Findings(tuple):
     gaps: tuple[str, ...] = ()
     #: Names of checks left out because the caller asked (or they are opt-in). Information, not a gap.
     declined: tuple[str, ...] = ()
+    #: New Ghost only: what it said about its baseline file, {"path": str|None, "suppressed": int}. None: it said nothing.
+    baseline: Optional[dict] = None
+    #: True for an old Ghost that prints a bare list. It cannot say what it did not look at, so a clean
+    #: result from it is accepted as before, but its version could not be verified.
+    version_unverified: bool = False
 
 
 DEFAULT_TIMEOUT = 600
@@ -125,6 +132,33 @@ def _gaps(rows: Any, counts: Mapping[str, Any]) -> tuple[tuple[str, ...], tuple[
     return tuple(gaps), tuple(declined)
 
 
+def _read_baseline(raw: Any, out: "Findings") -> Optional[str]:
+    """Read Ghost's `baseline` object, tolerantly. Returns a gap sentence when findings were hidden by it.
+
+    Absent is fine (older Ghost). Present but unreadable, or with suppressed above 0, is a gap: a
+    finding hidden by a baseline is a finding the caller was not shown.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return "Ghost's baseline note was not readable, so findings it hid cannot be ruled out"
+    path = raw.get("path")
+    path = _clean(path, 120) if isinstance(path, str) and path else None
+    suppressed = raw.get("suppressed")
+    if suppressed is None:
+        out.baseline = {"path": path, "suppressed": None}
+        return None
+    if isinstance(suppressed, bool) or not isinstance(suppressed, int) or suppressed < 0:
+        out.baseline = {"path": path, "suppressed": None}
+        return "Ghost's baseline note did not give a usable count of hidden findings"
+    out.baseline = {"path": path, "suppressed": suppressed}
+    if suppressed > 0:
+        where = f" ({path})" if path else ""
+        return (f"baseline: {suppressed} finding(s) were hidden by Ghost's baseline file{where}, so the scan "
+                "did not show everything it found")
+    return None
+
+
 def _read_report(data: Mapping[str, Any]) -> "Findings":
     """Findings from new Ghost's JSON object. Raises RuntimeError if it cannot be trusted."""
     rows = data["findings"]
@@ -146,6 +180,14 @@ def _read_report(data: Mapping[str, Any]) -> "Findings":
     out.status = status
     out.scan_counts = {k: _count(counts.get(k)) for k in ("files_scanned", "files_skipped", "files_unparsable")}
     out.gaps, out.declined = _gaps(data.get("unmeasured", []), counts)
+    # New Ghost always says what it left unmeasured, how much it scanned and how it ended. An object that
+    # leaves one of them out has not said what it did not look at.
+    absent = [k for k in ("status", "scan", "unmeasured") if k not in data]
+    if absent:
+        out.gaps += (f"Ghost's output left out {', '.join(absent)}, so what it did not look at is unknown",)
+    baseline_gap = _read_baseline(data.get("baseline"), out)
+    if baseline_gap:
+        out.gaps += (baseline_gap,)
     if status == "incomplete" and not out.gaps:
         out.gaps = ("Ghost said its scan was incomplete and did not say why",)
     if "files_scanned" in counts and out.scan_counts["files_scanned"] == 0 and not rows:
@@ -208,7 +250,7 @@ def scan(
         report = _read_report(data)
         if not report and not report.blind:
             report.blind = _blind(proc.stderr)
-        return report
+        return _check_exit_matches(report, proc.returncode)
     if not isinstance(data, list) or not all(isinstance(f, dict) for f in data):
         raise RuntimeError("ghost_buster JSON was not a list of findings")
     for f in data:
@@ -216,7 +258,15 @@ def scan(
             raise RuntimeError("ghost_buster gave a finding whose id is not text")
     out = Findings(data)
     out.blind = _blind(proc.stderr) if not data else None
-    return out
+    out.version_unverified = True
+    return _check_exit_matches(out, proc.returncode)
+
+
+def _check_exit_matches(report: "Findings", code: int) -> "Findings":
+    """Ghost exits 1 when it found something. Exit 1 with an empty list does not add up: a gap."""
+    if code == 1 and not len(report):
+        report.gaps += ("Ghost exited 1 (it found something) but listed no findings",)
+    return report
 
 
 def finding_ids(findings: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:

@@ -10,7 +10,6 @@ default actor.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import importlib
 import json
 import sys
@@ -18,7 +17,7 @@ from pathlib import Path
 
 from . import CONTRACT, __version__
 from .authorization import Unauthorized, grant
-from . import audit as audit_file, textio, versions
+from . import audit as audit_file, gitstate, runstate, textio, versions
 from .ghost import load_report, scan as ghost_scan
 from .tagteam import TagTeam
 
@@ -36,18 +35,24 @@ EXIT_CODES = {
     "ERROR": 4,
     "REFUSED": 5,
     "INCONCLUSIVE": 6,
+    "INTERRUPTED": 7,
 }
 
 EXIT_CODE_HELP = """\
 exit codes (only 0 means the change was accepted):
   0  ACCEPT. Measured, judged, and standing.
   1  REJECT, JUDGE_REJECTED, NOT_CONVERGED, FINISH_REJECTED, or any other rejection.
-  2  usage error, a seat could not be loaded, or SWIZZLE's own proofs are unsound. Nothing was written.
+  2  usage error (the JSON says USAGE_ERROR), a seat could not be loaded, or SWIZZLE's own proofs are
+     unsound (the JSON says INCONCLUSIVE; the exit is still 2). Nothing was written.
   3  ACCEPT_UNVERIFIED. Changes stand but a check did not run or the Judge could not decide.
-  4  ERROR. A seat failed or gave the wrong kind of answer. Nothing was approved.
-  5  REFUSED. No human authorization. A proposal was shown; nothing was written.
+  4  ERROR. A seat failed, timed out, or gave the wrong kind of answer (an unknown Judge label counts).
+     Nothing was approved and the tree was put back.
+  5  REFUSED. No human authorization, or the folder has uncommitted git changes (commit or stash
+     them first). A proposal may have been shown; nothing was written.
   6  INCONCLUSIVE. A needed measurement could not be made (Ghost down, a red suite from the
-     start, an unusable ASSAY key). Nothing was written.
+     start, an unusable ASSAY key), another run holds the target, or the folder is too big to put
+     back. Nothing was written.
+  7  INTERRUPTED. SIGTERM, SIGHUP or SIGINT arrived. The tree was put back as it was found.
 The command always prints valid JSON on stdout; `reason` says why in one sentence."""
 
 
@@ -55,8 +60,96 @@ class ContractMismatch(ValueError):
     """A seat was written for a different version of Warden's shapes."""
 
 
+class SeatShadowed(ContractMismatch):
+    """A seat module came from inside the folder being governed instead of from its install."""
+
+
+#: The folder being governed, set for the length of one `tagteam` so seat loading can check where a
+#: seat's code really came from.
+_governed: Path | None = None
+
+
+def _clean_import_path(target: Path) -> None:
+    """Take the working directory and the target out of the places Python looks for modules.
+
+    Otherwise a `judge/seat.py` (or any seat module) planted in the folder being governed, or in the
+    folder Warden was started from, would be imported instead of the installed seat.
+    """
+    cwd = Path.cwd().resolve()
+    kept = []
+    for entry in sys.path:
+        if entry == "":
+            continue
+        try:
+            real = Path(entry).resolve()
+        except OSError:
+            kept.append(entry)
+            continue
+        if real == cwd or real == target or real.is_relative_to(target):
+            continue
+        kept.append(entry)
+    sys.path[:] = kept
+    importlib.invalidate_caches()
+
+
+def _check_seat_origin(spec: str, module_name: str, seat, target: Path) -> None:
+    """Refuse a seat whose code (module, package or class) lives inside the folder being governed."""
+    module = sys.modules.get(module_name)
+    places = [getattr(module, "__file__", None), *list(getattr(module, "__path__", []) or [])]
+    places.append(getattr(sys.modules.get(type(seat).__module__), "__file__", None))
+    for place in places:
+        if place and Path(place).resolve().is_relative_to(target):
+            raise SeatShadowed(f"The seat {spec} was loaded from {place}, which is inside the folder being "
+                               "governed, not from an installed seat. Warden will not run a seat the run could "
+                               "edit. Nothing was run.")
+
+
+def _positive_number(text: str) -> float:
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number") from None
+    if not value > 0 or value != value or value == float("inf"):
+        raise argparse.ArgumentTypeError(f"{text!r} must be a number above 0")
+    return value
+
+
+def _at_least_one(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"{text!r} must be 1 or more")
+    return value
+
+
+def _assay_floor(text: str) -> int:
+    """0 is the one explicit way to skip enforcement. Anything below 0 is a mistake, not a setting."""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number") from None
+    if value < 0:
+        raise argparse.ArgumentTypeError(
+            f"{text!r} is below 0. Use a positive number to require Ghost to catch that many known failure "
+            "modes, or 0 to record the score without enforcing it")
+    return value
+
+
+class _JsonParser(argparse.ArgumentParser):
+    """An argument parser whose errors also come out as valid JSON on stdout, exit 2, like every other stop."""
+
+    def error(self, message: str):  # type: ignore[override]
+        reason = f"usage error: {message}. Nothing was run."
+        _print_json({"decision": "USAGE_ERROR", "reason": reason, "contract": CONTRACT, "notes": [reason]})
+        self.print_usage(sys.stderr)
+        print(f"warden: {reason}", file=sys.stderr)
+        raise SystemExit(EXIT_CODES["USAGE_ERROR"])
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="warden")
+    parser = _JsonParser(prog="warden")
     parser.add_argument("--version", action="version", version=f"warden {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -71,21 +164,31 @@ def main(argv: list[str] | None = None) -> int:
                           "Without one, a run cannot be ACCEPTed, only ACCEPT_UNVERIFIED")
     p_t.add_argument("--finisher", default=None, metavar="MODULE:FACTORY",
                      help="after the loop, once: beautifies and writes the final README")
-    p_t.add_argument("--max-cycles", type=int, default=10)
-    p_t.add_argument("--ghost-timeout", type=float, default=600,
+    p_t.add_argument("--max-cycles", type=_at_least_one, default=10,
+                     help="most proposals that may be applied; declined ones do not use a cycle (default 10)")
+    p_t.add_argument("--ghost-timeout", type=_positive_number, default=600,
                      help="seconds one Ghost scan may take; longer counts as Ghost being down (default 600)")
+    p_t.add_argument("--suite-timeout", type=_positive_number, default=900,
+                     help="seconds one run of the target's own test suite may take; longer counts as the "
+                          "suite not running (default 900)")
+    p_t.add_argument("--seat-timeout", type=_positive_number, default=3600,
+                     help="seconds one seat call (Drafter, Finisher, Judge, or building a seat) may take "
+                          "before the run stops as ERROR (default 3600)")
     p_t.add_argument("--swizzle-root", type=Path, default=None,
                      help="SWIZZLE checkout; its proofs must hold before anything is ACCEPTed")
     p_t.add_argument("--assay-root", type=Path, default=None,
                      help="ASSAY checkout; with --swizzle-root, Ghost is graded against its answer key first")
-    p_t.add_argument("--assay-floor", type=int, default=3,
+    p_t.add_argument("--assay-floor", type=_assay_floor, default=3,
                      help="the fewest known failure modes Ghost must catch for the Judge to accept "
-                          "(default 3, where Ghost stands today; 0 records the score without enforcing it)")
+                          "(default 3, where Ghost stands today). 0 is the one explicit way to skip: the score "
+                          "is recorded, nothing requires it, and the output says so. Below 0 is rejected")
     p_t.add_argument("--from-ghost", type=Path, default=None, help="findings JSON instead of a live scan")
     p_t.add_argument("--authorize", default=None, metavar="ACTOR")
     p_t.add_argument("--reason", default="")
     p_t.add_argument("--scope", default="documentation",
-                     help="documentation: prose files only. code: anything outside tests, test config and CI")
+                     help="documentation: real prose only (.md, .rst, .txt; not requirements, LICENSE, NOTICE "
+                          "or CMakeLists.txt). code: anything outside tests, test and build config, CI, "
+                          "dependency lists and git hooks")
 
     p_a = sub.add_parser("audit", help="WARDEN_AUDIT.md: Ghost findings under durable IDs (Rules 5, 9)")
     p_a.add_argument("path", type=Path)
@@ -135,27 +238,41 @@ def _tagteam(args) -> int:
         except Unauthorized as e:
             return _stop("REFUSED", str(e))
     warnings: list[str] = []
+    global _governed
+    _governed = path.resolve()
+    saved_path = list(sys.path)  # put back afterwards so an in-process caller (a test) is not left changed
     try:
-        with contextlib.redirect_stdout(sys.stderr):
-            drafter = _load_seat(args.drafter, warnings)
-            finisher = _load_seat(args.finisher, warnings)
-            judge = _load_seat(args.judge, warnings)
-    except ContractMismatch as e:
-        return _stop("SEAT_NOT_LOADED", str(e))
-    except Exception as e:  # noqa: BLE001 - a seat that will not load is named, never a traceback
-        return _stop("SEAT_NOT_LOADED", f"A seat could not be loaded ({type(e).__name__}: {str(e)[:120]}).")
-    for w in warnings:
-        print(f"warden: warning: {w}", file=sys.stderr)
-    return _run_team(args, auth, findings, drafter, finisher, judge, warnings)
+        _clean_import_path(_governed)
+        try:
+            with runstate.interrupts(), runstate.stdout_to_stderr(), \
+                    runstate.seat_timer(args.seat_timeout, "A seat while it was being loaded"):
+                drafter = _load_seat(args.drafter, warnings)
+                finisher = _load_seat(args.finisher, warnings)
+                judge = _load_seat(args.judge, warnings)
+        except ContractMismatch as e:
+            return _stop("SEAT_NOT_LOADED", str(e))
+        except runstate.Interrupted as sig:
+            return _stop("INTERRUPTED", f"Warden received {sig.signal_name} while loading seats. Nothing was run.")
+        except runstate.SeatTimedOut as e:
+            return _stop("SEAT_NOT_LOADED", f"{e} while it was being loaded. Nothing was run.")
+        except Exception as e:  # noqa: BLE001 - a seat that will not load is named, never a traceback
+            return _stop("SEAT_NOT_LOADED", f"A seat could not be loaded ({type(e).__name__}: {str(e)[:120]}).")
+        for w in warnings:
+            print(f"warden: warning: {w}", file=sys.stderr)
+        return _run_team(args, auth, findings, drafter, finisher, judge, warnings)
+    finally:
+        _governed = None
+        sys.path[:] = saved_path
 
 
 def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> int:
     team = TagTeam(ghost_tools_root=args.ghost_root, swizzle_root=args.swizzle_root,
                    assay_root=args.assay_root, assay_floor=args.assay_floor,
                    drafter=drafter, finisher=finisher, judge=judge, max_cycles=args.max_cycles,
-                   ghost_timeout=args.ghost_timeout)
-    # A seat that print()s must not corrupt the JSON on stdout.
-    with contextlib.redirect_stdout(sys.stderr):
+                   ghost_timeout=args.ghost_timeout, suite_timeout=args.suite_timeout,
+                   seat_timeout=args.seat_timeout)
+    # A seat that print()s, or writes straight to file descriptor 1, must not corrupt the JSON on stdout.
+    with runstate.stdout_to_stderr():
         result = team.run(args.path, authorization=auth, findings=findings)
     payload = {
         "decision": result.decision,
@@ -174,6 +291,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "unmeasured": list(result.unmeasured),
         "ghost_scan": result.ghost_scan,
         "drafter_skipped": list(result.drafter_skipped),
+        "informational": list(result.informational),
         "verdict": None if result.verdict is None else {
             "decision": result.verdict.decision, "reasons": list(result.verdict.reasons),
             "judge": result.verdict.judge},
@@ -191,9 +309,10 @@ def _versions(args, drafter, finisher, judge) -> dict:
     return versions.report(
         warden_module=warden, contract=CONTRACT, version=__version__,
         ghost_root=args.ghost_root, swizzle_root=args.swizzle_root, assay_root=args.assay_root,
-        seats={"drafter": versions.seat(args.drafter, drafter),
-               "finisher": versions.seat(args.finisher, finisher),
-               "judge": versions.seat(args.judge, judge)})
+        target=Path(args.path).resolve(),
+        seats={"drafter": versions.seat(args.drafter, drafter, Path(args.path).resolve()),
+               "finisher": versions.seat(args.finisher, finisher, Path(args.path).resolve()),
+               "judge": versions.seat(args.judge, judge, Path(args.path).resolve())})
 
 
 def _load_seat(spec, warnings: list[str] | None = None):  # `warnings` is kept for old callers; unused now
@@ -209,6 +328,8 @@ def _load_seat(spec, warnings: list[str] | None = None):  # `warnings` is kept f
     if not module_name or not attr:
         raise ValueError("expected MODULE:FACTORY")
     seat = getattr(importlib.import_module(module_name), attr)()
+    if _governed is not None:
+        _check_seat_origin(spec, module_name, seat, _governed)
     wanted = getattr(seat, "requires_contract", None)
     if wanted is None:
         raise ContractMismatch(f"The seat {spec} does not say which Warden contract it was written for, so its fit "
@@ -275,6 +396,14 @@ def _audit(args) -> int:
         auth = grant(args.authorize, "audit", str(root), "documentation", args.reason)
     except Unauthorized as e:
         print(f"warden: {e}", file=sys.stderr)
+        return 2
+    # Writing into the target follows the same rule as `tagteam`: uncommitted work is refused, except the
+    # audit file itself (rerunning the audit to update its table is the normal flow).
+    state = gitstate.tree_state(root, allow=(audit_file.FILENAME,))
+    if state.kind in {"dirty", "unknown"}:
+        why = ("the folder has uncommitted changes (" + state.detail + "). Commit or stash them first"
+               if state.kind == "dirty" else state.detail)
+        print(f"warden: {why}. Nothing was written.", file=sys.stderr)
         return 2
     try:
         textio.write_text(path, updated)

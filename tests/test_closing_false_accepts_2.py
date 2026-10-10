@@ -192,7 +192,7 @@ def test_the_original_bytes_are_journaled_outside_the_target_before_a_trap_is_wr
     result = TagTeam(drafter=RemovingDrafter(), ghost_tools_root=Path(".")).run(
         tmp_path, findings=[finding], authorization=_auth(tmp_path))
     assert result.cycles[0].outcome == "APPLIED"
-    original = base64.b64decode(seen["journal"]["files"]["pkg/dead.py"])
+    original = base64.b64decode(seen["journal"]["files"]["pkg/dead.py"]["original"])
     assert original == DEAD_PY.encode() and seen["outside"]
     assert not runstate.journal_path(tmp_path).exists()
 
@@ -200,9 +200,10 @@ def test_the_original_bytes_are_journaled_outside_the_target_before_a_trap_is_wr
 def test_a_leftover_journal_is_restored_at_the_start_of_the_next_run(tmp_path):
     _repo(tmp_path)
     original = (tmp_path / "pkg" / "dead.py").read_bytes()
-    runstate.write_journal(tmp_path, {"pkg/dead.py": original})
-    (tmp_path / "pkg" / "dead.py").write_text("raise RuntimeError('warden keep-test: trap')\n", encoding="utf-8")
-    result = TagTeam(drafter=None).run(tmp_path, findings=[])
+    trap = b"raise RuntimeError('warden keep-test: trap')\n"
+    runstate.write_journal(tmp_path, {"pkg/dead.py": original}, {"pkg/dead.py": trap})
+    (tmp_path / "pkg" / "dead.py").write_bytes(trap)
+    result = TagTeam(drafter=None).run(tmp_path, findings=[], authorization=_auth(tmp_path))
     assert (tmp_path / "pkg" / "dead.py").read_bytes() == original
     assert "A previous run was interrupted during the keep test; its trap code was removed." in result.notes
     assert not runstate.journal_path(tmp_path).exists()
@@ -212,8 +213,9 @@ def test_a_journal_cannot_write_outside_the_target(tmp_path):
     target = tmp_path / "t"
     target.mkdir()
     _repo(target)
-    runstate.write_journal(target, {"../escaped.txt": b"x", "/tmp/warden-abs.txt": b"x"})
-    TagTeam(drafter=None).run(target, findings=[])
+    runstate.write_journal(target, {"../escaped.txt": b"x", "/tmp/warden-abs.txt": b"x"},
+                           {"../escaped.txt": b"y", "/tmp/warden-abs.txt": b"y"})
+    TagTeam(drafter=None).run(target, findings=[], authorization=_auth(target))
     assert not (tmp_path / "escaped.txt").exists() and not Path("/tmp/warden-abs.txt").exists()
 
 

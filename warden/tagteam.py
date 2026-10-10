@@ -31,28 +31,39 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Dict, Mapping, Optional, Sequence
 
-from . import runstate, textio
+from . import gitstate, runstate, textio
 from .authorization import Authorization, Unauthorized, is_stack_actor
 from .deletion import commented_variant, is_deletion, keep_variant, stamp_now
 from .ghost import GhostCrashed, GhostRefused, _clean as _plain, defects_from_ghost, scan as ghost_scan
-from .guard import FORBIDDEN_DIRS, SeatBrokeCharter, Snapshot, is_protected, violation, watch
+from .guard import (FORBIDDEN_DIRS, SeatBrokeCharter, Snapshot, _RESTORE_LIMIT, is_protected,
+                    is_test_code, violation, watch)
 from .models import Defect, FileEdit, Transformation, TransformationStatus, safe_id
 from .roles import Evidence, Facts, Finisher, Drafter, Judge, Verdict
-from .suite import SuiteRun, preserved, run_suite
+from .suite import DEFAULT_TIMEOUT as DEFAULT_SUITE_TIMEOUT, SuiteRun, preserved, run_suite
 from .swizzle import assay_score, governor_attacks, swizzle_proofs_hold
 
 DEFAULT_MAX_CYCLES = 10
 DEFAULT_GHOST_TIMEOUT = 600
+#: Seconds one seat call (propose, finish, decide, or building the seat) may take before the run stops.
+DEFAULT_SEAT_TIMEOUT = 3600
+#: Proposals declined without a write (scope, protected file, failed keep test) do not use up a cycle, but
+#: this many in one run end it, so a Drafter that keeps offering new declined proposals cannot loop forever.
+DEFAULT_MAX_DECLINED = 50
 
 #: Every decision this module can produce. The CLI maps each one to an exit code and
 #: treats anything else as a failure, never as success.
 DECISIONS = ("ACCEPT", "ACCEPT_UNVERIFIED", "REJECT", "JUDGE_REJECTED", "NOT_CONVERGED",
-             "FINISH_REJECTED", "REFUSED", "INCONCLUSIVE", "ERROR")
+             "FINISH_REJECTED", "REFUSED", "INCONCLUSIVE", "ERROR", "INTERRUPTED")
 
 
 PUT_BACK_NOTE = "The tree was put back as it was found because the run did not finish accepted."
+LOOP_PUT_BACK_NOTE = ("The loop's own changes were put back as well: a run that does not end accepted leaves "
+                      "the whole tree as it was found, so nothing from the converged loop stands.")
+NOT_GIT_NOTE = ("The folder is not inside a git repository, so Warden cannot see whether it holds uncommitted "
+                "work; the snapshot taken at the start is the only way back.")
 SOURCE_CHANGED_NOTE = "the test suite changed source files, so its result cannot be trusted"
 _ENDS_ACCEPTED = {"ACCEPT", "ACCEPT_UNVERIFIED"}
+_JUDGE_LABELS = ("ACCEPT", "REJECT", "INSUFFICIENT")
 
 
 #: At most this many Drafter "skipped" lines are kept in the output.
@@ -70,8 +81,8 @@ class SuiteChangedSource(RuntimeError):
 class WrongAnswer(RuntimeError):
     """A seat returned the wrong kind of thing."""
 
-    def __init__(self, seat: str, got: object, wanted: str) -> None:
-        super().__init__(f"{seat} returned {type(got).__name__} instead of {wanted}")
+    def __init__(self, seat: str, got: object, wanted: str, message: Optional[str] = None) -> None:
+        super().__init__(message or f"{seat} returned {type(got).__name__} instead of {wanted}")
         self.seat = seat
 
 
@@ -118,6 +129,8 @@ class TagTeamResult:
     #: One plain sentence saying why the run ended as it did (the same sentence as the last note
     #: before any put-back text). Empty for a plain ACCEPT.
     reason: str = ""
+    #: Information that is not a gap and changes no decision, such as `ghost_version_unverified`.
+    informational: tuple[str, ...] = ()
 
     @property
     def suite_before(self) -> Optional[SuiteRun]:
@@ -148,6 +161,9 @@ class TagTeam:
         max_cycles: int = DEFAULT_MAX_CYCLES,
         run_tests: bool = True,
         ghost_timeout: float = DEFAULT_GHOST_TIMEOUT,
+        suite_timeout: float = DEFAULT_SUITE_TIMEOUT,
+        seat_timeout: Optional[float] = DEFAULT_SEAT_TIMEOUT,
+        max_declined: int = DEFAULT_MAX_DECLINED,
     ) -> None:
         self.ghost_tools_root = ghost_tools_root
         self.swizzle_root = swizzle_root
@@ -164,6 +180,11 @@ class TagTeam:
         self.run_tests = run_tests
         #: Seconds one Ghost scan may take. A scan that takes longer counts as Ghost being unavailable.
         self.ghost_timeout = ghost_timeout
+        #: Seconds the target's suite may take per run; longer counts as the suite not running.
+        self.suite_timeout = suite_timeout
+        #: Seconds one seat call may take. None or 0 turns the limit off.
+        self.seat_timeout = seat_timeout
+        self.max_declined = max_declined
 
     def run(
         self,
@@ -188,34 +209,67 @@ class TagTeam:
         #: Real gaps in the latest Ghost scan (see ghost._gaps), and the summary shown in the output.
         self._ghost_gaps: list[str] = []
         self._ghost_info: Optional[dict] = None
+        self._info: list[str] = []
         self._skipped: list[str] = []
         self._skipped_more = 0
         lock = runstate.TargetLock(target)
-        if not lock.acquire():
-            return TagTeamResult(
-                target=str(target), baseline="", observed=(), reobserved=(), cycles=(),
-                converged=False, decision="INCONCLUSIVE", notes=(runstate.BUSY_NOTE + ". Nothing was changed.",),
-                unmeasured=self._unmeasured(None, never_ran=True), reason=runstate.BUSY_NOTE + ". Nothing was changed.")
         try:
-            recovered = runstate.recover(target)
-            if recovered:
-                self._notes.append(recovered)
-            try:
-                # Always taken: a run that does not end accepted puts the tree back to this.
-                self._start = Snapshot(target)
-                result = self._run(target, authorization, findings, python or sys.executable)
-            except Exception as err:  # noqa: BLE001 - any failure ends the run with the tree put back
-                result = self._failed(target, err)
-            except KeyboardInterrupt:
-                self._settle(target, self._failed(target, RuntimeError("interrupted")))
-                raise
-            return self._settle(target, result)
+            held = lock.acquire()
+        except runstate.StateUnavailable as exc:
+            return self._early(target, "INCONCLUSIVE", f"Warden could not set up its lock for this target ({exc}). "
+                                                       "Nothing was changed.")
+        if not held:
+            return self._early(target, "INCONCLUSIVE", runstate.BUSY_NOTE + ". Nothing was changed.")
+        try:
+            with runstate.interrupts():
+                return self._guarded(target, authorization, findings, python or sys.executable)
         finally:
             lock.release()
 
+    def _early(self, target: Path, decision: str, why: str) -> TagTeamResult:
+        """A run that ends before it starts: nothing was read from the target, nothing written."""
+        return TagTeamResult(
+            target=str(target), baseline="", observed=(), reobserved=(), cycles=(), converged=False,
+            decision=decision, notes=tuple(self._notes + [why]), unmeasured=self._unmeasured(None, never_ran=True),
+            reason=why, informational=tuple(self._info))
+
+    def _guarded(self, target: Path, authorization, findings, python: str) -> TagTeamResult:
+        """Everything after the lock is held. Whatever happens, the tree is put back unless the run ends accepted."""
+        try:
+            if authorization is not None and authorization.granted:
+                # Only a human grant may touch the tree, and putting back an interrupted keep test is touching it.
+                self._notes.extend(runstate.recover(target))
+            elif runstate.has_journal(target):
+                self._notes.append(runstate.PENDING_NOTE)
+            state = gitstate.tree_state(target)
+            if state.kind == "dirty":
+                return self._early(target, "REFUSED",
+                                   f"The folder has uncommitted changes ({state.detail}). Commit or stash them, then run "
+                                   "again, so everything Warden changes can be told apart from your own work. "
+                                   "Nothing was written.")
+            if state.kind == "unknown":
+                return self._early(target, "REFUSED", f"{state.detail[0].upper()}{state.detail[1:]}. Nothing was written.")
+            if state.kind == "not_git":
+                self._notes.append(NOT_GIT_NOTE)
+            # Always taken: a run that does not end accepted puts the tree back to this.
+            self._start = Snapshot(target)
+            result = self._run(target, authorization, findings, python)
+        except runstate.Interrupted as sig:
+            result = self._failed(target, sig)
+        except Exception as err:  # noqa: BLE001 - any failure ends the run with the tree put back
+            result = self._failed(target, err)
+        except runstate.SeatTimedOut as err:
+            result = self._failed(target, err)
+        except KeyboardInterrupt:
+            self._settle(target, self._failed(target, RuntimeError("interrupted")))
+            raise
+        return self._settle(target, result)
+
     def _failed(self, target: Path, err: BaseException) -> TagTeamResult:
         """The result for a run that stopped on an error. Never carries a traceback."""
-        if isinstance(err, SeatBrokeCharter):
+        if isinstance(err, runstate.Interrupted):
+            decision, said = "INTERRUPTED", f"Warden received {err.signal_name} and stopped."
+        elif isinstance(err, SeatBrokeCharter):
             decision, said = "REJECT", str(err)
         elif isinstance(err, GhostUnavailable):
             decision, said = "INCONCLUSIVE", str(err)
@@ -223,6 +277,9 @@ class TagTeam:
         elif isinstance(err, SuiteChangedSource):
             decision, said = "INCONCLUSIVE", f"The run stopped: {SOURCE_CHANGED_NOTE}."
             self._down.add("suite")
+        elif isinstance(err, runstate.SeatTimedOut):
+            decision = "ERROR"
+            said = f"{err}. The run was stopped and nothing was approved."
         else:
             seat = getattr(err, "seat", None) or self._seat
             if isinstance(err, WrongAnswer):
@@ -235,12 +292,13 @@ class TagTeam:
             target=str(target), baseline="", observed=(), reobserved=(),
             cycles=tuple(self._trail), converged=False, decision=decision,
             notes=tuple(self._notes + [said]), unmeasured=self._unmeasured(self._sound, never_ran=True),
-            reason=said, ghost_scan=self._ghost_info, drafter_skipped=self._skipped_lines())
+            reason=said, ghost_scan=self._ghost_info, drafter_skipped=self._skipped_lines(),
+            informational=tuple(self._info))
 
     def _settle(self, target: Path, result: TagTeamResult) -> TagTeamResult:
         """A run that does not end accepted leaves the tree as it was found."""
         start = self._start
-        if result.decision in _ENDS_ACCEPTED or result.decision == "JUDGE_REJECTED" or start is None:
+        if result.decision in _ENDS_ACCEPTED or start is None:
             return result
         try:
             changed = start.changes()
@@ -262,21 +320,25 @@ class TagTeam:
             warning = ("WARNING: putting the tree back did not fully work; still different: "
                        + ", ".join(left[:5]) + ".")
             return replace(result, notes=result.notes + (warning,))
-        return replace(result, notes=result.notes + (PUT_BACK_NOTE,), put_back=True)
+        extra = (LOOP_PUT_BACK_NOTE,) if result.decision == "FINISH_REJECTED" and any(
+            c.applied for c in result.cycles) else ()
+        return replace(result, notes=result.notes + (PUT_BACK_NOTE,) + extra, put_back=True)
 
     @contextmanager
     def _seated(self, who: str):
-        """Name the seat in control, so an unexpected error can say whose it was."""
+        """Name the seat in control, so an unexpected error can say whose it was. A seat that does not
+        answer within `seat_timeout` seconds stops the run."""
         self._seat = who
-        yield
+        with runstate.seat_timer(self.seat_timeout, who):
+            yield
         self._seat = "Warden"  # not reached on an error, so the handler can still name the seat
 
     def _judge(self, target, authorization, cycles, first, current, finish, finished, sound,
                declined, python, notes, start):
         """Hand the evidence to the Judge. Only the Judge can turn a run into ACCEPT.
 
-        REJECT puts the whole tree back as it was found. Anything the Judge
-        cannot decide, or fails at, leaves the changes standing but unjudged.
+        REJECT puts the whole tree back as it was found. INSUFFICIENT (the Judge cannot decide) leaves
+        the changes standing but unjudged. A Judge that fails or answers wrongly ends the run as ERROR.
         """
         edits = [(e.path, e.kind) for c in cycles if c.applied and c.proposal for e in c.proposal.edits]
         if finished and finish is not None:
@@ -303,30 +365,25 @@ class TagTeam:
             declined=tuple(sorted(declined)), swizzle_proofs=sound, attacks=attacks,
             unmeasured=self._unmeasured(sound), notes=tuple(notes),
             assay=({**self._assay, "floor": self.assay_floor} if self._assay_state else None))
-        try:
-            with self._seated("The Judge"), watch(target, "The Judge"):
-                verdict = self.judge.decide(evidence)
-        except SeatBrokeCharter:
-            raise
-        except Exception as err:  # noqa: BLE001 - a judge that fails has not approved anything
-            notes.append(f"The Judge failed ({type(err).__name__}); nothing was approved.")
-            return "ACCEPT_UNVERIFIED", None, " The Judge failed, so this is not approved."
+        # A Judge that raises, or answers with the wrong kind of thing or an unknown label, has approved
+        # nothing: the error ends the run (ERROR) and the whole tree is put back like any other non-accept.
+        with self._seated("The Judge"), watch(target, "The Judge"):
+            verdict = self.judge.decide(evidence)
         reasons = getattr(verdict, "reasons", None)
         if not isinstance(getattr(verdict, "decision", None), str) or not isinstance(reasons, (tuple, list)) \
                 or not all(isinstance(r, str) for r in reasons):
             raise WrongAnswer("The Judge", verdict, "a verdict")
+        if verdict.decision not in _JUDGE_LABELS:
+            raise WrongAnswer("The Judge", verdict, "a verdict", message=(
+                f"The Judge returned the decision {_plain(verdict.decision, 30)!r}, which is not one of "
+                f"{', '.join(_JUDGE_LABELS)}"))
         said = "; ".join(reasons) or "no reasons given"
         self._check_verdict_shape(verdict, notes)
         if verdict.decision == "ACCEPT":
             return "ACCEPT", verdict, f" Judge: ACCEPT ({said})."
         if verdict.decision == "REJECT":
-            undone = ""
-            if start is not None and start.restorable:
-                start.restore()
-                undone = " The whole tree was put back as it was found."
-            elif start is not None:
-                undone = " The tree was too large to restore automatically."
-            return "JUDGE_REJECTED", verdict, f" Judge: REJECT ({said}).{undone}"
+            # The tree is put back by the settle step that every non-accepted run goes through.
+            return "JUDGE_REJECTED", verdict, f" Judge: REJECT ({said})."
         return "ACCEPT_UNVERIFIED", verdict, f" Judge: INSUFFICIENT ({said}). The changes stand, unjudged."
 
     @staticmethod
@@ -343,9 +400,11 @@ class TagTeam:
             notes.append(f"The Judge's verdict carried fields Warden does not know ({', '.join(map(str, extra))[:80]}); "
                          "they were ignored.")
 
-    def _unmeasured(self, sound: Optional[bool], never_ran: bool = False) -> tuple[str, ...]:
-        """Checks that did not run or could not be read. `never_ran`: the run ended before the
-        suite was measured, so the suite counts as unmeasured too."""
+    def _unmeasured(self, sound: Optional[bool], never_ran: bool = False, suite_pending: bool = False) -> tuple[str, ...]:
+        """Checks that did not run or could not be read. The suite counts as unmeasured whenever it was
+        never run (a run that changed nothing, or ended early, measured nothing about behavior), unless
+        `suite_pending`: the Judge's final-state run is about to measure it. `never_ran` is kept for callers
+        that pass it; it no longer changes the answer."""
         out = []
         if self._assay_state is not True:
             out.append("assay")
@@ -356,7 +415,7 @@ class TagTeam:
             out.append("ghost_partial")
         if self.swizzle_root is None or sound is False or "swizzle" in self._down:
             out.append("swizzle")
-        if not self.run_tests or "suite" in self._down or (never_ran and not self._suite_ran):
+        if not self.run_tests or "suite" in self._down or (not self._suite_ran and not suite_pending):
             out.append("suite")
         if self.judge is None:
             out.append("judge")
@@ -374,16 +433,19 @@ class TagTeam:
         declined: set[str] = set()
 
         def stop(decision: str, why: str, cycles=(), converged=False, current=None,
-                 finish=None, finished=False) -> TagTeamResult:
-            missing = self._unmeasured(sound, never_ran=decision in {"INCONCLUSIVE", "REFUSED"})
+                 finish=None, finished=False, unsound=False) -> TagTeamResult:
+            shown_sound = False if unsound else sound
             candidate = decision == "ACCEPT"
+            will_judge = candidate and self.judge is not None
+            missing = self._unmeasured(shown_sound, never_ran=decision in {"INCONCLUSIVE", "REFUSED"},
+                                       suite_pending=will_judge and self.run_tests)
             gaps = tuple(m for m in missing if m != "judge")
             if candidate and missing:
                 decision = "ACCEPT_UNVERIFIED"
                 why += f" Not measured: {', '.join(missing)}. Nothing here says those checks would have passed."
             verdict = None
             reobserved = observed if current is None else current
-            if candidate and self.judge is not None:
+            if will_judge:
                 judged, verdict, extra = self._judge(
                     target, authorization, tuple(cycles), first, reobserved, finish, finished,
                     sound, declined, python, notes, start)
@@ -394,9 +456,9 @@ class TagTeam:
                 target=str(target), baseline=base0, observed=first,
                 reobserved=reobserved, cycles=tuple(cycles),
                 converged=converged, decision=decision, notes=tuple(notes + [why]),
-                finish=finish, finished=finished, swizzle_sound=sound, unmeasured=missing,
+                finish=finish, finished=finished, swizzle_sound=shown_sound, unmeasured=missing,
                 verdict=verdict, reason=why.strip(), ghost_scan=self._ghost_info,
-                drafter_skipped=self._skipped_lines())
+                drafter_skipped=self._skipped_lines(), informational=tuple(self._info))
 
         if self.drafter is None:
             return stop("INCONCLUSIVE", "No drafter. Tag team observed only; nothing can be proposed.")
@@ -413,12 +475,25 @@ class TagTeam:
         if self._assay_state is False:
             return stop("INCONCLUSIVE", "ASSAY's answer key could not be used to grade Ghost; nothing was written.")
 
+        if start is not None and not start.restorable:
+            return stop("INCONCLUSIVE", f"The folder holds more than {_RESTORE_LIMIT // (1024 * 1024)} MB, which is "
+                        "more than Warden can put back, so a change that failed could not be undone. "
+                        "Nothing was written.")
+
         cycles: list[Cycle] = self._trail
         converged = False
         seen: set[str] = set()
         out_of_scope: set[str] = set()
+        attempts = 0
+        declined_count = 0
         #: Findings whose removal failed a test (`declined`) are not offered to the Drafter again.
-        for number in range(1, self.max_cycles + 1):
+        #: Only a proposal that reaches the applier uses up one of `max_cycles`; a declined one does not,
+        #: but `max_declined` of them end the run.
+        while attempts < self.max_cycles:
+            number = len(cycles) + 1
+            if declined_count >= self.max_declined:
+                return stop("NOT_CONVERGED", f"Cycle {number}: {declined_count} proposals were declined without a "
+                            "write and the Drafter kept offering more. Stopped.", cycles)
             baseline = _fingerprint(target)
             offered = tuple(d for d in observed if d.identity not in declined)
             with self._seated("The Drafter"), watch(target, "The Drafter"):
@@ -447,6 +522,7 @@ class TagTeam:
                                     "already declined as out of scope. Stopped.", cycles)
                     out_of_scope.add(key)
                     cycles.append(Cycle(number, len(observed), proposal, False, "DECLINED"))
+                    declined_count += 1
                     notes.append(f"Cycle {number}: change declined, nothing was written. {why}.")
                     continue
                 if kind == "escape" or not proposal.known_defects:
@@ -454,6 +530,7 @@ class TagTeam:
                     return stop("REJECT", f"Cycle {number}: {why}. Nothing was written.", cycles)
                 declined.update(d.identity for d in proposal.known_defects)
                 cycles.append(Cycle(number, len(observed), proposal, False, "DECLINED"))
+                declined_count += 1
                 notes.append(f"Cycle {number}: change declined. {why}.")
                 continue
             removes = is_deletion(target, proposal)
@@ -468,6 +545,7 @@ class TagTeam:
                     why = why or "The removed code could not be commented out precisely."
                     declined.update(d.identity for d in original.known_defects)
                     cycles.append(Cycle(number, len(observed), original, False, "DECLINED"))
+                    declined_count += 1
                     notes.append(f"Cycle {number}: removal declined, code left as it is. {why}")
                     continue
                 key = _edits_key(proposal)
@@ -476,6 +554,7 @@ class TagTeam:
                 return stop("NOT_CONVERGED", f"Cycle {number}: the Drafter repeated an earlier "
                             "proposal, so the loop is going in circles. Stopped.", cycles)
             seen.add(key)
+            attempts += 1
             cycle = self._apply(target, proposal, authorization, python, notes, number,
                                 len(observed))
             cycles.append(cycle)
@@ -490,13 +569,14 @@ class TagTeam:
                 _restore(target, cycle.restore)
                 proposal.status = TransformationStatus.REJECTED
                 cycle.applied, cycle.outcome = False, "DECLINED"
+                declined_count += 1
                 declined.update(d.identity for d in proposal.known_defects)
                 notes.append(f"Cycle {number}: comment-out test failed. The change produced new Ghost "
                              f"finding(s) {sorted(map(safe_id, new))}; it was put back and the code left as it is.")
                 continue
             observed = after
         if not converged:
-            return stop("NOT_CONVERGED", f"No convergence in {self.max_cycles} cycles.", cycles)
+            return stop("NOT_CONVERGED", f"No convergence in {self.max_cycles} cycles.", cycles)  # attempts, not declined proposals
         if declined:
             notes.append(f"Removals declined and left in place: {sorted(map(safe_id, declined))}.")
         if observed and self.ghost_tools_root is not None:
@@ -506,7 +586,7 @@ class TagTeam:
         end_sound = self._calibrate(python, notes)
         if end_sound is False:
             return stop("INCONCLUSIVE", "SWIZZLE's proofs failed after the loop; finishing was not attempted.",
-                        cycles, converged=True)
+                        cycles, converged=True, unsound=True)
         if self.finisher is None:
             return stop("ACCEPT", "Loop converged. No finisher configured.", cycles, converged=True)
 
@@ -521,12 +601,12 @@ class TagTeam:
         bad = violation(target, finish, authorization)
         if bad:
             finish.status = TransformationStatus.REJECTED
-            return stop("FINISH_REJECTED", f"Finishing: {bad[1]}. The finishing change was not applied; "
-                        "the converged loop result stands.", cycles, converged=True, finish=finish)
+            return stop("FINISH_REJECTED", f"Finishing: {bad[1]}. The finishing change was not applied.",
+                        cycles, converged=True, finish=finish)
         done = self._apply(target, finish, authorization, python, notes, 0, len(observed))
         if done.outcome != "APPLIED":
-            return stop("FINISH_REJECTED", f"Finishing: {done.outcome}. The finishing change was put back; "
-                        "the converged loop result stands.", cycles, converged=True, finish=finish)
+            return stop("FINISH_REJECTED", f"Finishing: {done.outcome}. The finishing change was put back.",
+                        cycles, converged=True, finish=finish)
         after = self._reinspect(target, observed, python, notes)
         new = {d.ghost_id for d in after if d.ghost_id} - {d.ghost_id for d in observed if d.ghost_id}
         if new:
@@ -569,7 +649,8 @@ class TagTeam:
                                  "xfailed), so the suite cannot prove this code is unused")
         snapshot: Dict[str, Optional[bytes]] = {rel: (target / rel).read_bytes() for rel in variant}
         # Saved outside the target first, so a kill during the trap cannot leave the trap behind.
-        runstate.write_journal(target, snapshot)
+        trapped_bytes = {rel: textio.encode_like(target / rel, text) for rel, text in variant.items()}
+        runstate.write_journal(target, snapshot, trapped_bytes)
         try:
             for rel, text in variant.items():
                 textio.write_text(target / rel, text)
@@ -640,6 +721,9 @@ class TagTeam:
             swizzle_root=self.swizzle_root, assay_root=self.assay_root,
             ghost_root=self.ghost_tools_root, python=python)
         notes.append(summary)
+        if self.assay_floor == 0:
+            notes.append("ASSAY floor NOT ENFORCED (--assay-floor 0): Ghost's score is recorded but nothing "
+                         "requires it to catch any failure mode.")
 
     def _observe(self, target: Path, findings: Optional[Sequence[dict]], python: str,
                  notes: list[str]) -> tuple[Defect, ...]:
@@ -688,6 +772,12 @@ class TagTeam:
         counts = getattr(found, "scan_counts", None)
         gaps = tuple(getattr(found, "gaps", ()) or ())
         self._ghost_gaps = [_plain(g) for g in gaps]
+        if getattr(found, "version_unverified", False) and "ghost_version_unverified" not in self._info:
+            # An old Ghost cannot say what it did not look at. Its result is read as it always was; this
+            # only records that the version could not be told apart from a complete one.
+            self._info.append("ghost_version_unverified")
+            self._notes.append("ghost_version_unverified: this Ghost prints a bare list of findings and cannot say "
+                               "what it left unmeasured, so a clean result from it is taken as it always was.")
         if counts is None and getattr(found, "status", None) is None and not gaps:
             self._ghost_info = None
             return
@@ -695,6 +785,7 @@ class TagTeam:
             "status": getattr(found, "status", None), **(counts or {}),
             "gaps": self._ghost_gaps[:10], "gaps_not_shown": max(0, len(self._ghost_gaps) - 10),
             "declined": [_plain(d, 40) for d in (getattr(found, "declined", ()) or ())][:20],
+            "baseline": getattr(found, "baseline", None),
         }
         if self._ghost_gaps:
             self._notes.append("Ghost scan has gaps, so Ghost is counted as partly measured: "
@@ -731,7 +822,7 @@ class TagTeam:
             return None
         source_before = _source_hash(target)
         self._suite_ran = True
-        result = run_suite(target, python)
+        result = run_suite(target, python, self.suite_timeout)
         notes.append(f"Rule 7 suite {when}: {result.describe()}.")
         if _source_hash(target) != source_before:
             notes.append(f"Rule 7: {SOURCE_CHANGED_NOTE}.")
@@ -839,7 +930,7 @@ def _source_hash(target: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(Path(target).rglob("*.py")):
         rel = path.relative_to(target)
-        if FORBIDDEN_DIRS.intersection(p.lower() for p in rel.parts) or is_protected(rel.as_posix()):
+        if FORBIDDEN_DIRS.intersection(p.lower() for p in rel.parts) or is_test_code(rel.as_posix()):
             continue
         if path.is_file():
             digest.update(rel.as_posix().encode("utf-8", "replace"))
@@ -854,20 +945,33 @@ def _is_warden(target: Path) -> bool:
 
 def _refuse_self_authorization(target: Path, authorization: Optional[Authorization]) -> None:
     """Warden may transform other repos. Transforming itself under its own
-    proposal is the self-certifying loop. Checked on the contents of the target
-    and on the actor, wherever the folder lives and whatever it is called."""
-    if authorization and authorization.granted and authorization.actor.strip().lower() in {"warden", "the warden", "self", "unknown", ""}:
+    proposal is the self-certifying loop. Neither Warden nor any other part of the stack
+    (a seat or an instrument) may be the human who authorizes a write, whatever the folder is
+    called and however the name is spelled (case, spaces, zero-width or look-alike characters)."""
+    if authorization and authorization.granted and (is_stack_actor(authorization.actor)
+                                                    or not authorization.actor.strip()):
         raise Unauthorized(f"{authorization.actor!r} cannot authorize a write; a human or external governor must.")
-    if authorization and authorization.granted and _is_warden(target) and is_stack_actor(authorization.actor):
-        raise Unauthorized("Warden cannot authorize work on itself.")
+
+
+class _Snap(dict):
+    """Each file a proposal touches as it was, plus the folders applying it would have to create."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.new_dirs: list = []
 
 
 def _snapshot(target: Path, proposal: Transformation) -> Dict[str, Optional[bytes]]:
     """Each file the proposal touches, byte for byte as it is now (None: it does not exist yet)."""
-    out: Dict[str, Optional[bytes]] = {}
+    out = _Snap()
     for edit in proposal.edits:
         path = target / edit.path
         out[edit.path] = path.read_bytes() if path.is_file() else None
+        parent = path.parent
+        while parent != target and target in parent.parents and not parent.exists():
+            if parent not in out.new_dirs:
+                out.new_dirs.append(parent)
+            parent = parent.parent
     return out
 
 
@@ -879,3 +983,9 @@ def _restore(target: Path, snapshot: Dict[str, Optional[bytes]]) -> None:
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
+    # Folders the apply made, now empty again, go too (deepest first).
+    for folder in sorted(getattr(snapshot, "new_dirs", ()), key=lambda d: len(d.parts), reverse=True):
+        try:
+            folder.rmdir()
+        except OSError:
+            pass  # not empty, or already gone

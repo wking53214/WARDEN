@@ -26,18 +26,71 @@ write, because running a repository's tests runs that repository's code.
 
 from __future__ import annotations
 
+import json
 import os
-import re
+import secrets
+import signal
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 #: pytest's exit code when it collected nothing.
 _NO_TESTS = 5
 
-_COUNT = re.compile(r"(\d+) (passed|failed|errors?|skipped|xfailed|xpassed)")
+DEFAULT_TIMEOUT = 900.0
+
+#: The pytest plugin Warden loads into the target's run. It counts every test outcome as pytest
+#: reports it and writes them, with pytest's own exit status, to a file only Warden reads. Text
+#: that the target's code prints is never read.
+_PLUGIN_SOURCE = '''
+import json, os
+
+_COUNTS = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0, "xfailed": 0, "xpassed": 0}
+_STATE = {"collected": 0}
+
+
+def pytest_collection_finish(session):
+    _STATE["collected"] = len(session.items)
+
+
+def pytest_collectreport(report):
+    if report.failed:
+        _COUNTS["errors"] += 1
+    elif report.skipped:
+        _COUNTS["skipped"] += 1
+
+
+def pytest_runtest_logreport(report):
+    wasxfail = hasattr(report, "wasxfail")
+    if report.when == "call":
+        if report.passed:
+            _COUNTS["xpassed" if wasxfail else "passed"] += 1
+        elif report.failed:
+            _COUNTS["failed"] += 1
+        elif report.skipped:
+            _COUNTS["xfailed" if wasxfail else "skipped"] += 1
+    elif report.when == "setup":
+        if report.failed:
+            _COUNTS["errors"] += 1
+        elif report.skipped:
+            _COUNTS["skipped"] += 1
+    elif report.when == "teardown" and report.failed:
+        _COUNTS["errors"] += 1
+
+
+def pytest_sessionfinish(session, exitstatus):
+    path = os.environ.get("WARDEN_SUITE_REPORT")
+    if not path:
+        return
+    body = {"nonce": os.environ.get("WARDEN_SUITE_NONCE"), "exitstatus": int(exitstatus),
+            "collected": _STATE["collected"], **_COUNTS}
+    tmp = path + ".part"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(body, handle)
+    os.replace(tmp, path)
+'''
 
 
 @dataclass(frozen=True)
@@ -53,20 +106,58 @@ class SuiteRun:
     #: Tests marked as expected to fail that did fail, and ones that passed anyway.
     xfailed: int = 0
     xpassed: int = 0
+    #: pytest's own exit status. None only for a SuiteRun made by hand. Green needs 0.
+    exit_code: Optional[int] = None
 
     @property
     def green(self) -> bool:
-        return self.ran and self.passed > 0 and self.failed == 0 and self.errors == 0
+        return (self.ran and self.exit_code in (None, 0)
+                and self.passed > 0 and self.failed == 0 and self.errors == 0)
 
     def describe(self) -> str:
         if not self.ran:
             return f"did not run ({self.reason})"
-        return (f"{self.passed} passed, {self.failed} failed, {self.errors} errors, "
+        text = (f"{self.passed} passed, {self.failed} failed, {self.errors} errors, "
                 f"{self.skipped} skipped, {self.xfailed} xfailed, {self.xpassed} xpassed")
+        if self.exit_code not in (None, 0):
+            text += f"; pytest exited {self.exit_code}" + (f" ({self.reason})" if self.reason else "")
+        return text
 
 
-def run_suite(target: Path, python: str, timeout: float = 900.0) -> SuiteRun:
-    """Run the target's tests and read pytest's own summary.
+def _kill_group(proc: subprocess.Popen) -> None:
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (OSError, ProcessLookupError):
+        try:
+            proc.kill()
+        except OSError:
+            pass
+
+
+def _read_report(path: Path, nonce: str) -> Optional[dict]:
+    """The plugin's file, or None if it is missing, too big, or not what the plugin writes."""
+    try:
+        if path.stat().st_size > 1_000_000:
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("nonce") != nonce:
+        return None
+    keys = ("exitstatus", "collected", "passed", "failed", "errors", "skipped", "xfailed", "xpassed")
+    if not all(isinstance(data.get(k), int) and not isinstance(data.get(k), bool) and data[k] >= 0 for k in keys):
+        return None
+    return data
+
+
+def run_suite(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
+    """Run the target's tests and read pytest's own result, never its printed text.
+
+    The result is pytest's exit status plus a count file written by a plugin Warden loads (see
+    `_PLUGIN_SOURCE`). Text the suite prints, at the end or at exit, is ignored, so a line reading
+    "5 passed" cannot make a failing run look green and a harmless "2 failed uploads" cannot make a
+    green one look red. Green needs exit status 0, at least one passing test, and no failed or
+    errored test in the count file.
 
     Bytecode goes to a fresh directory per run. Python trusts a cached .pyc
     whose source has the same size and the same mtime second, so an edit
@@ -74,35 +165,63 @@ def run_suite(target: Path, python: str, timeout: float = 900.0) -> SuiteRun:
     invisible to the "after" run and a breaking change passed the gate.
     Measured on this module's own test, 2 failures in 3 runs, before this.
     """
-    with tempfile.TemporaryDirectory(prefix="warden-pyc-") as pyc:
-        env = dict(os.environ, PYTHONPYCACHEPREFIX=pyc)
+    nonce = secrets.token_hex(16)
+    with tempfile.TemporaryDirectory(prefix="warden-suite-") as private:
+        private_dir = Path(private)
+        plugin = f"_warden_suite_report_{secrets.token_hex(6)}"
+        (private_dir / f"{plugin}.py").write_text(_PLUGIN_SOURCE, encoding="utf-8")
+        report_path = private_dir / "report.json"
+        pyc = private_dir / "pyc"
+        pyc.mkdir()
+        env = dict(os.environ, PYTHONPYCACHEPREFIX=str(pyc), WARDEN_SUITE_REPORT=str(report_path),
+                   WARDEN_SUITE_NONCE=nonce)
+        # The plugin's folder goes last, after everything the target set: its name is random, so nothing can shadow it.
+        env["PYTHONPATH"] = os.pathsep.join([p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p]
+                                            + [str(private_dir)])
         try:
-            done = subprocess.run(
-                [python, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
-                cwd=str(target), capture_output=True, text=True, timeout=timeout, env=env,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+            proc = subprocess.Popen(
+                [python, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", plugin],
+                cwd=str(target), stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+                text=True, errors="replace", env=env, start_new_session=True)
+        except OSError as exc:
             return SuiteRun(ran=False, reason=f"pytest could not run: {exc}")
-    if done.returncode == _NO_TESTS:
-        return SuiteRun(ran=False, reason="pytest collected no tests")
-    tail = "\n".join(done.stdout.strip().splitlines()[-3:])
-    counts: Dict[str, int] = {}
-    for number, kind in _COUNT.findall(tail):
-        key = "errors" if kind.startswith("error") else kind
-        counts[key] = counts.get(key, 0) + int(number)
-    if not counts:
-        reason = (done.stderr.strip().splitlines() or done.stdout.strip().splitlines()
-                  or [f"exit {done.returncode}"])[-1]
-        return SuiteRun(ran=False, reason=f"no pytest summary ({reason[:200]})")
-    return SuiteRun(ran=True, passed=counts.get("passed", 0), failed=counts.get("failed", 0),
-                    errors=counts.get("errors", 0), skipped=counts.get("skipped", 0),
-                    xfailed=counts.get("xfailed", 0), xpassed=counts.get("xpassed", 0))
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_group(proc)
+            proc.communicate()
+            return SuiteRun(ran=False, reason=f"pytest could not run: timed out after {timeout:g} seconds")
+        except BaseException:
+            _kill_group(proc)
+            raise
+        finally:
+            _kill_group(proc)  # anything the suite left running
+        code = proc.returncode
+        report = _read_report(report_path, nonce)
+    if code == _NO_TESTS:
+        return SuiteRun(ran=False, reason="pytest collected no tests", exit_code=code)
+    if report is None:
+        last = (stderr.strip().splitlines() or stdout.strip().splitlines() or [f"exit {code}"])[-1]
+        return SuiteRun(ran=False, exit_code=code,
+                        reason=f"pytest left no result file (exit {code}): {last[:160]}")
+    reason = ""
+    if report["exitstatus"] != code:
+        reason = f"pytest's report said exit {report['exitstatus']} but the process exited {code}"
+    elif code != 0 and not (report["failed"] or report["errors"]):
+        reason = "the exit status says the run failed but no test is reported as failing"
+    elif code == 0 and (report["failed"] or report["errors"]):
+        reason = "the exit status says the run passed but the report lists failures"
+    return SuiteRun(ran=True, passed=report["passed"], failed=report["failed"], errors=report["errors"],
+                    skipped=report["skipped"], xfailed=report["xfailed"], xpassed=report["xpassed"],
+                    exit_code=code, reason=reason)
 
 
 def preserved(before: SuiteRun, after: SuiteRun) -> Optional[str]:
     """None if behavior is preserved by Rule 7's standard, else why not."""
     if not after.ran:
         return f"the suite did not run after the change ({after.reason})"
+    if after.exit_code not in (None, 0):
+        return f"the suite did not exit cleanly after the change ({after.describe()})"
     if after.failed or after.errors:
         return f"the change introduced failures ({after.describe()})"
     if after.passed < before.passed:
