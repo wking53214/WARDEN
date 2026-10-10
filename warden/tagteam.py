@@ -131,6 +131,9 @@ class TagTeamResult:
     reason: str = ""
     #: Information that is not a gap and changes no decision, such as `ghost_version_unverified`.
     informational: tuple[str, ...] = ()
+    #: Ghost's baseline report at the first and the last scan ({"before": {path, suppressed}|None,
+    #: "after": ...}), the same values handed to the Judge. None: no scan reported one.
+    ghost_baseline: Optional[dict] = None
 
     @property
     def suite_before(self) -> Optional[SuiteRun]:
@@ -209,6 +212,10 @@ class TagTeam:
         #: Real gaps in the latest Ghost scan (see ghost._gaps), and the summary shown in the output.
         self._ghost_gaps: list[str] = []
         self._ghost_info: Optional[dict] = None
+        #: Ghost's baseline report ({path, suppressed}) from the first scan and the latest scan, or None.
+        self._baseline_first: Optional[dict] = None
+        self._baseline_last: Optional[dict] = None
+        self._baseline_seen = False
         self._info: list[str] = []
         self._skipped: list[str] = []
         self._skipped_more = 0
@@ -293,6 +300,7 @@ class TagTeam:
             cycles=tuple(self._trail), converged=False, decision=decision,
             notes=tuple(self._notes + [said]), unmeasured=self._unmeasured(self._sound, never_ran=True),
             reason=said, ghost_scan=self._ghost_info, drafter_skipped=self._skipped_lines(),
+            ghost_baseline=self._baseline_report(),
             informational=tuple(self._info))
 
     def _settle(self, target: Path, result: TagTeamResult) -> TagTeamResult:
@@ -364,7 +372,8 @@ class TagTeam:
             ghost_after=tuple(sorted(d.identity for d in current)) if ghost else None,
             declined=tuple(sorted(declined)), swizzle_proofs=sound, attacks=attacks,
             unmeasured=self._unmeasured(sound), notes=tuple(notes),
-            assay=({**self._assay, "floor": self.assay_floor} if self._assay_state else None))
+            assay=({**self._assay, "floor": self.assay_floor} if self._assay_state else None),
+            ghost_baseline_before=self._baseline_first, ghost_baseline_after=self._baseline_last)
         # A Judge that raises, or answers with the wrong kind of thing or an unknown label, has approved
         # nothing: the error ends the run (ERROR) and the whole tree is put back like any other non-accept.
         with self._seated("The Judge"), watch(target, "The Judge"):
@@ -458,6 +467,7 @@ class TagTeam:
                 converged=converged, decision=decision, notes=tuple(notes + [why]),
                 finish=finish, finished=finished, swizzle_sound=shown_sound, unmeasured=missing,
                 verdict=verdict, reason=why.strip(), ghost_scan=self._ghost_info,
+                ghost_baseline=self._baseline_report(),
                 drafter_skipped=self._skipped_lines(), informational=tuple(self._info))
 
         if self.drafter is None:
@@ -769,6 +779,7 @@ class TagTeam:
         that raised, git missing when needed). Checks the caller declined or that are opt-in and were
         not requested are listed as `declined` and never touch the decision.
         """
+        self._note_baseline(found)
         counts = getattr(found, "scan_counts", None)
         gaps = tuple(getattr(found, "gaps", ()) or ())
         self._ghost_gaps = [_plain(g) for g in gaps]
@@ -790,6 +801,30 @@ class TagTeam:
         if self._ghost_gaps:
             self._notes.append("Ghost scan has gaps, so Ghost is counted as partly measured: "
                                + "; ".join(self._ghost_gaps[:5]) + ("; and more" if len(self._ghost_gaps) > 5 else ""))
+
+    def _baseline_report(self) -> Optional[dict]:
+        if self._baseline_first is None and self._baseline_last is None:
+            return None
+        return {"before": self._baseline_first, "after": self._baseline_last}
+
+    def _note_baseline(self, found) -> None:
+        """Keep Ghost's baseline report from the first scan and the latest one, for the Judge.
+
+        Only a readable {path: text or None, suppressed: whole number} is kept; anything else is None, so
+        the Judge says "unknown" rather than being told something Ghost did not say. This is separate from
+        the gap accounting in `_absorb_ghost`, which is unchanged.
+        """
+        raw = getattr(found, "baseline", None)
+        report = None
+        if isinstance(raw, Mapping):
+            suppressed, path = raw.get("suppressed"), raw.get("path")
+            if (isinstance(suppressed, int) and not isinstance(suppressed, bool) and suppressed >= 0
+                    and (path is None or isinstance(path, str))):
+                report = {"path": path, "suppressed": suppressed}
+        if not self._baseline_seen:
+            self._baseline_seen = True
+            self._baseline_first = report
+        self._baseline_last = report
 
     def _collect_skipped(self) -> None:
         """After a Drafter call: gather its own account of what it left alone, if it keeps one."""
