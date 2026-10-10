@@ -290,6 +290,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "swizzle_sound": result.swizzle_sound,
         "unmeasured": list(result.unmeasured),
         "ghost_scan": result.ghost_scan,
+        "ghost_baseline": result.ghost_baseline,
         "drafter_skipped": list(result.drafter_skipped),
         "informational": list(result.informational),
         "verdict": None if result.verdict is None else {

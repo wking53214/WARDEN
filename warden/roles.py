@@ -101,6 +101,11 @@ class Evidence:
     #: Ghost graded against ASSAY's answer key: key_proven, failure_modes, caught,
     #: escaped, misnamed, floor (the fewest failure modes Ghost must catch). None: not run.
     assay: Optional[Mapping[str, object]] = None
+    #: Ghost's own account of its baseline file (findings it was told to ignore), as {path, suppressed},
+    #: at the first observation and at the last. None: Ghost did not say (old Ghost, or no usable count).
+    #: A Judge compares them; growth means findings were hidden. Added without changing CONTRACT "1".
+    ghost_baseline_before: Optional[Mapping[str, object]] = None
+    ghost_baseline_after: Optional[Mapping[str, object]] = None
 
 
 @dataclass(frozen=True)

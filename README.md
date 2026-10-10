@@ -219,7 +219,10 @@ a plain `ACCEPT`. (A target that is not a git repository is such a gap: Ghost's
 clean, as before, but the JSON then carries `informational: ["ghost_version_unverified"]` and a
 note, so a reader can tell it from a complete answer. Ghost's `baseline` object
 (`{"path": str or null, "suppressed": int}`) is read tolerantly: absent is fine, and it is
-copied into `ghost_scan.baseline`.
+copied into `ghost_scan.baseline`. It is also handed to the Judge as the optional Evidence fields
+`ghost_baseline_before` (first scan) and `ghost_baseline_after` (last scan), and shown in the output as
+`ghost_baseline: {before, after}`. A report Ghost did not give, or whose count is not a whole number, is
+passed as null so the Judge says "unknown" instead of being told zero. The seat contract stays "1".
 
 **Ids.** Warden compares Ghost ids only within one run, so the one-time id change in
 new Ghost does not disturb the loop unless `--from-ghost` findings from old Ghost are
