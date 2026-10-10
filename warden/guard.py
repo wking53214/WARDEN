@@ -13,11 +13,13 @@ scope, outside the files that judge the work).
 from __future__ import annotations
 
 import ast
+import fnmatch
+import unicodedata
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
-from typing import Dict, Iterator, Optional
+from typing import Dict, Iterable, Iterator, Optional
 
-from . import textio
+from . import gitstate, textio
 from .authorization import Authorization
 from .models import Transformation
 
@@ -28,11 +30,34 @@ _RESTORE_LIMIT = 200 * 1024 * 1024
 #: Prose a documentation grant may touch.
 PROSE = {".md", ".rst", ".txt"}
 
-#: The files that decide whether a change is acceptable. A proposer that can
-#: edit them is grading its own work.
-_PROTECTED_NAMES = {"conftest.py", "pytest.ini", "tox.ini", "setup.cfg", "pyproject.toml",
-                    "noxfile.py", ".coveragerc", "Makefile"}
-_PROTECTED_DIRS = {"tests", "test", ".github"}
+#: The files that decide whether a change is acceptable, or how the code is built, tested and
+#: shipped. A proposer that can edit them is grading its own work or changing what runs later.
+#: Names are compared case-insensitively (after NFKC) and as glob patterns.
+_PROTECTED_NAMES = {
+    # test and build configuration
+    "conftest.py", "pytest.ini", ".pytest.ini", "tox.ini", "setup.cfg", "setup.py", "pyproject.toml",
+    "noxfile.py", ".coveragerc", "makefile", "gnumakefile", "justfile", "tests.py", ".pre-commit-config.yaml",
+    # CI
+    ".gitlab-ci.yml", ".gitlab-ci.yaml", "jenkinsfile", "azure-pipelines.yml", "azure-pipelines.yaml",
+    ".travis.yml", "appveyor.yml", "bitbucket-pipelines.yml", "cloudbuild.yaml", "cloudbuild.yml",
+    ".drone.yml", "codecov.yml", ".codecov.yml",
+    # dependencies and submodules
+    ".gitmodules", "pipfile", "pipfile.lock", "poetry.lock", "uv.lock", "pdm.lock", "package-lock.json",
+    "yarn.lock", "pnpm-lock.yaml", "cargo.lock", "gemfile.lock", "composer.lock", "go.sum",
+    # containers
+    "dockerfile",
+}
+_PROTECTED_PATTERNS = (
+    "pytest*.ini", ".pytest*.ini", "test_*", "*_test.py", "*.lock",
+    "requirements*.txt", "constraints*.txt", "requirements*.in", "constraints*.in",
+    "*requirements*.txt", "*constraints*.txt",
+    "dockerfile*", "*.dockerfile", "docker-compose*.yml", "docker-compose*.yaml", "compose*.yml", "compose*.yaml",
+    "jenkinsfile*", "azure-pipelines*.yml", "*.gitlab-ci.yml", ".ghost_*",
+)
+_PROTECTED_DIRS = {"tests", "test", "testing", ".github", ".circleci", ".githooks", ".gitlab", ".buildkite",
+                   ".husky", ".azure-pipelines"}
+#: Any file or folder whose name starts with this is Ghost's own bookkeeping (ledger, baseline, archive marker).
+_PROTECTED_DIR_PATTERNS = (".ghost_*",)
 
 #: Version control, environments and caches. Nothing in them is the project's
 #: source, and a hook or a library edited there runs later with the user's rights.
@@ -56,7 +81,7 @@ def _walk(target: Path) -> Iterator[Path]:
 
 
 def _git_guard(target: Path) -> Dict[str, bytes]:
-    """The parts of .git that can run code or redirect git: hooks, config, info.
+    """The parts of .git that can run code or redirect git: hooks, config, info, and stray lock files.
 
     The rest of .git is skipped by the snapshot (it is large and git rewrites
     it on its own), but these files are read byte for byte.
@@ -67,6 +92,10 @@ def _git_guard(target: Path) -> Dict[str, bytes]:
         return out
     if (git / "config").is_file():
         out[".git/config"] = (git / "config").read_bytes()
+    # Lock files git leaves while it works. One a seat creates blocks the user's own git commands.
+    for path in sorted(git.glob("*.lock")):
+        if path.is_file():
+            out[".git/" + path.name] = path.read_bytes()
     for sub in ("hooks", "info"):
         base = git / sub
         if base.is_dir():
@@ -92,7 +121,12 @@ class Snapshot:
         if not self.restorable:
             self.files = {k: b"" for k in self.files}
         self._stat = self._stats()
+        self.dirs = self._dirs()
         self.git = _git_guard(self.target)
+
+    def _dirs(self) -> set:
+        return {str(p.relative_to(self.target)) for p in sorted(self.target.rglob("*"))
+                if p.is_dir() and not p.is_symlink() and not _SKIP.intersection(p.relative_to(self.target).parts)}
 
     def _stats(self) -> Dict[str, tuple]:
         return {str(p.relative_to(self.target)): (p.stat().st_size, p.stat().st_mtime_ns)
@@ -101,6 +135,7 @@ class Snapshot:
     def changes(self) -> list[str]:
         now = self._stats()
         out = [f"added {k}" for k in now.keys() - self._stat.keys()]
+        out += [f"added folder {k}" for k in self._dirs() - self.dirs]
         out += [f"removed {k}" for k in self._stat.keys() - now.keys()]
         for k in now.keys() & self._stat.keys():
             if now[k] != self._stat[k]:
@@ -135,6 +170,12 @@ class Snapshot:
             if not path.is_file() or path.read_bytes() != data:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(data)
+        # Folders that did not exist at the start and are now empty (an apply made them) go too.
+        for rel in sorted(self._dirs() - self.dirs, key=lambda r: r.count("/"), reverse=True):
+            try:
+                (self.target / rel).rmdir()
+            except OSError:
+                pass  # not empty, or already gone
 
 
 @contextmanager
@@ -162,11 +203,79 @@ def inside(target: Path, rel: str) -> bool:
     return (Path(target) / candidate).resolve().is_relative_to(Path(target).resolve())
 
 
-def is_protected(rel: str) -> bool:
-    parts = PurePosixPath(rel.replace("\\", "/")).parts
+def _norm(name: str) -> str:
+    """A path part as it is compared: NFKC, lower case, no trailing dots or spaces."""
+    return unicodedata.normalize("NFKC", name).casefold().rstrip(" .")
+
+
+def _name_parts(rel: str) -> tuple:
+    return tuple(_norm(p) for p in PurePosixPath(rel.replace("\\", "/")).parts)
+
+
+def _matches(name: str, patterns: Iterable[str]) -> bool:
+    return any(fnmatch.fnmatchcase(name, pat) for pat in patterns)
+
+
+def is_protected(rel: str, extra_dirs: Iterable[str] = ()) -> bool:
+    """True for a file that decides acceptability or how the project is built, tested or shipped.
+
+    `extra_dirs` are folders (relative to the target) that are also protected, such as the one
+    git's core.hooksPath names.
+    """
+    parts = _name_parts(rel)
     name = parts[-1] if parts else ""
-    return (name in _PROTECTED_NAMES or name.startswith("test_") or name.endswith("_test.py")
-            or bool(_PROTECTED_DIRS.intersection(parts[:-1])))
+    dirs = parts[:-1]
+    extra = [_name_parts(d) for d in extra_dirs]
+    return (name in _PROTECTED_NAMES or _matches(name, _PROTECTED_PATTERNS)
+            or bool(_PROTECTED_DIRS.intersection(dirs))
+            or any(_matches(d, _PROTECTED_DIR_PATTERNS) for d in dirs)
+            or (bool(_NONPROSE_DIRS.intersection(dirs)) and PurePosixPath(name).suffix in {".txt", ".in", ".pip"})
+            or any(e and parts[:len(e)] == e for e in extra))
+
+
+def is_test_code(rel: str) -> bool:
+    """Test files and their folders only (the subset of `is_protected` that is Python test code)."""
+    parts = _name_parts(rel)
+    name = parts[-1] if parts else ""
+    return (name in {"conftest.py", "tests.py"} or name.startswith("test_") or name.endswith("_test.py")
+            or bool({"tests", "test", "testing"}.intersection(parts[:-1])))
+
+
+#: Text files that are data or legal text, not prose a documentation grant may rewrite.
+_NONPROSE_PATTERNS = ("*requirements*.txt", "*constraints*.txt", "cmakelists.txt", "cmakecache.txt", "license*",
+                      "licence*", "notice*", "copying*", "robots.txt", "manifest.txt", "sources.txt",
+                      "top_level.txt", "entry_points.txt", "dependency_links.txt", "version.txt", "runtime.txt")
+_NONPROSE_DIRS = {"requirements", "constraints", "reqs"}
+
+
+def is_prose(rel: str) -> bool:
+    """True only for real prose: .md, .rst or .txt that is not a requirements list, build file or license."""
+    parts = _name_parts(rel)
+    name = parts[-1] if parts else ""
+    if PurePosixPath(name).suffix not in PROSE:
+        return False
+    return not (_matches(name, _NONPROSE_PATTERNS) or _NONPROSE_DIRS.intersection(parts[:-1]))
+
+
+def real_rel(target: Path, rel: str) -> Optional[str]:
+    """Where `rel` really lands inside the target once every symlink is followed, or None if outside."""
+    root = Path(target).resolve()
+    try:
+        return (root / rel).resolve().relative_to(root).as_posix()
+    except (ValueError, OSError, RuntimeError):
+        return None
+
+
+def hooks_dirs(target: Path) -> tuple:
+    """Folders inside the target that git runs hooks from (core.hooksPath), relative to the target."""
+    path = gitstate.hooks_path(Path(target))
+    if path is None:
+        return ()
+    root = Path(target).resolve()
+    try:
+        return (path.resolve().relative_to(root).as_posix(),)
+    except ValueError:
+        return ()
 
 
 def format_only(target: Path, edit) -> bool:
@@ -194,7 +303,7 @@ def scope_allows(auth: Authorization, rel: str) -> bool:
     """A documentation grant covers prose only. "code" covers the rest."""
     if auth.scope.strip().lower() in {"code", "all"}:
         return True
-    return Path(rel).suffix.lower() in PROSE
+    return is_prose(rel)
 
 
 def _parts(rel: str) -> tuple:
@@ -244,18 +353,24 @@ def violation(target: Path, proposal: Transformation, auth: Authorization) -> Op
             return "escape", (f"edit path {edit.path!r} is inside version control, an environment or a "
                               "cache, which no change may touch")
     code_scope = auth.scope.strip().lower() in {"code", "all"}
+    hooks = hooks_dirs(target)
     out_of_scope: Optional[tuple[str, str]] = None
     for edit in proposal.edits:
         path = Path(target) / edit.path
+        # What the edit really touches once symlinks are followed. A link inside the target that points
+        # at a protected or non-prose file is that file, whatever the link is called.
+        real = real_rel(target, edit.path) or edit.path
         if path.is_file() and not textio.is_decodable(path):
             return "refused", f"{edit.path} is not valid UTF-8, so it will not be edited"
-        if (code_scope or Path(edit.path).suffix.lower() not in PROSE) and is_vendored(target, edit.path):
+        if (code_scope or not is_prose(edit.path) or not is_prose(real)) and (
+                is_vendored(target, edit.path) or is_vendored(target, real)):
             return "refused", (f"{edit.path}: this looks vendored or generated, so a change would be "
                                "undone by the next update")
-        if is_protected(edit.path) and not format_only(target, edit):
-            return "refused", (f"{edit.path} decides whether a change is acceptable (tests, test "
-                               "configuration, CI); the loop may not edit it")
-        if not scope_allows(auth, edit.path) and out_of_scope is None:
+        if (is_protected(edit.path, hooks) or is_protected(real, hooks)) and not format_only(target, edit):
+            return "refused", (f"{edit.path} decides whether a change is acceptable or how the project is built "
+                               "and run (tests, test or build configuration, CI, dependency lists, git hooks); "
+                               "the loop may not edit it")
+        if not (scope_allows(auth, edit.path) and scope_allows(auth, real)) and out_of_scope is None:
             out_of_scope = ("scope", f"{edit.path} is outside the grant's scope {auth.scope!r} "
                                      "(a documentation grant covers prose only)")
     # "scope" means that was the ONLY thing wrong: every other check passed for every edit.

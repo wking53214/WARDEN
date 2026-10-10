@@ -74,7 +74,8 @@ def test_new_ghost_findings_come_through_as_the_same_records(monkeypatch):
 def test_unparsable_files_are_a_gap(monkeypatch):
     rows = DEFAULT_ROWS + [{"check": "parse", "state": "unparsable", "by_request": False,
                             "reason": "1 file(s) could not be parsed, so the code detectors skipped them"}]
-    got = _scan(monkeypatch, _obj(status="incomplete", rows=rows, unparsable=["pkg/bad.py"]), code=1)
+    got = _scan(monkeypatch, _obj(findings=[{"id": "g1"}], status="incomplete", rows=rows, unparsable=["pkg/bad.py"]),
+                code=1)
     assert got.status == "incomplete" and len(got.gaps) == 1 and got.gaps[0].startswith("parse:")
     assert got.scan_counts["files_unparsable"] == 1
 

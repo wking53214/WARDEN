@@ -32,9 +32,9 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from . import textio
+from .guard import is_prose
 from .models import Transformation, safe_id
 
-_PROSE = {".md", ".rst", ".txt"}
 _MESSAGE = "warden keep-test: this code is a deletion candidate and was still executed"
 
 
@@ -48,7 +48,7 @@ def is_deletion(target: Path, proposal: Transformation) -> bool:
     for edit in proposal.edits:
         if edit.kind == "delete":
             return True
-        if Path(edit.path).suffix.lower() in _PROSE:
+        if is_prose(edit.path):
             continue
         if edit.kind == "replace" and _lines(edit.old) > _lines(edit.new):
             return True
@@ -102,7 +102,7 @@ def removal_plan(target: Path, proposal: Transformation) -> Optional[Dict[str, O
             if not path.is_file() or path.suffix != ".py":
                 return None
             plan[edit.path] = None
-        elif Path(edit.path).suffix.lower() in _PROSE:
+        elif is_prose(edit.path):
             continue
         elif edit.kind == "replace" and _lines(edit.old) > _lines(edit.new):
             if not path.is_file() or path.suffix != ".py":

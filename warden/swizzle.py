@@ -141,6 +141,41 @@ def _parse_card(text: str):
     raise ValueError("unreadable")
 
 
+#: Why the answer-key proof sometimes fails without the key being wrong: ASSAY's verifier could not start or
+#: ran out of time. A count that disagrees ("28/29 claims hold") is NOT in this list and is never retried.
+_TRANSIENT = re.compile(r"could not run|timed out|timeout|temporarily unavailable|text file busy|resource busy",
+                        re.IGNORECASE)
+
+
+def _read_failure(proc) -> tuple[str, bool]:
+    """(the real reason ASSAY grading exited 2, whether it looks temporary).
+
+    SWIZZLE prints its card on stdout before it exits 2, and the card says whether the key was proven and
+    why not; its last stderr line only says how many specimens it could not score. Both are relayed.
+    """
+    said = ""
+    transient = False
+    try:
+        card = _parse_card(proc.stdout)
+    except ValueError:
+        card = None
+    if isinstance(card, dict):
+        proof = card.get("proof")
+        proof = proof if isinstance(proof, str) else ""
+        if card.get("key_proven") is False or proof.startswith("NOT PROVEN"):
+            said = "the answer key was not proven: " + " ".join(proof.split())[:300]
+            transient = bool(_TRANSIENT.search(proof))
+        else:
+            stuck = sorted({str(j.get("outcome")) for j in card.get("judgements", [])
+                            if isinstance(j, dict) and j.get("outcome") in ("UNMAPPED", "UNSUMMONED")})
+            if stuck:
+                said = "specimens could not be scored (" + ", ".join(stuck) + ")"
+    err = (proc.stderr.strip().splitlines() or [""])[-1].strip()
+    if err:
+        said = f"{said}; SWIZZLE said: {err[:200]}" if said else err[:200]
+    return said or "no reason given", transient
+
+
 def assay_score(
     *,
     swizzle_root: Path,
@@ -159,13 +194,20 @@ def assay_score(
     cmd = [python, "-m", "swizzle.cli", "assay", "--assay", str(absolute(assay_root)), "--json"]
     if ghost_root is not None:
         cmd += ["--ghost-tools", str(absolute(ghost_root))]
-    try:
-        proc = run_instrument(cmd, roots=[swizzle_root], timeout=600)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return None, {}, f"ASSAY grading could not run: {exc}"
-    if proc.returncode == 2:
-        why = (proc.stderr.strip().splitlines() or ["no reason given"])[-1]
-        return False, {}, f"ASSAY grading failed (key unproven or specimen unscorable): {why}"
+    retried = False
+    while True:
+        try:
+            proc = run_instrument(cmd, roots=[swizzle_root], timeout=600)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return None, {}, f"ASSAY grading could not run: {exc}"
+        if proc.returncode != 2:
+            break
+        why, transient = _read_failure(proc)
+        if transient and not retried:
+            retried = True  # the proof is run again exactly as before; it is not weakened or skipped
+            continue
+        tail = " (the answer key proof was run twice; the first failure looked temporary)" if retried else ""
+        return False, {}, f"ASSAY grading failed (key unproven or specimen unscorable): {why}{tail}"
     if proc.returncode != 0:
         return None, {}, f"ASSAY grading exited {proc.returncode}"
     try:
@@ -189,5 +231,6 @@ def assay_score(
         "misnamed": sum(j["outcome"] == "misnamed" for j in modes),
         "proof": str(card.get("proof", "")),
     }
+    again = " (the answer key proof failed once for a temporary reason and held on the second run)" if retried else ""
     return True, score, (f"ASSAY: Ghost caught {score['caught']} of {score['failure_modes']} "
-                         f"known failure modes ({score['proof']})")
+                         f"known failure modes ({score['proof']}){again}")

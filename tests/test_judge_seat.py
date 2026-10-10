@@ -67,7 +67,7 @@ def test_a_judge_that_cannot_decide_leaves_the_changes_flagged_unjudged(tmp_path
     assert result.decision == "ACCEPT_UNVERIFIED" and (tmp_path / "NOTE.md").read_text(encoding="utf-8") == "new\n"
 
 
-def test_a_judge_that_crashes_has_approved_nothing(tmp_path, measured):
+def test_a_judge_that_crashes_has_approved_nothing_and_the_changes_do_not_stand(tmp_path, measured):
     _repo(tmp_path)
 
     class Broken:
@@ -75,7 +75,9 @@ def test_a_judge_that_crashes_has_approved_nothing(tmp_path, measured):
             raise RuntimeError("boom")
 
     result = _team(Broken()).run(tmp_path, findings=[], authorization=_auth(tmp_path))
-    assert result.decision == "ACCEPT_UNVERIFIED" and result.verdict is None
+    assert result.decision == "ERROR" and result.verdict is None and result.put_back
+    assert "The Judge failed with RuntimeError" in result.reason
+    assert (tmp_path / "NOTE.md").read_text(encoding="utf-8") == "old\n"
 
 
 def test_a_judge_that_writes_the_tree_is_caught_and_undone(tmp_path, measured):

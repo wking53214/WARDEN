@@ -23,7 +23,7 @@ cycles until the Drafter has nothing left to propose (or a cycle limit is
 hit). Only then does Warden hand the code, once, to the Finisher, together with the facts it measured (the suite result and what Ghost still reports), so the Finisher counts and detects nothing itself. The Finisher beautifies the code and writes the final README. The Finisher's change goes through
 the same gate.
 
-Version `0.8.0`. Stdlib only. Python 3.11 or newer; CI runs 3.11 and 3.12.
+Version `0.9.0` (seat contract `"1"`, unchanged). Stdlib only. Python 3.11 or newer; CI runs 3.11 and 3.12.
 
 ## WHY IT EXISTS
 
@@ -97,7 +97,9 @@ ACCEPT / FINISH_REJECTED
 | `warden.registry` | campaign record; the current one is `docs/REGISTRY.json` |
 | `warden.horsemen` | typed handoffs, scoped grants, receipts. `AssayAdapter` reads ASSAY's `assay_production/registry.json` and raises `AssayUnavailable` rather than return no specimens |
 | `warden.isolation` | runs SWIZZLE, Ghost and ASSAY grading in an empty directory, with absolute roots |
-| `warden.runstate` | the per-target lock and the keep-test journal, both kept outside the target |
+| `warden.runstate` | the per-target lock and the keep-test journal, kept in the repository's own git folder (or a private per-user state folder), never in TMPDIR and never through a symlink; also the SIGTERM/SIGHUP/SIGINT handlers, the seat timer and the fd 1 redirect |
+| `warden.gitstate` | read-only questions to git: is the folder dirty, where is its git folder, what is `core.hooksPath` |
+| `warden.guard` | what an edit may touch: the protected-file list, prose-only documentation scope, symlink resolution, and the snapshot that undoes a seat that wrote |
 | `warden.textio` | byte-faithful reads and writes: line endings kept, non-UTF-8 files refused |
 | `warden.cli` | `tagteam` and `audit`; the exit-code table and the seat handshake |
 
@@ -107,7 +109,7 @@ ACCEPT / FINISH_REJECTED
 - **Converged is not clean.** The loop ends when the Drafter has nothing left, not when Ghost reports zero; the notes say how many findings remain.
 - **One intentional change.** Ambiguous replacements refuse.
 - **Identity.** Ghost's hash is the machine identity. C1/H1/M1/L1 are labels.
-- **Self-certification is a bug.** Warden cannot grant actor `warden` / `self` / `unknown`.
+- **Self-certification is a bug.** Warden cannot grant actor `warden` / `self` / `unknown`, nor any seat or tool name (Drafter, Burnish, Ghost, SWIZZLE, ASSAY, Judge), however it is spelled: case, spaces, zero-width characters and look-alike letters are folded away before the check.
 - **One-way dependency.** Drafter and Burnish import Warden's data shapes. Warden imports neither.
 
 ## IMPORTANT BOUNDARIES
@@ -132,13 +134,38 @@ at once. Without
 `--swizzle-root` the notes say `SWIZZLE proofs NOT RUN` and the adversary is
 uncalibrated.
 
+**A dirty folder is refused.** If the target is inside a git work tree and
+`git status --porcelain` shows anything (modified, staged or untracked files; ignored files do
+not count), the run does not start: decision `REFUSED`, exit 5, a reason that tells you to commit
+or stash first, and nothing is written. The same goes for a stray `.git/index.lock`. This is
+checked for every `tagteam` run, with or without `--authorize`, so Warden's changes can always be
+told apart from your own work. A folder that is not a git repository is allowed, with a note that
+the start snapshot is the only way back. `warden audit` prints and exits as before; only
+`warden audit --authorize`, which writes `WARDEN_AUDIT.md` into the target, follows the same rule
+(it exits 2 and writes nothing in a dirty folder), except that `WARDEN_AUDIT.md` itself being new
+or modified does not count, so the audit can be rerun to update its table.
+
+**Time limits.** `--suite-timeout` (default 900 seconds) limits one run of the target's suite;
+`--seat-timeout` (default 3600) limits each seat call (Drafter, Finisher, Judge, and building a
+seat). A suite past its limit counts as not run; a seat past its limit ends the run as `ERROR`
+and the tree is put back. `--ghost-timeout` is unchanged.
+
+**`--assay-floor`.** A whole number. Below 0 is a usage error. `0` is the one explicit way to
+skip enforcement: the score is still recorded, the notes say the floor was not enforced, and the
+Judge is told the floor is 0. The default is 3.
+
+**Cut short.** SIGTERM, SIGHUP and SIGINT stop the run in an orderly way: the keep-test trap is
+removed, the whole tree is put back, valid JSON is printed (`decision` `INTERRUPTED`) and the exit
+code is 7. SIGKILL cannot be caught; see the journal below.
+
 A run that does not end `ACCEPT` or `ACCEPT_UNVERIFIED` leaves the tree as it
 found it. Warden takes a snapshot at the start of every run, and if the run
 ends any other way (rejected, not converged, suite red, a seat failed) after
 changes were made, the whole tree is restored and the notes say so. The
-proposals stay in the cycle records so a person can see what was tried. If the
-tree is too big to snapshot, the notes and the last decision text say so
-loudly and nothing is restored.
+proposals stay in the cycle records so a person can see what was tried. Folders an
+applied change created are removed again when it is put back. A tree over 200 MB cannot be
+snapshotted, so Warden will not write to it at all: the run ends `INCONCLUSIVE` with a reason,
+before any seat is asked.
 
 Exit codes for `tagteam` (the same table is in `warden tagteam --help`). Only 0 means
 the change was accepted, so a CI job can trust the exit code alone:
@@ -147,11 +174,12 @@ the change was accepted, so a CI job can trust the exit code alone:
 |---|---|---|
 | 0 | `ACCEPT` | Measured, judged, and standing. The only success. |
 | 1 | `REJECT`, `JUDGE_REJECTED`, `NOT_CONVERGED`, `FINISH_REJECTED` | The change was rejected, did not settle, or the finishing step was refused. Anything else that is a rejection also exits 1. |
-| 2 | (usage error, seat not loaded, or SWIZZLE unsound) | The command was used wrongly (for example, the target folder does not exist), a seat could not be loaded or asked for a different contract, or SWIZZLE's own proofs do not hold. Nothing was written. |
+| 2 | (usage error, seat not loaded, or SWIZZLE unsound) | The command was used wrongly (an unknown or bad option prints JSON with `decision` `USAGE_ERROR`; so does a target folder that does not exist), a seat could not be loaded, asked for a different contract, or was found inside the folder being governed, or SWIZZLE's own proofs do not hold (the JSON says `INCONCLUSIVE` and `swizzle_sound` false; the exit is still 2, whether the proofs failed before the loop or after it). Nothing was written. |
 | 3 | `ACCEPT_UNVERIFIED` | The changes stand, but a check did not run or the Judge could not decide. Not approved. |
-| 4 | `ERROR` | A seat failed or gave the wrong kind of answer. Nothing was approved. |
-| 5 | `REFUSED` | No human authorization (or an empty reason, or a name Warden will not accept). A proposal may have been shown. Nothing was written. |
-| 6 | `INCONCLUSIVE` | A needed measurement could not be made: Ghost is down or timed out, the suite was red from the start, or the ASSAY key could not be used. Nothing was written. |
+| 4 | `ERROR` | A seat failed, timed out, or gave the wrong kind of answer. A Judge that raises, returns a type that is not a verdict, or returns a label other than `ACCEPT`, `REJECT` or `INSUFFICIENT` is this. Nothing was approved and the tree was put back. |
+| 5 | `REFUSED` | No human authorization (or an empty reason, or a name Warden will not accept), or the folder has uncommitted git changes. A proposal may have been shown. Nothing was written. |
+| 6 | `INCONCLUSIVE` | A needed measurement could not be made: Ghost is down or timed out, the suite was red from the start, the ASSAY key could not be used, another run holds the target, or the folder is too big to put back. Nothing was written. |
+| 7 | `INTERRUPTED` | SIGTERM, SIGHUP or SIGINT arrived. The tree was put back as it was found. |
 
 A decision the code does not know exits 1, never 0. The JSON always has `decision`,
 `notes`, `unmeasured`, and `reason`. `reason` is one plain sentence saying why a run
@@ -179,10 +207,19 @@ control characters; information, never a gap).
 requested (`mutate`, `kernel`) are listed under `declined` and change nothing, so a
 clean default run can still be a plain `ACCEPT`. Everything else is a gap: unparsable
 files, a detector that raised, git missing when Ghost needs it, a row that does not say
-who asked for it, or `status: incomplete` with no reason. A gap puts `ghost_partial` in
+who asked for it, `status: incomplete` with no reason, an object that leaves out `status`,
+`scan` or `unmeasured`, a `baseline` with `suppressed` above 0 (findings Ghost hid), a
+`suppressed` that is not a whole number, or Ghost exiting 1 ("found something") with an
+empty list. A gap puts `ghost_partial` in
 `unmeasured`, so the Judge sees it and the run ends `ACCEPT_UNVERIFIED` at best, never
 a plain `ACCEPT`. (A target that is not a git repository is such a gap: Ghost's
 `branches` check cannot run there.)
+
+**Old Ghost cannot say what it left out.** A bare list of findings is still accepted as
+clean, as before, but the JSON then carries `informational: ["ghost_version_unverified"]` and a
+note, so a reader can tell it from a complete answer. Ghost's `baseline` object
+(`{"path": str or null, "suppressed": int}`) is read tolerantly: absent is fine, and it is
+copied into `ghost_scan.baseline`.
 
 **Ids.** Warden compares Ghost ids only within one run, so the one-time id change in
 new Ghost does not disturb the loop unless `--from-ghost` findings from old Ghost are
@@ -214,8 +251,11 @@ unchecked seat govern a run. The JSON names the contract Warden checked
 (`contract`) and the versions that took part (`versions`: Warden's version and
 contract; the commit and `pyproject.toml` version of each of `--ghost-root`,
 `--swizzle-root` and `--assay-root` that was given; and for each seat that was loaded
-its `spec`, declared `requires_contract`, installed `version` and `commit`). A value
-that cannot be found is `null`.
+its `spec`, declared `requires_contract`, installed `version` and `commit`). Every root also has
+a `dirty` flag (uncommitted work in that checkout; `null` when it is not a git checkout of its
+own). A commit is read only from the thing's own checkout or install record, never from a
+repository that merely contains it: a folder inside the target's repo, or a seat that lives
+inside the target, reports `null`, not the target's commit. A value that cannot be found is `null`.
 A Judge verdict with no judge name or with extra fields is reported in the notes
 and does not crash the run.
 
@@ -227,14 +267,55 @@ to `CONTRACT`, or to what a seat is checked for), tag the merge commit `vX.Y.Z` 
 needs them: this release makes a seat without `requires_contract` refuse to load, so the seats
 must declare it first.
 
+**How the suite is read.** Warden runs `python -m pytest` in the target with a small plugin of
+its own that counts every outcome and writes pytest's exit status and the counts to a private
+file. Green means exit status 0, at least one test passed, and no failure or error in the
+counts. Text the suite prints (at the end, at exit, or anywhere) is never read, so a forged
+`5 passed` line cannot turn a failing run green, and a harmless `2 failed uploads` line cannot
+turn a green one red. A suite that forces exit 1 with every test green is not green, and the
+description says `pytest exited 1`.
+
+**What a proposal may touch.** Never: anything outside the target, version control and
+environments, and the files that judge or build the work: test files and folders (`tests`,
+`test`, `testing`, `tests.py`), `conftest.py`, every pytest/tox/setup/nox/make/pyproject
+config, CI configs (`.github`, `.circleci`, `.gitlab-ci.yml`, `Jenkinsfile`,
+`azure-pipelines.yml` and the like), git hooks (`.githooks` and any `core.hooksPath` folder),
+`.gitmodules`, lockfiles, `requirements*.txt` / `constraints*.txt` / `Pipfile`, Docker and
+compose files, and any `.ghost_*` file. Names are compared without regard to case. A symlink is
+judged by where it really points, before the check: a link that points at a protected file is
+that file, and one that points outside the target is an escape. A tidy that leaves a Python
+file's syntax tree identical (comments, spacing) is still allowed on protected `.py` files. In the
+default `documentation` scope only real prose is editable: `.md`, `.rst` and `.txt`, except
+requirements and constraints lists, `CMakeLists.txt`, `LICENSE*`, `NOTICE*`, `COPYING*` and
+similar non-prose text files.
+
+**Seats.** Before a seat is loaded, `''` and the current directory (and anything inside the
+target) are taken off Python's import path, and the loaded module (and the seat's class) must not
+live inside the target; a `judge/seat.py` planted in the target cannot stand in for the installed
+seat. While seats run, file descriptor 1 itself, not only `sys.stdout`, is pointed at stderr, so a
+stray write cannot corrupt the JSON. A `.git/*.lock` file a seat leaves behind is removed and the
+seat is charged with writing.
+
+**Declined proposals.** A proposal declined without a write (out of scope, a judging file, a
+failed keep test) does not use up one of `--max-cycles`; only a proposal that reaches the applier
+does. At most 50 declined proposals are allowed in one run, then it ends `NOT_CONVERGED`.
+
+**The ASSAY key proof.** When ASSAY grading exits 2, Warden reads SWIZZLE's card on stdout and
+relays the real reason (for example `verify_manifest.py could not run: timed out`), not only the
+last line of SWIZZLE's error text. If the reason is the known temporary kind (the verifier could
+not start or timed out), the grading is run once more, exactly as before: the proof is not
+weakened or skipped, and a count that disagrees (`28/29 claims hold`) is never retried. The
+summary says when the second run was needed.
+
 A proposal that changes nothing is dropped as `NOTHING_TO_PROPOSE`, not counted as
 applied. A proposal that is outside the grant's scope and cites no defect is declined
 (nothing is written) and the loop goes on, as long as scope is the only thing wrong
 with it; asking for the same thing twice ends the run as `NOT_CONVERGED`. A proposal
 that also touches a test file, CI, or a path outside the target is still `REJECT`.
 
-`ERROR` means a seat (Drafter, Finisher, Judge) raised an exception or gave
-the wrong kind of answer. The notes name the seat and the kind of exception,
+`ERROR` means a seat (Drafter, Finisher, Judge) raised an exception, did not
+answer in time, or gave the wrong kind of answer (for the Judge, that includes a label that is not
+`ACCEPT`, `REJECT` or `INSUFFICIENT`). The notes name the seat and the kind of exception,
 never a traceback, and the tree is put back.
 
 Rule 7 is enforced on every authorized write: the suite must be green before
@@ -266,7 +347,11 @@ its markers is Warden's; every other section survives reruns untouched.
 - A Ghost id with odd characters cannot put code in a file: ids are cut down to letters, digits and `_ . : -`, on one line, 64 characters at most. **VERIFIED** by `tests/test_closing_false_accepts.py`.
 - A removal is declined when the baseline suite has any skipped or xfailed test, and when the code is vendored or generated. **VERIFIED** by `tests/test_closing_false_accepts_2.py`.
 - A suite that changes source files stops the run as `INCONCLUSIVE`. **VERIFIED** by `tests/test_closing_false_accepts_2.py`.
-- The keep test saves the original files outside the target before it plants a trap, and the next run restores them if a kill left a trap behind. Two runs on one target cannot overlap. **VERIFIED** by `tests/test_closing_false_accepts_2.py`.
+- The keep test saves the original files and the exact trap bytes outside the target and outside TMPDIR before it plants a trap. A later run restores a file only under a human grant and only if it still holds exactly the trap; a file the user changed since is left alone with a warning. Two runs on one target cannot overlap, whatever TMPDIR is, and a symlink planted at the lock, journal or state-folder name is refused. **VERIFIED** by `tests/test_closing_false_accepts_2.py`, `tests/test_round3_state_and_honesty.py`.
+- A dirty git folder, a stray `.git/index.lock`, a Judge that fails, SIGTERM/SIGHUP/SIGINT, a seat shadowed from the target, stray writes to fd 1, a hung seat, and bad options are all handled with valid JSON and the tree put back, checked by running the real command on a scratch git repository. **VERIFIED** by `tests/test_cli_integration.py`.
+- The suite result is pytest's exit status plus its own counts; printed text cannot forge it. **VERIFIED** by `tests/test_round3_suite_and_guard.py`.
+- The protected-file list is complete, case-blind and symlink-proof, and documentation scope is true prose only. **VERIFIED** by `tests/test_round3_suite_and_guard.py`.
+- Ghost gaps (missing fields, hidden baseline findings, exit 1 with nothing), the ASSAY key-proof retry and its real reason, and the honest accounting (`put_back`, `suite` unmeasured, declined proposals, empty folders, oversized trees, actor names). **VERIFIED** by `tests/test_round3_state_and_honesty.py`.
 - Restores are byte for byte. CRLF files stay CRLF, and a file that is not valid UTF-8 is never edited. **VERIFIED** by `tests/test_closing_false_accepts_2.py`.
 - `warden audit --authorize` will not overwrite a hand-written audit file that has no markers and will not write through a link or outside the target. **VERIFIED** by `tests/test_closing_false_accepts_2.py`.
 - ASSAY's answer key arrives, or the run says why it did not. **VERIFIED** by `tests/test_assay_link.py`, including a live read when `ASSAY_ROOT` is set (CI sets it).
@@ -276,7 +361,7 @@ its markers is Warden's; every other section survives reruns untouched.
 - The seat handshake (`requires_contract`: a mismatch or a missing declaration is refused, and the output names the `contract` and `versions`), a missing or non-folder target, an empty reason, a no-op proposal and an out-of-scope proposal are handled as described above. **VERIFIED** by `tests/test_honest_exit_codes.py`.
 - The whole loop with the real SWIZZLE, ASSAY, Ghost, Drafter and Judge, on a small scratch project, ended `ACCEPT` with exit 0 on 2026-10-09 (a check by hand, not a recorded test).
 
-313 tests exist in this tree. All pass on CPython 3.13 except the one live ASSAY read, which is skipped without `ASSAY_ROOT` and which CI runs on 3.11 and 3.12. The full run takes about 6 minutes.
+505 tests exist in this tree. All pass on CPython 3.13 except the one live ASSAY read, which is skipped without `ASSAY_ROOT` and which CI runs on 3.11 and 3.12. Most tests start real `pytest` or `warden` processes, so the full run takes minutes (about 18 on a busy two-core machine; `pytest -n 2` helps).
 
 ## WHAT IS BEAUTIFUL
 
@@ -316,9 +401,10 @@ authorized change, oracle ACCEPT, on a scratch demo. Recorded in
 ## KNOWN DEFECTS
 
 - The target's own test suite still runs inside the target, with the target's code. A hostile suite can do anything the user can do. Warden now notices a suite that rewrites source files, but not one that does something else.
-- Only the keep test is protected from a kill (SIGKILL) by the journal. If Warden is killed at another moment, edits it had already applied stay on disk, and the next run does not know about them.
-- The lock is advisory and works on one machine. It stops two Warden runs, not a person editing at the same time.
-- A tree too large to snapshot (over 200 MB) cannot be put back. The notes say so, and a failed run leaves its edits.
+- Only the keep test is protected from SIGKILL by the journal. If Warden is killed that way at another moment, edits it had already applied stay on disk, and the next run does not know about them (in a git folder they show as uncommitted changes, so the next run is refused until you deal with them). SIGTERM, SIGHUP and SIGINT are handled.
+- The seat timeout uses a timer signal in Warden's main thread, so it interrupts Python code and most waits, but a seat stuck inside a C call that never returns to Python can still outlast it.
+- The lock is advisory and works on one machine. It stops two Warden runs, not a person editing at the same time (a dirty git folder is refused at the start, but a person can still edit during a run).
+- A tree over 200 MB cannot be snapshotted, so Warden refuses to write to it (`INCONCLUSIVE`) rather than risk leaving a failed run's edits behind.
 - The forbidden and vendored directory lists go by folder name. A real source folder named `env`, `gen`, `build` or `vendor` will not be edited.
 - A suite with skipped or xfailed tests blocks every removal, even for code those tests do not touch. That is on purpose: Warden cannot tell which code they would have covered.
 - Files that are not valid UTF-8 are reported at most by Ghost and are never edited.

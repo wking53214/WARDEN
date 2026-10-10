@@ -292,14 +292,16 @@ def test_a_rejected_finish_puts_the_loop_edits_back_too(tmp_path):
     assert result.decision == "FINISH_REJECTED" and _tree_state(tmp_path) == before and result.put_back
 
 
-def test_a_tree_too_large_to_restore_says_so_loudly(tmp_path, monkeypatch):
+def test_a_tree_too_large_to_restore_is_refused_before_anything_is_written(tmp_path, monkeypatch):
+    # Round 3: a tree that cannot be put back is never written to (it used to be written, and left changed).
     _repo(tmp_path)
     monkeypatch.setattr(guard, "_RESTORE_LIMIT", 10)
-    result = TagTeam(drafter=FakeDrafter(steps=[f"v{i}\n" for i in range(9)]), max_cycles=2).run(
+    drafter = FakeDrafter(steps=[f"v{i}\n" for i in range(9)])
+    result = TagTeam(drafter=drafter, max_cycles=2).run(
         tmp_path, findings=[], authorization=_auth(tmp_path, "documentation"))
-    assert result.decision == "NOT_CONVERGED" and not result.put_back
-    assert any("NOT put back" in n or "NOT undone" in n for n in result.notes)
-    assert _read(tmp_path, "NOTE.md") != "old\n"
+    assert result.decision == "INCONCLUSIVE" and drafter.calls == 0
+    assert "more than Warden can put back" in result.reason
+    assert _read(tmp_path, "NOTE.md") == "old\n"
 
 
 class Boom:
