@@ -31,6 +31,11 @@ warden = "warden.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# warden.ghost runs Ghost Tools when it is installed, and still reads Ghost
+# JSON produced elsewhere when it is not. Declared here so the dependency is
+# visible and pinned: `pip install "warden[ghost]"`. Pinned to a release tag;
+# bump it on purpose.
+ghost = ["ghost-tools @ git+https://github.com/wking53214/ghost_tools@v1.9.1"]
 
 [tool.setuptools]
 packages = ["warden", "warden.horsemen"]
