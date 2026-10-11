@@ -102,6 +102,19 @@ def test_an_approved_result_applies_exactly_once(tmp_path):
         keep_digest(tmp_path, result.held_digest)
 
 
+def test_a_failed_held_save_still_puts_the_tree_back_and_is_an_error(tmp_path, monkeypatch):
+    _repo(tmp_path)
+    def failing_hold(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(held, "hold", failing_hold)
+    auth = grant("william", "transform", str(tmp_path.resolve()), "documentation", "held save fails")
+    result = TagTeam(drafter=FakeDrafter(steps=("new note\n",))).run(tmp_path, findings=[], authorization=auth)
+    assert result.decision == "ERROR"
+    assert result.held_digest is None
+    assert (tmp_path / "NOTE.md").read_text(encoding="utf-8") == "old note\n"
+    assert any("could not be saved" in n for n in result.notes)
+
+
 def test_the_keep_command_refuses_without_a_person_and_applies_with_one(tmp_path, capsys):
     result = _run_unverified(tmp_path)
     assert main(["keep", str(tmp_path), "--digest", result.held_digest]) == 5  # REFUSED: nobody named

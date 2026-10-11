@@ -329,23 +329,30 @@ class TagTeam:
             return replace(result, notes=result.notes[:-1] + (result.notes[-1] + " Changes were NOT undone.",
                                                               warning) if result.notes else (warning,))
         digest = None
+        hold_failure = None
         if result.decision == "ACCEPT_UNVERIFIED":
             try:
                 digest = held.hold(target, Snapshot(target), self._baseline_fp, result.decision,
                                    result.reason, result.unmeasured)
             except OSError as exc:
-                return replace(result, notes=result.notes + (
-                    f"WARNING: the unverified result could not be saved ({type(exc).__name__}), so it was "
-                    "NOT put back and its changes are still on disk.",))
+                # Still attempt the restore below: unverified changes must not stand because a save failed.
+                hold_failure = type(exc).__name__
         try:
             start.restore()
             left = start.changes()
         except OSError as exc:
             left = [f"could not restore ({type(exc).__name__})"]
-        if left:
-            warning = ("WARNING: putting the tree back did not fully work; still different: "
-                       + ", ".join(left[:5]) + ".")
-            return replace(result, notes=result.notes + (warning,))
+        if hold_failure or left:
+            problems = []
+            if hold_failure:
+                problems.append(f"the unverified result could not be saved ({hold_failure})")
+            if left:
+                problems.append("putting the tree back did not fully work; still different: "
+                                + ", ".join(left[:5]))
+            message = ("The run is an ERROR and nothing was approved: " + "; ".join(problems) + ".")
+            return replace(result, decision="ERROR", reason=message, held_digest=None,
+                           put_back=not left,
+                           notes=result.notes + ("WARNING: " + message,))
         extra = (LOOP_PUT_BACK_NOTE,) if result.decision == "FINISH_REJECTED" and any(
             c.applied for c in result.cycles) else ()
         if result.decision == "ACCEPT_UNVERIFIED":
