@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from gitutil import commit_all, git
+from heldutil import keep_digest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -179,12 +180,16 @@ def _status(rig) -> str:
 
 # -- the happy path, so the failures below mean something -------------------------------------------
 
-def test_a_clean_repository_is_changed_and_left_with_only_the_drafters_edit(rig):
+def test_a_clean_repository_is_held_and_put_back_until_a_person_approves(rig):
     code, payload, _ = rig.run()
     assert code == 3 and payload["decision"] == "ACCEPT_UNVERIFIED", payload["reason"]
+    assert payload["held_digest"] and len(payload["held_digest"]) == 64
+    assert _note(rig) == "old note\n"          # the unverified change was put back
+    assert _status(rig) == ""                    # the folder is clean again
+    assert payload["contract"] == "1"
+    keep_digest(rig.target, payload["held_digest"])
     assert _note(rig) == "changed by the drafter\n"
     assert _status(rig) == "M NOTE.md"
-    assert payload["contract"] == "1"
 
 
 # -- A. the dirty-folder policy ----------------------------------------------------------------------
@@ -213,7 +218,7 @@ def test_ignored_files_do_not_make_a_folder_dirty(rig):
     assert code == 3, payload["reason"]
 
 
-def test_a_folder_that_is_not_a_git_repository_is_allowed_with_a_note(rig):
+def test_a_folder_that_is_not_a_git_repository_is_held_with_a_note(rig):
     plain = rig.tmp / "plain"
     plain.mkdir()
     for p in rig.target.rglob("*"):
@@ -225,6 +230,8 @@ def test_a_folder_that_is_not_a_git_repository_is_allowed_with_a_note(rig):
     code, payload, _ = rig.run(path=plain)
     assert code == 3, payload["reason"]
     assert any("not inside a git repository" in n for n in payload["notes"])
+    assert (plain / "NOTE.md").read_text(encoding="utf-8") == "old note\n"
+    keep_digest(plain, payload["held_digest"])
     assert (plain / "NOTE.md").read_text(encoding="utf-8") == "changed by the drafter\n"
 
 

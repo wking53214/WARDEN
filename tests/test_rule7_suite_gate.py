@@ -10,6 +10,7 @@ from warden.suite import SuiteRun, preserved
 from warden.tagteam import TagTeam
 
 from fakes import FakeDrafter
+from heldutil import keep_held
 
 
 def _repo(root: Path, test_body: str = "    assert True\n") -> None:
@@ -65,7 +66,8 @@ def test_a_preserving_change_records_both_counts(tmp_path: Path):
     _repo(tmp_path)
     result = TagTeam(drafter=FakeDrafter()).run(
         tmp_path, findings=[], authorization=_auth(tmp_path))
-    assert result.applied
+    assert result.held_digest
+    keep_held(result, tmp_path)
     assert result.suite_before.passed == result.suite_after.passed == 1
     assert any(n.startswith("Rule 7 suite cycle 1 after: 1 passed") for n in result.notes)
 

@@ -44,7 +44,7 @@ exit codes (only 0 means the change was accepted):
   1  REJECT, JUDGE_REJECTED, NOT_CONVERGED, FINISH_REJECTED, or any other rejection.
   2  usage error (the JSON says USAGE_ERROR), a seat could not be loaded, or SWIZZLE's own proofs are
      unsound (the JSON says INCONCLUSIVE; the exit is still 2). Nothing was written.
-  3  ACCEPT_UNVERIFIED. Changes stand but a check did not run or the Judge could not decide.
+  3  ACCEPT_UNVERIFIED. A check did not run or the Judge could not decide. Changes were put back and held; keep them only with `warden keep`.
   4  ERROR. A seat failed, timed out, or gave the wrong kind of answer (an unknown Judge label counts).
      Nothing was approved and the tree was put back.
   5  REFUSED. No human authorization, or the folder has uncommitted git changes (commit or stash
@@ -190,6 +190,13 @@ def main(argv: list[str] | None = None) -> int:
                           "or CMakeLists.txt). code: anything outside tests, test and build config, CI, "
                           "dependency lists and git hooks")
 
+    p_k = sub.add_parser("keep", help="apply one held unverified result, only with a human grant for its digest")
+    p_k.add_argument("path", type=Path)
+    p_k.add_argument("--digest", required=True, help="the held_digest a tagteam run reported for this folder")
+    p_k.add_argument("--authorize", default=None, metavar="ACTOR",
+                     help="the human approving this exact result; without it nothing is applied")
+    p_k.add_argument("--reason", default="")
+
     p_a = sub.add_parser("audit", help="WARDEN_AUDIT.md: Ghost findings under durable IDs (Rules 5, 9)")
     p_a.add_argument("path", type=Path)
     p_a.add_argument("--ghost-root", type=Path, default=None)
@@ -201,6 +208,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "audit":
         return _audit(args)
+    if args.command == "keep":
+        return _keep(args)
     if args.command == "tagteam":
         try:
             return _tagteam(args)
@@ -220,6 +229,29 @@ def _stop(decision: str, reason: str, notes: list[str] | None = None) -> int:
     _print_json({"decision": decision, "reason": reason, "contract": CONTRACT, "notes": (notes or []) + [reason]})
     print(f"warden: {reason}", file=sys.stderr)
     return EXIT_CODES[decision]
+
+
+def _keep(args) -> int:
+    """Apply one held unverified result, and only with a human grant for that exact digest."""
+    from .held import KEEP_OPERATION, HeldError, keep as keep_held
+    path = Path(args.path)
+    if not path.is_dir():
+        return _stop("USAGE_ERROR", f"The folder {str(path)!r} does not exist or is not a directory. Nothing was kept.")
+    if not args.authorize:
+        return _stop("REFUSED", "Nothing was kept: no person was named. Pass --authorize with the approving "
+                                "person's name and a --reason.")
+    if not args.reason.strip():
+        return _stop("REFUSED", "a reason is required")
+    try:
+        auth = grant(args.authorize, KEEP_OPERATION, f"{path.resolve()}@{args.digest}", "held-result", args.reason)
+        outcome = keep_held(path, args.digest, auth)
+    except (Unauthorized, HeldError) as e:
+        return _stop("REFUSED", str(e))
+    except Exception as e:  # noqa: BLE001 - the CLI always prints valid JSON, never a traceback
+        return _stop("ERROR", f"Warden failed with {type(e).__name__}. Nothing was kept.")
+    _print_json({"decision": outcome["decision"], "digest": outcome["digest"], "reason": outcome["reason"],
+                 "approved_by": args.authorize, "contract": CONTRACT, "notes": [outcome["reason"]]})
+    return 0
 
 
 def _tagteam(args) -> int:
@@ -281,6 +313,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
                    for c in result.cycles],
         "finished": result.finished,
         "put_back": result.put_back,
+        "held_digest": result.held_digest,
         "reason": None if result.decision == "ACCEPT" else (result.reason or (result.notes[-1] if result.notes else "")),
         "notes": list(result.notes) + list(warnings),
         "observed": [d.identity for d in result.observed],
