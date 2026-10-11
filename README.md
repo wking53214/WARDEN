@@ -103,6 +103,8 @@ ACCEPT / FINISH_REJECTED
 | `warden.textio` | byte-faithful reads and writes: line endings kept, non-UTF-8 files refused |
 | `warden.cli` | `tagteam` and `audit`; the exit-code table and the seat handshake |
 
+Ghost Tools is optional. Install it with Warden as `warden[ghost]`, which pins it to a release tag; without it, `warden.ghost` still reads Ghost JSON produced elsewhere, and treats a missing Ghost as unknown, never as clean.
+
 ## KEY INTERNAL CONCEPTS
 
 - **Governor, not judge.** A Drafter or Finisher never outvotes a red suite, a missing grant, or a new Ghost finding.
