@@ -160,8 +160,9 @@ Judge is told the floor is 0. The default is 3.
 removed, the whole tree is put back, valid JSON is printed (`decision` `INTERRUPTED`) and the exit
 code is 7. SIGKILL cannot be caught; see the journal below.
 
-A run that does not end `ACCEPT` or `ACCEPT_UNVERIFIED` leaves the tree as it
-found it. Warden takes a snapshot at the start of every run, and if the run
+A run that does not end `ACCEPT` leaves the tree as it found it. An `ACCEPT_UNVERIFIED`
+run is put back the same way, but its final state is first saved as a held result
+(see below). Warden takes a snapshot at the start of every run, and if the run
 ends any other way (rejected, not converged, suite red, a seat failed) after
 changes were made, the whole tree is restored and the notes say so. The
 proposals stay in the cycle records so a person can see what was tried. Folders an
@@ -177,11 +178,31 @@ the change was accepted, so a CI job can trust the exit code alone:
 | 0 | `ACCEPT` | Measured, judged, and standing. The only success. |
 | 1 | `REJECT`, `JUDGE_REJECTED`, `NOT_CONVERGED`, `FINISH_REJECTED` | The change was rejected, did not settle, or the finishing step was refused. Anything else that is a rejection also exits 1. |
 | 2 | (usage error, seat not loaded, or SWIZZLE unsound) | The command was used wrongly (an unknown or bad option prints JSON with `decision` `USAGE_ERROR`; so does a target folder that does not exist), a seat could not be loaded, asked for a different contract, or was found inside the folder being governed, or SWIZZLE's own proofs do not hold (the JSON says `INCONCLUSIVE` and `swizzle_sound` false; the exit is still 2, whether the proofs failed before the loop or after it). Nothing was written. |
-| 3 | `ACCEPT_UNVERIFIED` | The changes stand, but a check did not run or the Judge could not decide. Not approved. |
+| 3 | `ACCEPT_UNVERIFIED` | A check did not run or the Judge could not decide. The changes were put back and saved as a held result under a digest (`held_digest` in the JSON). Nothing stands until a person approves that exact digest with `warden keep`. |
 | 4 | `ERROR` | A seat failed, timed out, or gave the wrong kind of answer. A Judge that raises, returns a type that is not a verdict, or returns a label other than `ACCEPT`, `REJECT` or `INSUFFICIENT` is this. Nothing was approved and the tree was put back. |
 | 5 | `REFUSED` | No human authorization (or an empty reason, or a name Warden will not accept), or the folder has uncommitted git changes. A proposal may have been shown. Nothing was written. |
 | 6 | `INCONCLUSIVE` | A needed measurement could not be made: Ghost is down or timed out, the suite was red from the start, the ASSAY key could not be used, another run holds the target, or the folder is too big to put back. Nothing was written. |
 | 7 | `INTERRUPTED` | SIGTERM, SIGHUP or SIGINT arrived. The tree was put back as it was found. |
+
+### Held results and `warden keep`
+
+An unverified result is never left standing by a run. When `tagteam` ends
+`ACCEPT_UNVERIFIED`, Warden saves the exact final state in a private folder under
+the target's state directory, puts the tree back, and prints a `held_digest`. The
+saved state is checked against that digest every time it is read.
+
+To keep it, a named person approves the digest:
+
+    warden keep <folder> --digest <held_digest> --authorize "<name>" --reason "<why>"
+
+That approval only applies when all of these hold: the grant is for the
+`keep_unverified` operation, it names this folder and this exact digest, the actor is
+not a part of the stack, the folder is back at the state the run started from, and
+the saved state still matches its digest. Warden then writes the saved state into
+the folder and checks the result. The checks the run lacked are recorded with the
+held result and are not run again; approving a held result accepts that they are
+unmeasured. Nothing here is a substitute for those checks.
+
 
 A decision the code does not know exits 1, never 0. The JSON always has `decision`,
 `notes`, `unmeasured`, and `reason`. `reason` is one plain sentence saying why a run

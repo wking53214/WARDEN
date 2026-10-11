@@ -11,6 +11,7 @@ from warden.models import defects_from_ghost
 from warden.tagteam import TagTeam
 
 from fakes import FakeDrafter, RemovingDrafter
+from heldutil import keep_held
 
 DEAD = {"id": "ghost-dead1", "severity": "minor", "summary": "unused", "status": "confirmed"}
 DEAD_PY = "def unused():\n    return 1\n"
@@ -56,6 +57,7 @@ def _dead(root):
 def test_unused_code_passes_both_tests_and_is_commented_out_not_deleted(tmp_path, ghost):
     _repo(tmp_path)
     result = _team().run(tmp_path, findings=[DEAD], authorization=_auth(tmp_path))
+    keep_held(result, tmp_path)
     assert result.decision.startswith("ACCEPT") and result.cycles[0].outcome == "APPLIED"
     text = _dead(tmp_path).read_text(encoding="utf-8")
     assert _dead(tmp_path).exists()

@@ -31,7 +31,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Dict, Mapping, Optional, Sequence
 
-from . import gitstate, runstate, textio
+from . import gitstate, held, runstate, textio
 from .authorization import Authorization, Unauthorized, is_stack_actor
 from .deletion import commented_variant, is_deletion, keep_variant, stamp_now
 from .ghost import GhostCrashed, GhostRefused, _clean as _plain, defects_from_ghost, scan as ghost_scan
@@ -62,7 +62,9 @@ LOOP_PUT_BACK_NOTE = ("The loop's own changes were put back as well: a run that 
 NOT_GIT_NOTE = ("The folder is not inside a git repository, so Warden cannot see whether it holds uncommitted "
                 "work; the snapshot taken at the start is the only way back.")
 SOURCE_CHANGED_NOTE = "the test suite changed source files, so its result cannot be trusted"
-_ENDS_ACCEPTED = {"ACCEPT", "ACCEPT_UNVERIFIED"}
+#: Only a full ACCEPT lets changes stand. ACCEPT_UNVERIFIED is saved as a held result and put back
+#: until a human approves that exact result (see held.py).
+_ENDS_ACCEPTED = {"ACCEPT"}
 _JUDGE_LABELS = ("ACCEPT", "REJECT", "INSUFFICIENT")
 
 
@@ -126,6 +128,10 @@ class TagTeamResult:
     drafter_skipped: tuple[str, ...] = ()
     #: True when edits had been made and the whole tree was restored because the run did not end accepted.
     put_back: bool = False
+
+    #: For an ACCEPT_UNVERIFIED run that was put back: the digest of its saved final state, which a
+    #: human can approve with a grant for `keep_unverified` on this folder (see held.py).
+    held_digest: Optional[str] = None
     #: One plain sentence saying why the run ended as it did (the same sentence as the last note
     #: before any put-back text). Empty for a plain ACCEPT.
     reason: str = ""
@@ -205,6 +211,7 @@ class TagTeam:
         self._assay: dict = {}
         self._start: Optional[Snapshot] = None
         self._seat = "Warden"
+        self._baseline_fp = ""
         #: Instruments found to be down or unreadable during this run.
         self._down: set[str] = set()
         self._suite_ran = False
@@ -260,6 +267,7 @@ class TagTeam:
                 self._notes.append(NOT_GIT_NOTE)
             # Always taken: a run that does not end accepted puts the tree back to this.
             self._start = Snapshot(target)
+            self._baseline_fp = _fingerprint(target)
             result = self._run(target, authorization, findings, python)
         except runstate.Interrupted as sig:
             result = self._failed(target, sig)
@@ -304,7 +312,8 @@ class TagTeam:
             informational=tuple(self._info))
 
     def _settle(self, target: Path, result: TagTeamResult) -> TagTeamResult:
-        """A run that does not end accepted leaves the tree as it was found."""
+        """A run that does not end accepted leaves the tree as it was found. An ACCEPT_UNVERIFIED run
+        is also put back, but its final state is saved first as a held result a human can approve."""
         start = self._start
         if result.decision in _ENDS_ACCEPTED or start is None:
             return result
@@ -319,6 +328,15 @@ class TagTeam:
                        "were NOT put back and are still on disk.")
             return replace(result, notes=result.notes[:-1] + (result.notes[-1] + " Changes were NOT undone.",
                                                               warning) if result.notes else (warning,))
+        digest = None
+        if result.decision == "ACCEPT_UNVERIFIED":
+            try:
+                digest = held.hold(target, Snapshot(target), self._baseline_fp, result.decision,
+                                   result.reason, result.unmeasured)
+            except OSError as exc:
+                return replace(result, notes=result.notes + (
+                    f"WARNING: the unverified result could not be saved ({type(exc).__name__}), so it was "
+                    "NOT put back and its changes are still on disk.",))
         try:
             start.restore()
             left = start.changes()
@@ -330,7 +348,15 @@ class TagTeam:
             return replace(result, notes=result.notes + (warning,))
         extra = (LOOP_PUT_BACK_NOTE,) if result.decision == "FINISH_REJECTED" and any(
             c.applied for c in result.cycles) else ()
-        return replace(result, notes=result.notes + (PUT_BACK_NOTE,) + extra, put_back=True)
+        if result.decision == "ACCEPT_UNVERIFIED":
+            if digest is None:
+                extra = extra + ("This unverified result is too large to save, so it was put back and cannot "
+                                 "be kept later.",)
+            else:
+                extra = extra + (f"The unverified result was saved as {digest}. It stands only if a person "
+                                 "grants keep_unverified for that digest on this folder.",)
+        return replace(result, notes=result.notes + (PUT_BACK_NOTE,) + extra, put_back=True,
+                       held_digest=digest)
 
     @contextmanager
     def _seated(self, who: str):
@@ -346,7 +372,7 @@ class TagTeam:
         """Hand the evidence to the Judge. Only the Judge can turn a run into ACCEPT.
 
         REJECT puts the whole tree back as it was found. INSUFFICIENT (the Judge cannot decide) leaves
-        the changes standing but unjudged. A Judge that fails or answers wrongly ends the run as ERROR.
+        the changes held and unjudged. A Judge that fails or answers wrongly ends the run as ERROR.
         """
         edits = [(e.path, e.kind) for c in cycles if c.applied and c.proposal for e in c.proposal.edits]
         if finished and finish is not None:
@@ -393,7 +419,7 @@ class TagTeam:
         if verdict.decision == "REJECT":
             # The tree is put back by the settle step that every non-accepted run goes through.
             return "JUDGE_REJECTED", verdict, f" Judge: REJECT ({said})."
-        return "ACCEPT_UNVERIFIED", verdict, f" Judge: INSUFFICIENT ({said}). The changes stand, unjudged."
+        return "ACCEPT_UNVERIFIED", verdict, f" Judge: INSUFFICIENT ({said}). The changes are held, unjudged."
 
     @staticmethod
     def _check_verdict_shape(verdict, notes: list[str]) -> None:

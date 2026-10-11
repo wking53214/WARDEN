@@ -9,6 +9,7 @@ from warden.authorization import grant
 from warden.tagteam import TagTeam
 
 from fakes import FakeDrafter, FakeFinisher, FakeJudge
+from heldutil import keep_held
 
 
 def _repo(root: Path) -> Path:
@@ -64,7 +65,9 @@ def test_the_judge_rejecting_puts_the_whole_tree_back(tmp_path, measured):
 def test_a_judge_that_cannot_decide_leaves_the_changes_flagged_unjudged(tmp_path, measured):
     _repo(tmp_path)
     result = _team(FakeJudge("INSUFFICIENT", ("no attacks",))).run(tmp_path, findings=[], authorization=_auth(tmp_path))
-    assert result.decision == "ACCEPT_UNVERIFIED" and (tmp_path / "NOTE.md").read_text(encoding="utf-8") == "new\n"
+    assert result.decision == "ACCEPT_UNVERIFIED" and result.held_digest
+    keep_held(result, tmp_path)
+    assert (tmp_path / "NOTE.md").read_text(encoding="utf-8") == "new\n"
 
 
 def test_a_judge_that_crashes_has_approved_nothing_and_the_changes_do_not_stand(tmp_path, measured):

@@ -14,6 +14,7 @@ from warden.models import FileEdit, Transformation, TransformationStatus
 from warden.tagteam import TagTeam
 
 from fakes import FakeDrafter, FakeFinisher, FakeJudge
+from heldutil import keep_held
 
 
 def _repo(root: Path) -> Path:
@@ -138,6 +139,7 @@ def test_a_documentation_grant_cannot_change_code(tmp_path):
 def test_a_documentation_grant_can_still_change_prose(tmp_path):
     _repo(tmp_path)
     result = _run(tmp_path, FakeDrafter(steps=("better\n",)), scope="documentation")
+    keep_held(result, tmp_path)
     assert result.decision.startswith("ACCEPT") and (tmp_path / "NOTE.md").read_text(encoding="utf-8") == "better\n"
 
 

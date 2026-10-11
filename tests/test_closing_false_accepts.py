@@ -18,6 +18,7 @@ from warden.guard import SeatBrokeCharter, watch
 from warden.models import FileEdit, Transformation, TransformationStatus, safe_id
 from warden.swizzle import assay_score, governor_attacks, swizzle_proofs_hold
 from warden.tagteam import TagTeam
+from heldutil import keep_held
 
 from fakes import FakeDrafter, FakeFinisher, FakeJudge, RemovingDrafter
 
@@ -453,6 +454,7 @@ def test_an_id_with_a_newline_cannot_put_live_code_in_the_target(tmp_path, monke
     monkeypatch.setattr(TagTeam, "_calibrate", lambda self, python, notes: True)
     result = TagTeam(drafter=RemovingDrafter(cites=evil), ghost_tools_root=Path(".")).run(
         tmp_path, findings=[finding], authorization=_auth(tmp_path))
+    keep_held(result, tmp_path)
     assert result.cycles[0].outcome == "APPLIED"
     text = _read(tmp_path, "pkg/dead.py")
     assert all(line.startswith("#") for line in text.splitlines() if line.strip())

@@ -6,6 +6,7 @@ from warden.authorization import grant
 from warden.tagteam import TagTeam
 
 from fakes import FakeFinisher, FakeDrafter, StuckDrafter
+from heldutil import keep_held
 
 
 def _tree(root: Path) -> None:
@@ -44,6 +45,7 @@ def test_loop_cycles_until_the_drafter_runs_dry(tmp_path: Path):
     _tree(tmp_path)
     drafter = FakeDrafter(steps=("one\n", "two\n", "three\n"))
     result = TagTeam(drafter=drafter).run(tmp_path, findings=[], authorization=_auth(tmp_path))
+    keep_held(result, tmp_path)
     assert result.converged and result.decision.startswith("ACCEPT")
     assert [c.outcome for c in result.cycles] == ["APPLIED"] * 3 + ["NOTHING_TO_PROPOSE"]
     assert _read(tmp_path, "NOTE.md") == "three\n"
@@ -54,6 +56,7 @@ def test_finisher_runs_once_and_only_after_the_loop(tmp_path: Path):
     finisher = FakeFinisher()
     result = TagTeam(drafter=FakeDrafter(steps=("a\n", "b\n")), finisher=finisher).run(
         tmp_path, findings=[], authorization=_auth(tmp_path))
+    keep_held(result, tmp_path)
     assert finisher.calls == 1 and result.finished and result.decision.startswith("ACCEPT")
     assert _read(tmp_path, "README.md") == "final\n" and _read(tmp_path, "NOTE.md") == "b\n"
 

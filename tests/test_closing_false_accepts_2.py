@@ -15,6 +15,7 @@ from warden.cli import main
 from warden.models import FileEdit, Transformation, TransformationStatus
 from warden.suite import run_suite
 from warden.tagteam import TagTeam
+from heldutil import keep_held
 
 from fakes import FakeDrafter, FakeJudge, RemovingDrafter
 
@@ -268,6 +269,7 @@ def test_an_accepted_change_to_a_crlf_file_keeps_crlf(tmp_path):
     (tmp_path / "NOTE.md").write_bytes(b"one\r\ntwo\r\n")
     result = TagTeam(drafter=FakeDrafter(steps=("one\ntwo\nthree\n",))).run(
         tmp_path, findings=[], authorization=_auth(tmp_path, "documentation"))
+    keep_held(result, tmp_path)
     assert result.decision.startswith("ACCEPT")
     assert (tmp_path / "NOTE.md").read_bytes() == b"one\r\ntwo\r\nthree\r\n"
 
@@ -288,6 +290,7 @@ def test_a_commented_out_crlf_file_stays_crlf(tmp_path, monkeypatch):
     finding = _scanner(monkeypatch, "pkg/dead.py")
     result = TagTeam(drafter=RemovingDrafter(), ghost_tools_root=Path(".")).run(
         tmp_path, findings=[finding], authorization=_auth(tmp_path))
+    keep_held(result, tmp_path)
     raw = (tmp_path / "pkg" / "dead.py").read_bytes()
     assert result.cycles[0].outcome == "APPLIED" and b"WARDEN COMMENTED OUT" in raw
     assert raw.count(b"\n") == raw.count(b"\r\n")
