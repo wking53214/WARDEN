@@ -44,6 +44,8 @@ from .swizzle import assay_score, governor_attacks, swizzle_proofs_hold
 
 DEFAULT_MAX_CYCLES = 10
 DEFAULT_GHOST_TIMEOUT = 600
+#: The Ghost detector that reports baseline entries matching nothing in the scan.
+STALE_BASELINE_DETECTOR = "stale_baseline"
 #: Seconds one seat call (propose, finish, decide, or building the seat) may take before the run stops.
 DEFAULT_SEAT_TIMEOUT = 3600
 #: Proposals declined without a write (scope, protected file, failed keep test) do not use up a cycle, but
@@ -218,6 +220,7 @@ class TagTeam:
         self._sound: Optional[bool] = None
         #: Real gaps in the latest Ghost scan (see ghost._gaps), and the summary shown in the output.
         self._ghost_gaps: list[str] = []
+        self._stale_baseline: int = 0
         self._ghost_info: Optional[dict] = None
         #: Ghost's baseline report ({path, suppressed}) from the first scan and the latest scan, or None.
         self._baseline_first: Optional[dict] = None
@@ -503,6 +506,10 @@ class TagTeam:
                 ghost_baseline=self._baseline_report(),
                 drafter_skipped=self._skipped_lines(), informational=tuple(self._info))
 
+        if self._stale_baseline:
+            return stop("REJECT", f"Ghost's baseline has {self._stale_baseline} entr"
+                        f"{'y' if self._stale_baseline == 1 else 'ies'} that matched nothing in this scan. "
+                        "A baseline must be re-checked on every run: remove or regenerate the stale entries first.")
         if self.drafter is None:
             return stop("INCONCLUSIVE", "No drafter. Tag team observed only; nothing can be proposed.")
         if authorization is None or not authorization.granted:
@@ -778,7 +785,10 @@ class TagTeam:
         if self.ghost_tools_root is None:
             notes.append("Ghost Tools scan SKIPPED: no ghost_tools_root. Observation is UNKNOWN.")
             return ()
-        observed = _defects(self._scan(target, python))
+        raw = self._scan(target, python)
+        stale = [f for f in raw if isinstance(f, Mapping) and f.get("detector") == STALE_BASELINE_DETECTOR]
+        self._stale_baseline = _inert_baseline_entries(stale)
+        observed = _defects(raw)
         notes.append(f"Ghost Tools observed {len(observed)} finding(s).")
         return observed
 
@@ -976,6 +986,19 @@ def _changes_nothing(target: Path, proposal: Transformation) -> bool:
 
 def _lf(text: str) -> str:
     return text.replace("\r\n", "\n")
+
+
+def _inert_baseline_entries(stale_findings) -> int:
+    """How many baseline entries matched nothing. Ghost reports them as one finding whose attributes carry
+    the count; a finding with no readable count still counts as at least one entry."""
+    total = 0
+    for f in stale_findings:
+        attrs = f.get("attributes") if isinstance(f.get("attributes"), Mapping) else {}
+        try:
+            total += max(1, int(attrs.get("stale", 1)))
+        except (TypeError, ValueError):
+            total += 1
+    return total
 
 
 def _defects(findings) -> tuple[Defect, ...]:
