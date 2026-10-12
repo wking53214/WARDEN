@@ -23,7 +23,7 @@ cycles until the Drafter has nothing left to propose (or a cycle limit is
 hit). Only then does Warden hand the code, once, to the Finisher, together with the facts it measured (the suite result and what Ghost still reports), so the Finisher counts and detects nothing itself. The Finisher beautifies the code and writes the final README. The Finisher's change goes through
 the same gate.
 
-Version `0.10.0` (seat contract `"1"`, unchanged). The tag `v0.10.0` is the version the seats (Judge, Drafter, Burnish) pin. It includes the held-result rule (an `ACCEPT_UNVERIFIED` run is put back and saved as a held result) and the instrument isolation fix (instruments see only their named roots). The earlier tag `v0.9.0` (`882b2be`) predates both.
+Version `0.10.1` (seat contract `"1"`, unchanged). The seats (Judge, Drafter, Burnish) pin the tag `v0.10.0`; `v0.10.1` is the same behaviour with the version string corrected. It includes the held-result rule (an `ACCEPT_UNVERIFIED` run is put back and saved as a held result) and the instrument isolation fix (instruments see only their named roots). The earlier tag `v0.9.0` (`882b2be`) predates both.
 
 ## WHY IT EXISTS
 
