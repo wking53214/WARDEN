@@ -23,7 +23,7 @@ cycles until the Drafter has nothing left to propose (or a cycle limit is
 hit). Only then does Warden hand the code, once, to the Finisher, together with the facts it measured (the suite result and what Ghost still reports), so the Finisher counts and detects nothing itself. The Finisher beautifies the code and writes the final README. The Finisher's change goes through
 the same gate.
 
-Version `0.9.0` (seat contract `"1"`, unchanged). Stdlib only. Python 3.11 or newer; CI runs 3.11 and 3.12.
+Version `0.9.0` (seat contract `"1"`, unchanged). The tag `v0.9.0` is the version the seats (Judge, Drafter, Burnish) pin. `main` is nine commits past that tag, including the held-result rule (an `ACCEPT_UNVERIFIED` run is put back and saved as a held result), so `main` and the pin behave differently. Stdlib only. Python 3.11 or newer; CI runs 3.11 and 3.12.
 
 ## WHY IT EXISTS
 
@@ -387,7 +387,11 @@ its markers is Warden's; every other section survives reruns untouched.
 - The seat handshake (`requires_contract`: a mismatch or a missing declaration is refused, and the output names the `contract` and `versions`), a missing or non-folder target, an empty reason, a no-op proposal and an out-of-scope proposal are handled as described above. **VERIFIED** by `tests/test_honest_exit_codes.py`.
 - The whole loop with the real SWIZZLE, ASSAY, Ghost, Drafter and Judge, on a small scratch project, ended `ACCEPT` with exit 0 on 2026-10-09 (a check by hand, not a recorded test).
 
-505 tests exist in this tree. All pass on CPython 3.13 except the one live ASSAY read, which is skipped without `ASSAY_ROOT` and which CI runs on 3.11 and 3.12. Most tests start real `pytest` or `warden` processes, so the full run takes minutes (about 18 on a busy two-core machine; `pytest -n 2` helps).
+523 tests are collected in this tree. Run 2026-10-12 on CPython 3.13 with all seven circuit checkouts on `PYTHONPATH` and `ASSAY_ROOT` set (so the live ASSAY read runs and nothing is skipped): 518 pass and 5 fail.
+
+The 5 failures are `tests/test_closing_false_accepts.py::{test_a_fake_swizzle_inside_the_target_is_not_believed, test_governor_attacks_and_assay_grading_ignore_a_fake_in_the_target, test_a_fake_ghost_inside_the_target_is_not_used_by_the_scan, test_a_run_started_inside_the_target_does_not_trust_a_fake_swizzle}` and `tests/test_seams.py::test_an_unreachable_ghost_is_inconclusive_not_a_crash_and_not_zero_findings`. They fail only because the instrument runner (`warden/isolation.py`, `instrument_env`) keeps the inherited `PYTHONPATH` after the root it was given, so a real SWIZZLE or Ghost Tools found on the path is used in place of the root the test names. With only `warden` on `PYTHONPATH`, all five pass. Whether an explicit root should drop the inherited path is an open decision; it is not changed here.
+
+Most tests start real `pytest` or `warden` processes, so the full run takes minutes (about 16 minutes on the 2026-10-12 run; `pytest -n 2` helps). CI runs the suite on 3.11 and 3.12.
 
 ## WHAT IS BEAUTIFUL
 
