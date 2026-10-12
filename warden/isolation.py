@@ -7,7 +7,8 @@ target would be run and believed. So every instrument runs with:
   - a fresh empty directory as its working directory,
   - `-P`, so Python does not add the working directory to the import path,
   - instrument roots turned into absolute paths first,
-  - only absolute entries kept from any inherited PYTHONPATH.
+  - no inherited PYTHONPATH: an instrument sees its named roots and nothing else,
+    so a sibling checkout on the caller's path cannot stand in for a missing root.
 
 The target's own test suite is the one thing that still runs inside the
 target. That cannot be avoided: running those tests is the point.
@@ -27,10 +28,14 @@ def absolute(path: Optional[Path]) -> Optional[Path]:
 
 
 def instrument_env(*roots: Optional[Path]) -> dict:
-    """The environment for an instrument: its roots first, no relative path entries."""
+    """The environment for an instrument: its named roots only.
+
+    An inherited PYTHONPATH is dropped on purpose. If a root is missing, the
+    instrument must fail, not quietly import a sibling checkout from the
+    caller's path and report its result as if it came from the named root.
+    """
     env = os.environ.copy()
-    inherited = [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p and os.path.isabs(p)]
-    env["PYTHONPATH"] = os.pathsep.join([str(absolute(r)) for r in roots if r is not None] + inherited)
+    env["PYTHONPATH"] = os.pathsep.join(str(absolute(r)) for r in roots if r is not None)
     return env
 
 
