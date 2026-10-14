@@ -236,6 +236,35 @@ def test_a_seat_that_will_not_take_the_scope_is_noted_not_crashed(tmp_path, meas
     assert any("The Finisher keeps a scope of its own" in n for n in result.notes)
 
 
+class WritesWhenTold:
+    """A Finisher whose `scope` setter touches the tree: the handoff is a seat call and must be guarded."""
+    requires_contract = "1"
+
+    def __init__(self):
+        self.target = None
+
+    @property
+    def scope(self):
+        return "documentation"
+
+    @scope.setter
+    def scope(self, value):
+        (self.target / "planted.md").write_text("planted before Ghost looked\n", encoding="utf-8")
+
+    def finish(self, target, baseline, facts):
+        return None
+
+
+def test_a_seat_that_writes_while_being_told_the_scope_is_refused_and_undone(tmp_path, measured):
+    _repo(tmp_path)
+    finisher = WritesWhenTold()
+    finisher.target = tmp_path
+    result = TagTeam(drafter=ScopedDrafter(), finisher=finisher, judge=FakeJudge()).run(
+        tmp_path, findings=[], authorization=_auth(tmp_path, "code"))
+    assert result.decision == "REJECT" and "The Finisher changed the tree" in result.reason
+    assert not (tmp_path / "planted.md").exists()
+
+
 def test_without_a_grant_no_scope_is_told(tmp_path, measured):
     _repo(tmp_path)
     drafter = ScopedDrafter()
