@@ -201,7 +201,9 @@ def test_apply_itself_refuses_a_path_outside_the_target(tmp_path):
 
 @pytest.mark.parametrize("path,protected", [
     ("tests/test_x.py", True), ("pkg/test_y.py", True), ("conftest.py", True), ("pyproject.toml", True),
-    (".github/workflows/t.yml", True), ("pkg/mod.py", False), ("README.md", False), ("pkg/testing_utils.py", False)])
+    (".github/workflows/t.yml", True), ("pkg/mod.py", False), ("README.md", False), ("pkg/testing_utils.py", False),
+    ("specimens/pairs/x.py", True), ("tests/fixtures/y.json", True), ("corpus/z.py", True), ("golden/w.txt", True),
+    ("pkg/Testdata/v.py", True), ("__snapshots__/u.snap", True), ("pkg/fixtures.py", False)])
 def test_what_judges_the_work_is_protected(path, protected):
     assert is_protected(path) is protected
 
@@ -266,6 +268,17 @@ def test_an_unreachable_ghost_is_inconclusive_not_a_crash_and_not_zero_findings(
         tmp_path, findings=None, authorization=_auth(tmp_path))
     assert result.decision == "INCONCLUSIVE" and not result.applied
     assert any("Observation is UNKNOWN" in n for n in result.notes)
+
+
+def test_a_whitespace_tidy_of_a_fixture_is_refused_even_though_it_is_format_only(tmp_path):
+    from warden.guard import format_only, violation
+    _repo(tmp_path)
+    (tmp_path / "specimens").mkdir()
+    (tmp_path / "specimens" / "degraded.py").write_text("def f():\n    return 1   \n", encoding="utf-8")
+    edit = FileEdit("specimens/degraded.py", "write", "def f():\n    return 1\n", "")
+    assert format_only(tmp_path, edit)
+    kind, why = violation(tmp_path, _t(tmp_path, edit), _auth(tmp_path, "code"))
+    assert kind == "refused" and "test material" in why and "whitespace" in why
 
 
 def test_formatting_a_protected_file_is_allowed_but_changing_it_is_not(tmp_path):

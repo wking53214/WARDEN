@@ -142,6 +142,25 @@ def _clean_import_path(target: Path) -> None:
     importlib.invalidate_caches()
 
 
+def _instrument_inside(args, target: Path) -> str:
+    """The reason to refuse, when an instrument checkout (Ghost, SWIZZLE, ASSAY) is the folder being
+    governed or lies inside it; empty when none is. Like a seat, an instrument the run could edit is
+    not independent of the run: its findings, proofs and answer key would be judging their own change."""
+    for option, flag in (("ghost_root", "--ghost-root"), ("swizzle_root", "--swizzle-root"),
+                         ("assay_root", "--assay-root")):
+        root = getattr(args, option, None)
+        if not root:
+            continue
+        try:
+            real = Path(root).resolve()
+        except OSError:
+            continue
+        if real == target or real.is_relative_to(target):
+            return (f"The instrument {flag} {root} is inside the folder being governed. Warden will not run "
+                    "an instrument the run could edit. Nothing was run.")
+    return ""
+
+
 def _check_seat_origin(spec: str, module_name: str, seat, target: Path) -> None:
     """Refuse a seat whose code (module, package or class) lives inside the folder being governed."""
     module = sys.modules.get(module_name)
@@ -333,6 +352,10 @@ def _tagteam(args) -> int:
     warnings: list[str] = []
     global _governed
     _governed = path.resolve()
+    shadowed = _instrument_inside(args, _governed)
+    if shadowed:
+        _governed = None
+        return _stop("SEAT_NOT_LOADED", shadowed)
     saved_path = list(sys.path)  # put back afterwards so an in-process caller (a test) is not left changed
     try:
         _clean_import_path(_governed)

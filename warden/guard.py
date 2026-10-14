@@ -59,8 +59,14 @@ _PROTECTED_PATTERNS = (
     "dockerfile*", "*.dockerfile", "docker-compose*.yml", "docker-compose*.yaml", "compose*.yml", "compose*.yaml",
     "jenkinsfile*", "azure-pipelines*.yml", "*.gitlab-ci.yml", ".ghost_*",
 )
+#: Folders that hold what the tests compare against: fixtures, specimens, golden files, snapshots, a corpus.
+#: A file there is an answer, not code under improvement, so even a whitespace tidy is refused (the
+#: format-only exemption below does not apply): it breaks a recorded hash or a deliberately degraded
+#: specimen. Found when the circuit tidied ASSAY's own specimens and the suite caught it.
+_FIXTURE_DIRS = {"fixtures", "fixture", "specimens", "specimen", "testdata", "test_data", "golden", "snapshots",
+                 "__snapshots__", "corpus"}
 _PROTECTED_DIRS = {"tests", "test", "testing", ".github", ".circleci", ".githooks", ".gitlab", ".buildkite",
-                   ".husky", ".azure-pipelines"}
+                   ".husky", ".azure-pipelines"} | _FIXTURE_DIRS
 #: Any file or folder whose name starts with this is Ghost's own bookkeeping (ledger, baseline, archive marker).
 _PROTECTED_DIR_PATTERNS = (".ghost_*",)
 
@@ -309,6 +315,11 @@ def hooks_dirs(target: Path) -> tuple:
         return ()
 
 
+def is_fixture(rel: str) -> bool:
+    """True when the path lies in a folder of test material (see `_FIXTURE_DIRS`)."""
+    return any(part in _FIXTURE_DIRS for part in _name_parts(rel)[:-1])
+
+
 def format_only(target: Path, edit) -> bool:
     """True when a Python edit changes no behavior: the syntax tree is identical.
 
@@ -397,6 +408,10 @@ def violation(target: Path, proposal: Transformation, auth: Authorization) -> Op
                 is_vendored(target, edit.path) or is_vendored(target, real)):
             return "refused", (f"{edit.path}: this looks vendored or generated, so a change would be "
                                "undone by the next update")
+        if is_fixture(edit.path) or is_fixture(real):
+            return "refused", (f"{edit.path} is test material (a fixture, specimen, golden file, snapshot or "
+                               "corpus folder); the loop never edits what the tests compare against, not even "
+                               "its whitespace")
         if (is_protected(edit.path, hooks) or is_protected(real, hooks)) and not format_only(target, edit):
             return "refused", (f"{edit.path} decides whether a change is acceptable or how the project is built "
                                "and run (tests, test or build configuration, CI, dependency lists, git hooks); "
