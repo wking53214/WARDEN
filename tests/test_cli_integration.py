@@ -286,6 +286,18 @@ def test_a_seat_that_only_exists_inside_the_target_is_not_loaded(rig):
     assert _note(rig) == "old note\n"
 
 
+def test_an_instrument_checkout_inside_the_target_is_refused_before_anything_runs(rig):
+    (rig.target / "tools" / "swizzle").mkdir(parents=True)
+    commit_all(rig.target, "vendor the attacker")
+    for flag in ("--swizzle-root", "--ghost-root", "--assay-root"):
+        code, payload, _ = rig.run(flag, str(rig.target / "tools" / "swizzle"))
+        assert code == 2 and payload["decision"] == "SEAT_NOT_LOADED", (flag, payload["reason"])
+        assert "inside the folder being governed" in payload["reason"] and flag in payload["reason"]
+    code, payload, _ = rig.run("--ghost-root", str(rig.target))
+    assert code == 2 and "inside the folder being governed" in payload["reason"]
+    assert _note(rig) == "old note\n" and _status(rig) == ""
+
+
 def test_writes_to_file_descriptor_1_by_a_seat_cannot_corrupt_the_json(rig):
     code, payload, err = rig.run(drafter="it_seats:Noisy")
     assert code == 3 and payload["decision"] == "ACCEPT_UNVERIFIED"
