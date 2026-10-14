@@ -465,7 +465,7 @@ and Burnish, Ghost, SWIZZLE and ASSAY, through `--stack`. Both are recorded in
 - The seat timeout uses a timer signal in Warden's main thread, so it interrupts Python code and most waits, but a seat stuck inside a C call that never returns to Python can still outlast it.
 - The lock is advisory and works on one machine. It stops two Warden runs, not a person editing at the same time (a dirty git folder is refused at the start, but a person can still edit during a run).
 - A tree over 200 MB cannot be snapshotted, so Warden refuses to write to it (`INCONCLUSIVE`) rather than risk leaving a failed run's edits behind.
-- The forbidden and vendored directory lists go by folder name. A real source folder named `env`, `gen`, `build` or `vendor` will not be edited.
+- The forbidden, vendored and fixture directory lists go by folder name. A real source folder named `env`, `gen`, `build`, `vendor`, `corpus`, `golden` or `fixtures` will not be edited. Fixture folders (`fixtures`, `specimens`, `testdata`, `golden`, `snapshots`, `corpus`) are refused even for a whitespace-only tidy: the circuit once reformatted ASSAY's own specimens, and only the suite's recorded hashes caught it.
 - A suite with skipped or xfailed tests blocks every removal, even for code those tests do not touch. That is on purpose: Warden cannot tell which code they would have covered.
 - Files that are not valid UTF-8 are reported at most by Ghost and are never edited.
 - Ghost Tools does not flag a documented test count larger than the suite;
