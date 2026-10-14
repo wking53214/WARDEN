@@ -20,6 +20,13 @@ say ACCEPT without it:
 Neither maker seat may decide that it is right. Warden checks the suite and Ghost
 checks the result, so no one grades their own work.
 
+The grant's scope ("documentation" or "code") is Warden's to know and the makers'
+to respect. A Drafter or Finisher that keeps a `scope` attribute is told the
+grant's scope before it is first asked (Warden sets the attribute), so it can
+leave out-of-scope proposals unmade instead of having them declined. A seat
+without the attribute is asked as before; its proposals are checked against the
+grant either way. Optional, and additive: the contract stays "1".
+
 Warden never imports the repositories that fill these seats; they import
 Warden's data shapes. The tests prove it.
 """
@@ -55,14 +62,20 @@ class Facts:
 
 @runtime_checkable
 class Drafter(Protocol):
-    """Called once per loop cycle. Returns None when it has nothing left to propose."""
+    """Called once per loop cycle. Returns None when it has nothing left to propose.
+
+    May keep a `scope` attribute; if it does, Warden sets it to the grant's scope first.
+    """
 
     def propose(self, target: Path, observed: tuple[Defect, ...], baseline: str) -> Optional[Transformation]: ...
 
 
 @runtime_checkable
 class Finisher(Protocol):
-    """Called once, after the loop has converged. Returns None if nothing to finish."""
+    """Called once, after the loop has converged. Returns None if nothing to finish.
+
+    May keep a `scope` attribute; if it does, Warden sets it to the grant's scope first.
+    """
 
     def finish(self, target: Path, baseline: str, facts: Facts) -> Optional[Transformation]: ...
 

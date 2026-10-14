@@ -56,6 +56,56 @@ exit codes (only 0 means the change was accepted):
 The command always prints valid JSON on stdout; `reason` says why in one sentence."""
 
 
+#: What a `--stack` folder must hold, by folder name (matched without regard to case), and the
+#: option each one fills when that option was not given: the three instrument roots and the three
+#: seats, each seat by the module and class its repository publishes.
+STACK_ROOTS = {"ghost_tools": "ghost_root", "swizzle": "swizzle_root", "assay": "assay_root"}
+STACK_SEATS = {"drafter": ("drafter", "drafter.seat:Drafter"),
+               "judge": ("judge", "judge.seat:Judge"),
+               "burnish": ("finisher", "burnish.finisher:Burnish")}
+
+
+def _resolve_stack(args) -> tuple[list[Path], str]:
+    """Fill the instrument roots and the seats from one folder of sibling checkouts.
+
+    Returns the seat checkouts to put on the import path and an empty string, or no paths and
+    the reason the folder cannot be used. Every part must be there: a circuit with a seat
+    missing is not the circuit, and a run that quietly went without it would read as one. An
+    option given explicitly wins over the folder's copy. Folder names are matched without
+    regard to case (`SWIZZLE` and `swizzle` are the same checkout); two folders that differ
+    only by case are refused rather than guessed between.
+    """
+    stack = Path(args.stack)
+    if not stack.is_dir():
+        return [], f"the --stack folder {str(stack)!r} does not exist or is not a directory"
+    found: dict[str, Path] = {}
+    twice: list[str] = []
+    for child in sorted(stack.iterdir()):
+        if not child.is_dir():
+            continue
+        name = child.name.lower()
+        if name in found:
+            twice.append(name)
+        found.setdefault(name, child)
+    wanted = (*STACK_ROOTS, *STACK_SEATS)
+    doubled = sorted(set(twice) & set(wanted))
+    if doubled:
+        return [], (f"the --stack folder {str(stack)!r} holds more than one folder named "
+                    f"{', '.join(doubled)} (differing only by case), so it cannot be used")
+    missing = [name for name in wanted if name not in found]
+    if missing:
+        return [], f"the --stack folder {str(stack)!r} has no {', '.join(missing)} checkout"
+    for name, option in STACK_ROOTS.items():
+        if getattr(args, option) is None:
+            setattr(args, option, found[name].resolve())
+    paths: list[Path] = []
+    for name, (option, spec) in STACK_SEATS.items():
+        if getattr(args, option) is None:
+            setattr(args, option, spec)
+            paths.append(found[name].resolve())
+    return paths, ""
+
+
 class ContractMismatch(ValueError):
     """A seat was written for a different version of Warden's shapes."""
 
@@ -183,6 +233,12 @@ def main(argv: list[str] | None = None) -> int:
                           "(default 3, where Ghost stands today). 0 is the one explicit way to skip: the score "
                           "is recorded, nothing requires it, and the output says so. Below 0 is rejected")
     p_t.add_argument("--from-ghost", type=Path, default=None, help="findings JSON instead of a live scan")
+    p_t.add_argument("--stack", type=Path, default=None, metavar="DIR",
+                     help="a folder holding checkouts of the whole circuit: ghost_tools, swizzle, assay, "
+                          "drafter, judge and burnish (names matched without regard to case). Fills "
+                          "--ghost-root, --swizzle-root, --assay-root, --drafter, --judge and --finisher "
+                          "with them; an option you give explicitly wins. Every one of the six must be "
+                          "there, or the command is a usage error and nothing is run")
     p_t.add_argument("--authorize", default=None, metavar="ACTOR")
     p_t.add_argument("--reason", default="")
     p_t.add_argument("--scope", default="documentation",
@@ -260,6 +316,11 @@ def _tagteam(args) -> int:
     if not path.is_dir():
         what = "does not exist" if not path.exists() else "is not a directory"
         return _stop("USAGE_ERROR", f"The target {str(path)!r} {what}. Nothing was run.")
+    seat_paths: list[Path] = []
+    if args.stack is not None:
+        seat_paths, problem = _resolve_stack(args)
+        if problem:
+            return _stop("USAGE_ERROR", f"usage error: {problem}. Nothing was run.")
     findings = load_report(args.from_ghost) if args.from_ghost else None
     auth = None
     if args.authorize:
@@ -275,6 +336,12 @@ def _tagteam(args) -> int:
     saved_path = list(sys.path)  # put back afterwards so an in-process caller (a test) is not left changed
     try:
         _clean_import_path(_governed)
+        # The seats a --stack folder names come from its checkouts, ahead of any other copy on the
+        # path. One inside the target is still refused by _check_seat_origin like any other seat.
+        for seat_path in reversed(seat_paths):
+            sys.path.insert(0, str(seat_path))
+        if seat_paths:
+            importlib.invalidate_caches()
         try:
             with runstate.interrupts(), runstate.stdout_to_stderr(), \
                     runstate.seat_timer(args.seat_timeout, "A seat while it was being loaded"):

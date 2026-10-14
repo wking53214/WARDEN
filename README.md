@@ -23,7 +23,7 @@ cycles until the Drafter has nothing left to propose (or a cycle limit is
 hit). Only then does Warden hand the code, once, to the Finisher, together with the facts it measured (the suite result and what Ghost still reports), so the Finisher counts and detects nothing itself. The Finisher beautifies the code and writes the final README. The Finisher's change goes through
 the same gate.
 
-Version `0.10.1` (seat contract `"1"`, unchanged). The seats (Judge, Drafter, Burnish) pin the tag `v0.10.0`; `v0.10.1` is the same behaviour with the version string corrected. It includes the held-result rule (an `ACCEPT_UNVERIFIED` run is put back and saved as a held result) and the instrument isolation fix (instruments see only their named roots). The earlier tag `v0.9.0` (`882b2be`) predates both.
+Version `0.11.0` (seat contract `"1"`, unchanged). It adds `--stack DIR`, which seats the whole circuit from one folder of checkouts, and the scope handoff: a Drafter or Finisher that keeps a `scope` attribute is told the grant's scope before it is asked. The seats (Judge, Drafter, Burnish) pin the tag `v0.10.1` and run unchanged on this version; they gain the scope handoff when Warden is `0.11.0` or newer, whatever they pin. `v0.10.1` carries the held-result rule (an `ACCEPT_UNVERIFIED` run is put back and saved as a held result) and the instrument isolation fix (instruments see only their named roots). The earlier tag `v0.9.0` (`882b2be`) predates both.
 
 ## WHY IT EXISTS
 
@@ -101,7 +101,7 @@ ACCEPT / FINISH_REJECTED
 | `warden.gitstate` | read-only questions to git: is the folder dirty, where is its git folder, what is `core.hooksPath` |
 | `warden.guard` | what an edit may touch: the protected-file list, prose-only documentation scope, symlink resolution, and the snapshot that undoes a seat that wrote |
 | `warden.textio` | byte-faithful reads and writes: line endings kept, non-UTF-8 files refused |
-| `warden.cli` | `tagteam` and `audit`; the exit-code table and the seat handshake |
+| `warden.cli` | `tagteam`, `keep` and `audit`; the exit-code table, the seat handshake, and `--stack` |
 
 Ghost Tools is optional. Install it with Warden as `warden[ghost]`, which pins it to a release tag; without it, `warden.ghost` still reads Ghost JSON produced elsewhere, and treats a missing Ghost as unknown, never as clean.
 
@@ -125,10 +125,33 @@ Running a repository's tests runs its code, so Rule 7 happens only after a human
 CLI over a git work tree. Default is read-only. Writes require
 `--authorize ACTOR --reason TEXT`.
 
-`warden tagteam PATH --drafter MODULE:FACTORY --finisher MODULE:FACTORY --ghost-root GHOST_TOOLS --swizzle-root SWIZZLE --assay-root ASSAY --assay-floor N`
+`warden tagteam PATH --drafter MODULE:FACTORY --finisher MODULE:FACTORY --judge MODULE:FACTORY --ghost-root GHOST_TOOLS --swizzle-root SWIZZLE --assay-root ASSAY --assay-floor N`
 runs the whole loop and the hand-off (`--max-cycles`, default 10). Without
 `--drafter` it can only observe (`INCONCLUSIVE`). Without `--finisher` it stops
 when the loop converges.
+
+**The whole circuit in one command.** `--stack DIR` names a folder that holds checkouts of
+the other six repositories, `ghost_tools`, `swizzle`, `assay`, `drafter`, `judge` and
+`burnish` (folder names matched without regard to case, so `SWIZZLE` and `swizzle` are the
+same), and fills `--ghost-root`, `--swizzle-root`, `--assay-root`, `--drafter`
+(`drafter.seat:Drafter`), `--judge` (`judge.seat:Judge`) and `--finisher`
+(`burnish.finisher:Burnish`) from them. An option you give explicitly wins over the folder's
+copy. All six must be there: a missing one is a usage error (exit 2) that names it, because a
+circuit quietly run without a seat would read as the circuit. Two folders that differ only by
+case are refused rather than guessed between. The seats are imported from the folder's
+checkouts ahead of any other copy, and a seat that turns out to live inside the target is
+still refused. With a clone of each repository beside the others:
+
+    warden tagteam PATH --stack .. --authorize "Your Name" --reason "why" --scope code
+
+**The grant's scope reaches the seats.** A Drafter or Finisher that keeps a `scope`
+attribute is told the grant's scope (`documentation` or `code`) before it is first asked;
+Drafter and Burnish both do. So under the default `documentation` grant the Drafter leaves a
+code fix unproposed (and says why in `drafter_skipped`) instead of having it declined, and
+under `--scope code` Burnish includes its code tidy, which it used to leave out because it
+could not see the grant. A seat with no such attribute is asked as before, and a seat that
+will not take the value is noted; the grant checks every proposal either way. The seat
+contract stays `"1"`.
 Without `--authorize` it proposes and writes nothing (`REFUSED`). `--reason` must
 not be empty. If SWIZZLE's own proofs do not hold, nothing is written and the
 command exits 2. The target path must be an existing folder, or the command exits 2
@@ -386,8 +409,10 @@ its markers is Warden's; every other section survives reruns untouched.
 - SWIZZLE, Ghost and ASSAY output is read strictly, a hung Ghost times out as unavailable, and garbled Ghost output after an edit puts the tree back. **VERIFIED** by `tests/test_honest_exit_codes.py`.
 - The seat handshake (`requires_contract`: a mismatch or a missing declaration is refused, and the output names the `contract` and `versions`), a missing or non-folder target, an empty reason, a no-op proposal and an out-of-scope proposal are handled as described above. **VERIFIED** by `tests/test_honest_exit_codes.py`.
 - The whole loop with the real SWIZZLE, ASSAY, Ghost, Drafter and Judge, on a small scratch project, ended `ACCEPT` with exit 0 on 2026-10-09 (a check by hand, not a recorded test).
+- `--stack` fills every root and seat from one folder, case-blind, refuses a folder with a part missing or two parts differing only by case, lets an explicit option win, and still refuses a seat inside the target; the grant's scope reaches a Drafter and a Finisher before their first call, a seat without a `scope` attribute is left alone, and one that will not take it is noted. **VERIFIED** by `tests/test_stack_option.py`.
+- The whole circuit, all seven live (Ghost, SWIZZLE, ASSAY, Drafter, Judge, Burnish, through `--stack`), on a scratch repository with a dead function, a trailing-whitespace line and a stale README count: under a `code` grant the function was commented out, the whitespace tidied and the README given its generated facts section, 3 changes, Judge ACCEPT, exit 0; under a `documentation` grant the Drafter skipped the dead code with a reason and only the README changed, again ACCEPT, exit 0. Run by hand on 2026-10-14 and recorded in `docs/REGISTRY.json`; not a recorded test.
 
-523 tests are collected in this tree. Run 2026-10-12 on CPython 3.13 with all seven circuit checkouts on `PYTHONPATH` and `ASSAY_ROOT` set (so the live ASSAY read runs and nothing is skipped): 523 pass.
+535 tests are collected in this tree. Run 2026-10-14 on CPython 3.13 with all seven circuit checkouts on `PYTHONPATH` and `ASSAY_ROOT` set (so the live ASSAY read runs and nothing is skipped): 535 pass.
 
 Instruments (SWIZZLE, Ghost Tools, ASSAY grading) run with only their named roots on `PYTHONPATH`. An inherited `PYTHONPATH` is dropped (`warden/isolation.py`, `instrument_env`), so a missing root fails instead of silently using a sibling checkout found on the caller's path. Before this change, five tests failed under the full environment (four in `tests/test_closing_false_accepts.py`, one in `tests/test_seams.py`); they pass now.
 
@@ -406,12 +431,14 @@ The modules in the table above and the two CLI commands. No network.
 
 The tests named above. The whole loop, live, once on 2026-10-07 (before the
 split): SWIZZLE 12 of 12 proofs, Ghost Tools observe and re-inspect, an
-authorized change, oracle ACCEPT, on a scratch demo. Recorded in
-`docs/REGISTRY.json`. That is not a proof of the architecture.
+authorized change, oracle ACCEPT, on a scratch demo. And again on 2026-10-14,
+after the split, with every seat filled by its own repository: Drafter, Judge
+and Burnish, Ghost, SWIZZLE and ASSAY, through `--stack`. Both are recorded in
+`docs/REGISTRY.json`. Neither is a proof of the architecture.
 
 ## WHAT IS NOT PROVEN
 
-- The loop run live with a real Drafter and Finisher, on any repository. It has not been run since the split.
+- The loop run live on a real repository. Every recorded run so far used a scratch repository built for it.
 - Live `ghost-buster` + `warden tagteam` + `swizzle prove` on a corpus repository.
 
 ## WHAT DOES NOT WORK
@@ -454,7 +481,7 @@ authorized change, oracle ACCEPT, on a scratch demo. Recorded in
 
 ## WHAT REMAINS OUTSTANDING
 
-A live run with Drafter and Burnish in their seats, recorded in the registry.
+A live run on a real repository, recorded in the registry. The scratch-repository run with every seat filled is recorded there already.
 
 ## CLAIMS VS REALITY
 

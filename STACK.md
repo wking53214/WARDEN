@@ -1,46 +1,69 @@
-# Stack role — Warden
+# Stack role: Warden
 
 **ASSURANCE (not the live decision path).**
 
-The governor of code change. Decides whether a change may be made and whether
-it stands: a human grant, a green suite before and after, SWIZZLE's proofs,
-a durable record. Never silently rewrites; never certifies itself. Which fix to
-propose is the Drafter's job; beautifying and the final README are Burnish's.
+The governor. Runs the loop and is the only part allowed to write. A named human grant, the target's suite green before and after, the attacker's proofs, the scanner's re-inspection, and a durable record. Never certifies itself.
 
-| Related | Role |
-|---------|------|
-| [ghost_tools](https://github.com/wking53214/ghost_tools) | Forensic observation. Owns findings, baselines, ledgers. |
-| [SWIZZLE](https://github.com/wking53214/SWIZZLE) | Adversarial challenge. Owns independent oracles and ground truth. Its proofs must hold before Warden ACCEPTs. |
-| Drafter (github.com/wking53214/Drafter) | In the loop. Proposes one fix at a time as data; never writes. Plugs into Warden through `warden.roles`. |
-| [Burnish](https://github.com/wking53214/burnish) | The finisher. Runs once, after the loop converges: beautifies the code and writes the final README with the critic's commentary. Plugs into Warden through `warden.roles`. Imports Warden; Warden never imports it. |
-| [ASSAY](https://github.com/wking53214/ASSAY) | Specimen answer key, read from `assay_production/registry.json`. |
-| CNS (private) | Interoperability contracts. Warden may analyse a seam. Warden never modifies CNS. |
+## The circuit
 
-```text
-Live path: Admission → OBSERVE/Keys → Locks → PERCEIVE → Decision → Conservation → Execution → Custody
-Assurance: ghost_tools · Warden · SWIZZLE · ASSAY
-```
+Seven repositories, one loop. Warden is the only one that writes, and nothing is
+written without a named human.
+
+| # | Part | Repository | Role |
+|---|------|------------|------|
+| 1 | Answer key | [ASSAY](https://github.com/wking53214/ASSAY) | Known failure modes with independently known answers; the scanner is graded against it before anything is written. |
+| 2 | Scanner | [ghost_tools](https://github.com/wking53214/ghost_tools) (Ghost Buster) | Finds defects; findings keep their identity across the loop; says what it could not look at. |
+| 3 | Attacker | [SWIZZLE](https://github.com/wking53214/SWIZZLE) | Proves its own planted defects, scores the scanner against the answer key, attacks the governor's rules. |
+| 4 | Governor | [Warden](https://github.com/wking53214/Warden) | Runs the loop; the only part allowed to write; human grant, green suite before and after, durable record. |
+| 5 | Drafter | [Drafter](https://github.com/wking53214/Drafter) | Proposes one fix at a time, as data. |
+| 6 | Judge | [Judge](https://github.com/wking53214/Judge) | Reads the evidence of the whole run and says ACCEPT, REJECT or INSUFFICIENT. |
+| 7 | Finisher | [Burnish](https://github.com/wking53214/Burnish) | Once, after the loop: tidies the code and keeps the README's generated facts section. |
 
 ```text
 CODEBASE
    │
    ▼
-┌─ LOOP (repeat until converged) ──────────────┐
-│ GHOST TOOLS  reports what is wrong           │
-│ DRAFTER     proposes one fix                │
-│ WARDEN      authorize / gate / apply        │
-│ GHOST TOOLS  re-inspect                      │
-│ SWIZZLE      calibrated and checked          │
-└──────────────────────────────────────────────┘
-   │ converged
+SWIZZLE   proves its own instrument (12 planted-defect proofs must all hold)
+ASSAY     grades the scanner against the answer key (the key is proven first)
+   │         nothing is written if either fails
    ▼
-BURNISH   once: beautify + final README + critic's commentary
-   │          (applied by Warden under the same gate)
+┌─ THE LOOP, until the Drafter has nothing left ──────────────────────────┐
+│  GHOST     observe: what is wrong (ghost-* ids)                          │
+│  DRAFTER   propose one change, as data, inside the grant's scope         │
+│  WARDEN    human grant · suite green before · apply · suite green after  │
+│  GHOST     re-inspect: nothing new, or the change is put back            │
+└──────────────────────────────────────────────────────────────────────────┘
+   │
    ▼
-ACCEPT / FINISH_REJECTED
+BURNISH   once: tidy the code and the README's facts section
+          (applied by Warden under the same gate)
+   │
+   ▼
+SWIZZLE   attacks the governor; every scenario must be held
+   │
+   ▼
+JUDGE     ACCEPT (stands) · REJECT (whole tree put back) · INSUFFICIENT (held for a person)
 ```
 
-Warden does not replace Ghost Tools. Warden does not replace SWIZZLE.
-Warden does not become a CNS dumping ground.
+Each seat imports Warden's data shapes and declares `requires_contract = "1"`; Warden
+imports none of them. Warden tells the Drafter and the Finisher the grant's scope
+(`documentation` or `code`) before it asks them.
+
+**One command runs all seven.** With a clone of each repository in one folder (names matched
+without regard to case):
+
+```bash
+warden tagteam PATH --stack FOLDER --authorize "Your Name" --reason "why" --scope code
+```
+
+Exit 0 means `ACCEPT` and nothing else does. Recorded run: 2026-10-14, every seat live on a
+scratch repository, `ACCEPT` under both grants; see Warden's `docs/REGISTRY.json`.
+
+```text
+Live path: Admission → OBSERVE/Keys → Locks → PERCEIVE → Decision → Conservation → Execution → Custody
+Assurance: ASSAY · ghost_tools · SWIZZLE · Warden · Drafter · Judge · Burnish  (this circuit, off the live path)
+```
+
+CNS (private) holds the interoperability contracts. No repository in the circuit modifies it.
 
 See [README.md](README.md).

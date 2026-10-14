@@ -60,6 +60,36 @@
       "swizzle_involvement": "swizzle prove at SWIZZLE fd51074c3b: 12 of 12 proofs hold",
       "tests_executed": "Rule 7 gate on the target: 2 passed before, 2 passed after; Warden's own suite 37 passed",
       "unknown": "2026-10-07. First run with the Rule 7 gate: the target's suite ran before and after the change. Still a scratch repository; no corpus repository has been transformed by Warden."
+    },
+    {
+      "adapter": false,
+      "adversarial_validation_executed": "swizzle prove 12 of 12 (before the loop, after it, and before the finish); swizzle governor 26 of 26 scenarios held; swizzle assay: Ghost caught 3 of 5 known failure modes, floor 3, 54/54 manifest claims hold",
+      "architectural_debt": "UNKNOWN",
+      "authoritative_path": "UNKNOWN",
+      "authority_model": "UNKNOWN",
+      "baseline_sha": "4e5f2f195d38de8655f8b6f67949aeaf6577d1df",
+      "branch": "master (local only)",
+      "cns_integration_type": "none",
+      "cns_involvement": "none",
+      "cns_representation": "none",
+      "cns_seam": "none",
+      "digest_model": "UNKNOWN",
+      "warden_involvement": "warden tagteam --stack /home/user (Warden 0.11.0 at 604c740 plus the --stack and scope-handoff change, contract 1); authorized by William King; two runs on two copies of the same target: --scope code ended ACCEPT with 3 changes applied (dead function commented out under ghost-03e18e01b277 after the keep and comment-out tests, trailing whitespace tidied by Burnish, README given its generated facts section), exit 0; the default documentation grant ended ACCEPT with 1 change (the README section), the Drafter reporting 'skipped ghost-03e18e01b277: its fix needs code scope and this run allows documentation', exit 0",
+      "epistemic_model": "UNKNOWN",
+      "final_sha": "not committed: the accepted tree was left as Warden wrote it (git diff: README.md +23, pkg/core.py 4 lines changed)",
+      "ghost_tools_involvement": "ghost_buster at ghost_tools c99ebf5 (1.9.1): observed 1 finding (dead_code, minor), re-inspected 0 after the change and 0 after the finish; status ok, 4 files scanned, no gaps; declined by Warden's own switches: mutate, kernel, structure, tests, project, secrets, correlate",
+      "internal_convergence": true,
+      "known_defects": "the README's stale '2 tests passed' claim was not fixed: Ghost's doc_test_count_drift needs the suite to have grown by at least 10 and by 15 percent, and 2 to 4 clears neither, so no finding reached the Drafter; Burnish's generated section reports the disagreement instead",
+      "native_representation": "UNKNOWN",
+      "provenance_model": "UNKNOWN",
+      "push_status": "not pushed: scratch repository",
+      "readme_rewritten": true,
+      "remote_verification": "none: scratch repository",
+      "repository": "scratch demo repository 3 (one package with a used function, an unused one and a trailing-whitespace line; four tests; a README claiming 2 tests passed)",
+      "subject_binding": "UNKNOWN",
+      "swizzle_involvement": "SWIZZLE 8dd22d4 (0.7.1): prove 12 of 12, governor 26 of 26 held, assay 3 of 5 with the key proven",
+      "tests_executed": "Rule 7 on the target: 4 passed before, 4 passed after every write, keep test passed (nothing ran the code when it was made to fail); seats: Drafter 9b594f9 (0.1.0), Judge e39455c (0.3.0, verdict ACCEPT with every number in its reason), Burnish 58e63ce (0.2.0); ASSAY f84ac7c",
+      "unknown": "2026-10-14. The first run since the split with every seat filled by its own repository, and the first through --stack. Each run took about one minute. Still a scratch repository built for the run; no real repository has been transformed by Warden."
     }
   ]
 }

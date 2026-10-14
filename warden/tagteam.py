@@ -466,9 +466,32 @@ class TagTeam:
             out.append("judge")
         return tuple(out)
 
+    def _tell_scope(self, authorization: Optional[Authorization], notes: list[str]) -> None:
+        """Tell the maker seats the grant's scope, when they keep one (see `warden.roles`).
+
+        The grant is the authority: a seat built with its own idea of the scope is corrected, so
+        it cannot propose code under a documentation grant and have every proposal declined. A
+        seat that will not take it is noted and asked as before; the grant still checks its work.
+        """
+        scope = authorization.scope if authorization is not None else ""
+        if not scope:
+            return
+        for who, seat in (("Drafter", self.drafter), ("Finisher", self.finisher)):
+            if seat is None:
+                continue
+            try:
+                if not hasattr(seat, "scope"):
+                    continue
+                seat.scope = scope
+            except Exception as err:  # noqa: BLE001 - a seat that keeps its own scope is not an error
+                notes.append(f"The {who} keeps a scope of its own and would not take the grant's "
+                             f"({scope}; {type(err).__name__}); its proposals are checked against the "
+                             "grant as usual.")
+
     def _run(self, target: Path, authorization: Optional[Authorization],
              findings: Optional[Sequence[dict]], python: str) -> TagTeamResult:
         notes = self._notes
+        self._tell_scope(authorization, notes)
         sound = self._calibrate(python, notes)
         self._grade(python, notes)
         observed = self._observe(target, findings, python, notes)
