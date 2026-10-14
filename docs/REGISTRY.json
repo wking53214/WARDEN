@@ -120,6 +120,36 @@
       "swizzle_involvement": "SWIZZLE 0.7.1 with true names for fm_3_6 and fm_3_7: prove 12 of 12, governor 26 of 26, assay 5 of 7",
       "tests_executed": "Rule 7 on the target: 2 passed before and after every write; seats: Drafter 0.1.0 (three fixers), Judge 0.3.0 (ACCEPT), Burnish 0.2.0; ASSAY at 27 specimens",
       "unknown": "2026-10-14, later the same day. The run that proved the three 'looks done, isn't' detectors and the two new answer-key specimens work inside the loop, not only in their own suites. Still a scratch repository."
+    },
+    {
+      "adapter": false,
+      "adversarial_validation_executed": "swizzle prove 12 of 12; swizzle governor 28 of 28 held; swizzle assay: Ghost caught 5 of 7 known failure modes (60/60 manifest claims hold) on every run",
+      "architectural_debt": "UNKNOWN",
+      "authoritative_path": "UNKNOWN",
+      "authority_model": "UNKNOWN",
+      "baseline_sha": "each repository's main on 2026-10-14",
+      "branch": "main, cloned",
+      "cns_integration_type": "none",
+      "cns_involvement": "none",
+      "cns_representation": "none",
+      "cns_seam": "none",
+      "digest_model": "UNKNOWN",
+      "warden_involvement": "Warden 0.11.1 (byte-for-byte tree watch, environment-folder watch) plus the two refusals this loop added (an instrument checkout inside the target; any edit under a fixture folder); authorized by William King. Results: JUDGE ACCEPT (1 change, suite 288/288), BURNISH ACCEPT (1 change, 240/240), DRAFTER ACCEPT (1 change, 306/306), SWIZZLE ACCEPT_UNVERIFIED held (Ghost partial: cross-boundary reach without --join; 5 skipped tests), WARDEN ACCEPT_UNVERIFIED held (Ghost partial, same reason), ASSAY FINISH_REJECTED then ACCEPT_UNVERIFIED held (first the tidy reformatted 13 specimens and the suite caught it; after the fixture-folder rule the suite stayed 69/69 and the change was held for Ghost partial), ghost_tools INCONCLUSIVE twice (suite red under Warden: a test that passed on the environment's bytecode setting, not the code's) then rerun after the fix",
+      "epistemic_model": "UNKNOWN",
+      "final_sha": "nothing committed from the clones; every change the circuit proposed to its own repositories was Burnish's generated facts section in the README",
+      "ghost_tools_involvement": "ghost_buster Unreleased after 1.9.1 (27 detectors): JUDGE 10 findings, BURNISH 9, DRAFTER 8, SWIZZLE 192, WARDEN 49, ASSAY 104, ghost_tools 101; none closed by a fixer (no fixer covers duplicate blocks, name disagreements, long functions, loop-invariant calls); none new after any change",
+      "internal_convergence": true,
+      "known_defects": "the loop found and the people fixed, the same day: Warden refused a seat loaded from inside the target but not an instrument root (SWIZZLE ran on itself in place); Burnish's tidy reformatted ASSAY's specimens (answer-key fixtures) and only the suite's recorded hashes caught it, now refused at three layers; ASSAY's Ghost baseline had 80 stale entries after Ghost's identity keys changed; ghost_tools' bytecode test passed on PYTHONPYCACHEPREFIX rather than on the code. Open: SWIZZLE and WARDEN cannot be fully measured without --join of their siblings, so their results are held, not accepted",
+      "native_representation": "UNKNOWN",
+      "provenance_model": "UNKNOWN",
+      "push_status": "the fixes are on main in WARDEN, JUDGE, BURNISH, ASSAY, SWIZZLE and ghost_tools; the clones' README sections were not kept",
+      "readme_rewritten": false,
+      "remote_verification": "none: scratch repository",
+      "repository": "the circuit's own seven repositories (ASSAY, JUDGE, BURNISH, DRAFTER, SWIZZLE, WARDEN, ghost_tools), each governed as a fresh clone of main with the horsemen seated from the live checkouts (warden tagteam --stack /home/user --scope code)",
+      "subject_binding": "UNKNOWN",
+      "swizzle_involvement": "SWIZZLE 0.7.1 with 28 governor scenarios (two added this day for the tree watch): prove 12 of 12 and governor 28 of 28 held on every run",
+      "tests_executed": "Rule 7 on the target: 2 passed before and after every write; seats: Drafter 0.1.0 (three fixers), Judge 0.3.0 (ACCEPT), Burnish 0.2.0; ASSAY at 27 specimens",
+      "unknown": "2026-10-14, later the same day. The run that proved the three 'looks done, isn't' detectors and the two new answer-key specimens work inside the loop, not only in their own suites. Still a scratch repository."
     }
   ]
 }
