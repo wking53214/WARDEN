@@ -24,6 +24,11 @@ from .authorization import Authorization
 from .models import Transformation
 
 _SKIP = {".git", "__pycache__", ".pytest_cache", ".venv", "node_modules", ".mypy_cache", ".ruff_cache"}
+#: Folders the snapshot does not read (an installed environment can be huge) but does watch by name,
+#: size and time: a seat that drops a library, a `.pth` file or a hook in here would run later with the
+#: user's rights. Pure caches (`__pycache__`, `.ruff_cache`, ...) are not watched; the suite never reads
+#: `__pycache__` from the tree (see `suite.py`), so a planted .pyc cannot change its result.
+_ENV_DIRS = {".venv", "venv", "env", "node_modules"}
 #: Past this many bytes in total the tree is fingerprinted but not restorable.
 _RESTORE_LIMIT = 200 * 1024 * 1024
 
@@ -80,6 +85,18 @@ def _walk(target: Path) -> Iterator[Path]:
             yield path
 
 
+def _env_stats(target: Path) -> Dict[str, tuple]:
+    """Name, size and time of every file under an environment folder (see `_ENV_DIRS`)."""
+    out: Dict[str, tuple] = {}
+    for path in Path(target).rglob("*"):
+        parts = path.relative_to(target).parts
+        if ".git" in parts or not _ENV_DIRS.intersection(parts) or not path.is_file():
+            continue
+        st = path.stat()
+        out[str(path.relative_to(target))] = (st.st_size, st.st_mtime_ns)
+    return out
+
+
 def _git_guard(target: Path) -> Dict[str, bytes]:
     """The parts of .git that can run code or redirect git: hooks, config, info, and stray lock files.
 
@@ -121,6 +138,7 @@ class Snapshot:
         if not self.restorable:
             self.files = {k: b"" for k in self.files}
         self._stat = self._stats()
+        self._env = _env_stats(self.target)
         self.dirs = self._dirs()
         self.git = _git_guard(self.target)
 
@@ -138,10 +156,16 @@ class Snapshot:
         out += [f"added folder {k}" for k in self._dirs() - self.dirs]
         out += [f"removed {k}" for k in self._stat.keys() - now.keys()]
         for k in now.keys() & self._stat.keys():
-            if now[k] != self._stat[k]:
-                if self.restorable and (self.target / k).read_bytes() == self.files[k]:
-                    continue  # touched but identical
+            if self.restorable:
+                # Bytes, not size and time: a same-size write with the old time put back would pass a stat check.
+                if (self.target / k).read_bytes() != self.files[k]:
+                    out.append(f"changed {k}")
+            elif now[k] != self._stat[k]:
                 out.append(f"changed {k}")
+        env_now = _env_stats(self.target)
+        out += [f"added {k}" for k in env_now.keys() - self._env.keys()]
+        out += [f"removed {k}" for k in self._env.keys() - env_now.keys()]
+        out += [f"changed {k}" for k in env_now.keys() & self._env.keys() if env_now[k] != self._env[k]]
         git_now = _git_guard(self.target)
         out += [f"added {k}" for k in git_now.keys() - self.git.keys()]
         out += [f"removed {k}" for k in self.git.keys() - git_now.keys()]
@@ -160,6 +184,10 @@ class Snapshot:
 
     def restore(self) -> None:
         self._restore_git()
+        # A file added under an environment folder is removed (nothing was there before); a changed
+        # one stays, since those folders are watched, not copied, and `changes()` keeps naming it.
+        for rel in _env_stats(self.target).keys() - self._env.keys():
+            (self.target / rel).unlink(missing_ok=True)
         if not self.restorable:
             return
         now = {str(p.relative_to(self.target)) for p in _walk(self.target)}
@@ -190,7 +218,10 @@ def watch(target: Path, who: str) -> Iterator[None]:
     changed = snap.changes()
     if changed:
         snap.restore()
-        undone = "and undone" if snap.restorable else "and NOT undone (tree too large to restore)"
+        left = snap.changes()
+        undone = ("and undone" if not left
+                  else "and NOT undone (tree too large to restore)" if not snap.restorable
+                  else f"and NOT fully undone (still different: {', '.join(left[:3])})")
         raise SeatBrokeCharter(
             f"{who} changed the tree while it had control, which its role does not allow "
             f"({', '.join(changed[:5])}{'...' if len(changed) > 5 else ''}) {undone}.")

@@ -102,6 +102,38 @@ def test_watch_is_quiet_when_nothing_changes(tmp_path):
         (tmp_path / "pkg" / "__pycache__" / "x.pyc").write_bytes(b"1")
 
 
+def test_a_same_size_write_with_the_old_time_put_back_is_still_caught(tmp_path):
+    import os
+    _repo(tmp_path)
+    init = tmp_path / "pkg" / "__init__.py"
+    init.write_text("x = 1\n", encoding="utf-8")
+    st = init.stat()
+    with pytest.raises(SeatBrokeCharter, match="changed pkg/__init__.py.*and undone"):
+        with watch(tmp_path, "The Drafter"):
+            init.write_text("x = 2\n", encoding="utf-8")
+            os.utime(init, ns=(st.st_atime_ns, st.st_mtime_ns))
+    assert init.read_text(encoding="utf-8") == "x = 1\n"
+
+
+def test_a_file_added_to_an_environment_folder_is_caught_and_removed(tmp_path):
+    _repo(tmp_path)
+    (tmp_path / ".venv" / "lib").mkdir(parents=True)
+    with pytest.raises(SeatBrokeCharter, match=r"added \.venv/lib/late\.pth\) and undone"):
+        with watch(tmp_path, "The Finisher"):
+            (tmp_path / ".venv" / "lib" / "late.pth").write_text("import os\n", encoding="utf-8")
+    assert not (tmp_path / ".venv" / "lib" / "late.pth").exists()
+
+
+def test_a_file_changed_in_an_environment_folder_is_caught_but_not_put_back(tmp_path):
+    _repo(tmp_path)
+    pth = tmp_path / "node_modules" / "site.pth"
+    pth.parent.mkdir()
+    pth.write_text("old\n", encoding="utf-8")
+    with pytest.raises(SeatBrokeCharter, match=r"changed node_modules/site\.pth\) and NOT fully undone \(still different"):
+        with watch(tmp_path, "The Drafter"):
+            pth.write_text("import os\n", encoding="utf-8")
+
+
 def test_snapshot_restores_added_changed_and_removed_files(tmp_path):
     _repo(tmp_path)
     snap = Snapshot(tmp_path)
