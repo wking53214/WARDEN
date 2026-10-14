@@ -90,6 +90,36 @@
       "swizzle_involvement": "SWIZZLE 8dd22d4 (0.7.1): prove 12 of 12, governor 26 of 26 held, assay 3 of 5 with the key proven",
       "tests_executed": "Rule 7 on the target: 4 passed before, 4 passed after every write, keep test passed (nothing ran the code when it was made to fail); seats: Drafter 9b594f9 (0.1.0), Judge e39455c (0.3.0, verdict ACCEPT with every number in its reason), Burnish 58e63ce (0.2.0); ASSAY f84ac7c",
       "unknown": "2026-10-14. The first run since the split with every seat filled by its own repository, and the first through --stack. Each run took about one minute. Still a scratch repository built for the run; no real repository has been transformed by Warden."
+    },
+    {
+      "adapter": false,
+      "adversarial_validation_executed": "swizzle prove 12 of 12; swizzle governor 26 of 26 held; swizzle assay: Ghost caught 5 of 7 known failure modes (60/60 manifest claims hold), the key having gained 3.6 (a test that cannot fail) and 3.7 (an unbacked status claim) the same day",
+      "architectural_debt": "UNKNOWN",
+      "authoritative_path": "UNKNOWN",
+      "authority_model": "UNKNOWN",
+      "baseline_sha": "scratch demo repository 4, initial commit (not pushed)",
+      "branch": "master (local only)",
+      "cns_integration_type": "none",
+      "cns_involvement": "none",
+      "cns_representation": "none",
+      "cns_seam": "none",
+      "digest_model": "UNKNOWN",
+      "warden_involvement": "warden tagteam --stack /home/user --scope code (Warden 0.11.0 plus the --assay-floor help text change); authorized by William King; ACCEPT, exit 0, 3 changes applied: the dead function commented out, the ten-element list turned into a set by the Drafter's new list_membership fixer, the README given its facts section. The first attempt the same day ended FINISH_REJECTED: Ghost's new unverified_status_claim detector read Burnish's critic note ('Production-ready': claim not backed by any measurement) as a fresh claim and its ids moved with line numbers; both were fixed in Ghost and the run repeated",
+      "epistemic_model": "UNKNOWN",
+      "final_sha": "not committed: README.md +26, pkg/mod.py 3 lines changed",
+      "ghost_tools_involvement": "ghost_buster (Unreleased after 1.9.1, 27 detectors): 5 findings at the start (assertless_test MAJOR on a stub test, unverified_status_claim x2 on 'Production-ready' and 'RL Ready', dead_code, list_membership_in_loop), 3 at the end, none new; the three left are the ones no fixer answers, and Burnish's section names them by kind",
+      "internal_convergence": true,
+      "known_defects": "the stub test and the two status labels stay in the target: the circuit reports them, and a person decides; the Judge accepts because none is new",
+      "native_representation": "UNKNOWN",
+      "provenance_model": "UNKNOWN",
+      "push_status": "not pushed: scratch repository",
+      "readme_rewritten": true,
+      "remote_verification": "none: scratch repository",
+      "repository": "scratch demo repository 4 (a package with a used function, an unused one and a ten-element list scanned in a loop; two tests, one a stub; a README claiming production-ready, battle-tested and RL Ready)",
+      "subject_binding": "UNKNOWN",
+      "swizzle_involvement": "SWIZZLE 0.7.1 with true names for fm_3_6 and fm_3_7: prove 12 of 12, governor 26 of 26, assay 5 of 7",
+      "tests_executed": "Rule 7 on the target: 2 passed before and after every write; seats: Drafter 0.1.0 (three fixers), Judge 0.3.0 (ACCEPT), Burnish 0.2.0; ASSAY at 27 specimens",
+      "unknown": "2026-10-14, later the same day. The run that proved the three 'looks done, isn't' detectors and the two new answer-key specimens work inside the loop, not only in their own suites. Still a scratch repository."
     }
   ]
 }

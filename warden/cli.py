@@ -230,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
                      help="ASSAY checkout; with --swizzle-root, Ghost is graded against its answer key first")
     p_t.add_argument("--assay-floor", type=_assay_floor, default=3,
                      help="the fewest known failure modes Ghost must catch for the Judge to accept "
-                          "(default 3, where Ghost stands today). 0 is the one explicit way to skip: the score "
+                          "(default 3). 0 is the one explicit way to skip: the score "
                           "is recorded, nothing requires it, and the output says so. Below 0 is rejected")
     p_t.add_argument("--from-ghost", type=Path, default=None, help="findings JSON instead of a live scan")
     p_t.add_argument("--stack", type=Path, default=None, metavar="DIR",
