@@ -150,6 +150,36 @@
       "swizzle_involvement": "SWIZZLE 0.7.1 with 28 governor scenarios (two added this day for the tree watch): prove 12 of 12 and governor 28 of 28 held on every run",
       "tests_executed": "Rule 7 on the target: 2 passed before and after every write; seats: Drafter 0.1.0 (three fixers), Judge 0.3.0 (ACCEPT), Burnish 0.2.0; ASSAY at 27 specimens",
       "unknown": "2026-10-14, later the same day. The run that proved the three 'looks done, isn't' detectors and the two new answer-key specimens work inside the loop, not only in their own suites. Still a scratch repository."
+    },
+    {
+      "adapter": false,
+      "adversarial_validation_executed": "swizzle prove 12 of 12; swizzle governor 28 of 28 held; swizzle assay: Ghost caught 5 of 7 known failure modes (60/60 manifest claims hold) on every run",
+      "architectural_debt": "UNKNOWN",
+      "authoritative_path": "UNKNOWN",
+      "authority_model": "UNKNOWN",
+      "baseline_sha": "each repository's main on 2026-10-14",
+      "branch": "main, cloned",
+      "cns_integration_type": "none",
+      "cns_involvement": "none",
+      "cns_representation": "none",
+      "cns_seam": "none",
+      "digest_model": "UNKNOWN",
+      "warden_involvement": "Warden 0.11.2 (--join and --stack-manifest, added the same day because the first loop could not measure across repository boundaries); authorized by William King. WARDEN: ACCEPT, the first full accept on a circuit repository: Ghost whole (72 findings, no gaps), suite 552 before and after, two changes (the README facts section and a trailing blank line removed from cli.py, now carried to main). SWIZZLE: Ghost whole (213 findings, no gaps, nothing unmeasured), held only because 5 of its own tests skip without GHOST_TOOLS, WARDEN_ROOT and the private CNS package. ASSAY: boundary gap gone, held because 10 specimens cannot be parsed (deliberately), its baseline hides 104 accepted findings and one test skips without a C library. ghost_tools: boundary gap gone, the Drafter's list fixer applied (gitsafe.py) with the suite 2001 before and after, held because its baseline hides 1 finding and 39 tests skip",
+      "epistemic_model": "UNKNOWN",
+      "final_sha": "nothing committed from the clones; every change the circuit proposed to its own repositories was Burnish's generated facts section in the README",
+      "ghost_tools_involvement": "ghost_buster 1.9.1 at 466e75a with the siblings joined: SWIZZLE 213 findings (192 alone), WARDEN 72 (49 alone), ASSAY 21 above its baseline, ghost_tools 122 (101 alone); the boundary gap cleared on all four; the Drafter closed one finding in ghost_tools",
+      "internal_convergence": true,
+      "known_defects": "a held result now means what it says: tests that skip or a baseline that hides. Full ACCEPT on SWIZZLE, ASSAY and ghost_tools needs CNS installed where the suite runs (private), the sibling roots in the suite's environment, and a decision about what a baseline may hide during a governed run. The manifest is a file a person wrote; CNS is meant to hold it",
+      "native_representation": "UNKNOWN",
+      "provenance_model": "UNKNOWN",
+      "push_status": "Warden 0.11.2 on main; the registry row is this one; the Watcher (WATCHER_MCU 0.1.0) wrote an account of every run from the records alone",
+      "readme_rewritten": false,
+      "remote_verification": "none: scratch repository",
+      "repository": "the four held repositories again (SWIZZLE, ASSAY, WARDEN, ghost_tools), fresh clones of main, every sibling joined for Ghost through a stack manifest (warden tagteam --stack /home/user --stack-manifest stack.json --scope code)",
+      "subject_binding": "UNKNOWN",
+      "swizzle_involvement": "SWIZZLE 0.7.1 with 28 governor scenarios (two added this day for the tree watch): prove 12 of 12 and governor 28 of 28 held on every run",
+      "tests_executed": "Rule 7 on the target: 2 passed before and after every write; seats: Drafter 0.1.0 (three fixers), Judge 0.3.0 (ACCEPT), Burnish 0.2.0; ASSAY at 27 specimens",
+      "unknown": "2026-10-14, later the same day. The run that proved the three 'looks done, isn't' detectors and the two new answer-key specimens work inside the loop, not only in their own suites. Still a scratch repository."
     }
   ]
 }

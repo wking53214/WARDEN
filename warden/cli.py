@@ -13,6 +13,7 @@ import argparse
 import importlib
 import json
 import sys
+from typing import Optional
 from pathlib import Path
 
 from . import CONTRACT, __version__
@@ -630,4 +631,3 @@ def _audit(args) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
