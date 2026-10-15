@@ -33,31 +33,12 @@ Warden's data shapes. The tests prove it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping, Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol, runtime_checkable
 
 from .models import Defect, Transformation
-from .suite import SuiteRun
+from cns.seat import Evidence, Facts, Verdict  # the shared seat rows: cns 1.7.0
 
-
-@dataclass(frozen=True)
-class Facts:
-    """What Warden and Ghost measured at the converged state, handed to the Finisher.
-
-    The Finisher counts and detects nothing itself. If it states a test result
-    or a remaining problem, it is quoting this.
-    """
-
-    #: The target's own suite, run by Warden after the loop. None: it was not run.
-    suite: Optional[SuiteRun]
-    #: What Ghost still reports. Converged means no proposals are left, not that this is empty.
-    remaining: tuple[Defect, ...]
-    #: How many loop cycles ran.
-    cycles: int
-    #: Checks that did not run ("ghost", "swizzle", "suite"). Empty `remaining` with
-    #: "ghost" here means Ghost was never asked, not that nothing is wrong.
-    unmeasured: tuple[str, ...] = ()
 
 
 @runtime_checkable
@@ -80,54 +61,8 @@ class Finisher(Protocol):
     def finish(self, target: Path, baseline: str, facts: Facts) -> Optional[Transformation]: ...
 
 
-@dataclass(frozen=True)
-class Evidence:
-    """Everything a Judge may rely on, measured by someone other than the Judge.
-
-    Warden assembles it. Ghost, the suite and SWIZZLE produced the numbers.
-    None means "not measured", which is never the same as "fine".
-    """
-
-    target: str
-    #: The human grant's scope: "documentation" or "code".
-    scope: str
-    #: (cycle number, outcome) for every cycle that ran.
-    cycles: tuple[tuple[int, str], ...]
-    #: (path, kind) of every edit that was actually applied, finishing included.
-    changed: tuple[tuple[str, str], ...]
-    #: Of those, the paths that decide acceptability (tests, test config, CI).
-    judging_files_touched: tuple[str, ...]
-    suite_before: Optional[SuiteRun]
-    suite_after: Optional[SuiteRun]
-    #: Ghost finding identities at the start and at the end. None: Ghost never ran.
-    ghost_before: Optional[tuple[str, ...]]
-    ghost_after: Optional[tuple[str, ...]]
-    #: Removals that failed a test and were left in place.
-    declined: tuple[str, ...]
-    #: True: SWIZZLE's own proofs held. False: they did not. None: not run.
-    swizzle_proofs: Optional[bool]
-    #: SWIZZLE's attacks on the governor, as reported ({scenario, severity, status}). None: not run.
-    attacks: Optional[tuple[Mapping[str, str], ...]]
-    #: Checks that never ran, by name.
-    unmeasured: tuple[str, ...]
-    notes: tuple[str, ...] = field(default=())
-    #: Ghost graded against ASSAY's answer key: key_proven, failure_modes, caught,
-    #: escaped, misnamed, floor (the fewest failure modes Ghost must catch). None: not run.
-    assay: Optional[Mapping[str, object]] = None
-    #: Ghost's own account of its baseline file (findings it was told to ignore), as {path, suppressed},
-    #: at the first observation and at the last. None: Ghost did not say (old Ghost, or no usable count).
-    #: A Judge compares them; growth means findings were hidden. Added without changing CONTRACT "1".
-    ghost_baseline_before: Optional[Mapping[str, object]] = None
-    ghost_baseline_after: Optional[Mapping[str, object]] = None
 
 
-@dataclass(frozen=True)
-class Verdict:
-    """The Judge's decision. ACCEPT, REJECT, or INSUFFICIENT (cannot decide on this evidence)."""
-
-    decision: str
-    reasons: tuple[str, ...]
-    judge: str = ""
 
 
 @runtime_checkable

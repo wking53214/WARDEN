@@ -10,7 +10,7 @@ only when no Ghost identity exists, and they are labels, not a second authority.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 import re
@@ -19,6 +19,8 @@ from typing import Any, Mapping, Optional, Sequence
 from . import textio
 from .authorization import Authorization, Unauthorized
 from .epistemic import EpistemicState
+from cns.defect import Defect, DefectLifecycle, DefectSeverity  # the shared rows: cns 1.7.0
+from cns.seat import FileEdit
 
 _UNSAFE_ID = re.compile(r"[^A-Za-z0-9_.:-]")
 
@@ -33,23 +35,8 @@ def safe_id(value: object) -> str:
     return _UNSAFE_ID.sub("?", str(value))[:64]
 
 
-class DefectSeverity(str, Enum):
-    CRITICAL = "critical"
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
 
 
-class DefectLifecycle(str, Enum):
-    IDENTIFIED = "identified"
-    PROPOSED = "proposed"
-    AUTHORIZED = "authorized"
-    MODIFIED = "modified"
-    TESTED = "tested"
-    ADVERSARIALLY_TESTED = "adversarially_tested"
-    FIXED = "fixed"
-    REJECTED = "rejected"
-    DEFERRED = "deferred"
 
 
 class InvalidDefectTransition(ValueError):
@@ -118,32 +105,6 @@ def ghost_severity_to_warden(value: str) -> DefectSeverity:
     return DefectSeverity.MEDIUM
 
 
-@dataclass
-class Defect:
-    """One architectural or documentary defect.
-
-    `ghost_id` is the authoritative machine identity when present.
-    `human_id` is a durable label for prose (C1, H1, …).
-    """
-
-    summary: str
-    severity: DefectSeverity
-    lifecycle: DefectLifecycle = DefectLifecycle.IDENTIFIED
-    ghost_id: Optional[str] = None
-    human_id: Optional[str] = None
-    evidence: tuple[str, ...] = ()
-    file: Optional[str] = None
-    epistemic: EpistemicState = EpistemicState.UNKNOWN
-    ghost_status: Optional[str] = None  # CONFIRMED/REASONED/… preserved verbatim
-    #: What Ghost said, verbatim, so a Drafter can act on Ghost's own facts
-    #: instead of re-measuring the tree or parsing the summary sentence.
-    detector: Optional[str] = None
-    line: Optional[int] = None
-    attributes: Mapping[str, str] = field(default_factory=dict)
-
-    @property
-    def identity(self) -> str:
-        return self.ghost_id or self.human_id or self.summary
 
 
 @dataclass
@@ -277,13 +238,6 @@ def _lf(text: str) -> str:
     return text.replace("\r\n", "\n")
 
 
-@dataclass(frozen=True)
-class FileEdit:
-    path: str
-    kind: str  # "replace" | "write" | "delete"
-    new: str
-    old: str = ""
-    replace_all: bool = False
 
 
 def defects_from_ghost(findings: Sequence[Mapping[str, Any]]) -> tuple[Defect, ...]:
