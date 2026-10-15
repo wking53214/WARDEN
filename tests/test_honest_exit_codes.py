@@ -218,7 +218,7 @@ def _findings(tmp_path: Path) -> Path:
 
 def test_0_is_accept_and_only_accept(rig):
     code, payload, _ = rig.run()
-    assert (code, payload["decision"], payload["reason"]) == (0, "ACCEPT", None)
+    assert (code, payload["decision"], payload["reason"]) == (0, "ACCEPT", "")  # cns.run/1: the reason is text; ACCEPT carries an empty one
 
 
 @pytest.mark.parametrize("how,decision", [
