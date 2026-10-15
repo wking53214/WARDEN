@@ -13,6 +13,7 @@ import argparse
 import importlib
 import json
 import sys
+from typing import Optional
 from pathlib import Path
 
 from . import CONTRACT, __version__
