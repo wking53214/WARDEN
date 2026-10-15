@@ -358,3 +358,27 @@ def test_a_stack_manifest_at_the_wrong_commit_or_wrong_shape_runs_nothing(tmp_pa
     assert code == 2 and "schema" in payload["reason"]
     code, payload, _ = _run(capsys, target, "--stack-manifest", bad, "--authorize", "w", "--reason", "r")
     assert code == 2 and "needs --stack" in payload["reason"]
+
+
+def test_cns_is_the_manifest_from_the_hub(tmp_path, capsys, measured, monkeypatch):
+    target = _repo(tmp_path / "proj")
+    stack = _stack(tmp_path / "stack")
+    commits = _git_stack(stack)
+    cns = tmp_path / "cns"
+    (cns / "contracts").mkdir(parents=True)
+    _manifest(cns / "contracts", commits).rename(cns / "contracts" / "warden-stack.json")
+    seen = {}
+
+    def scan(t, **kw):
+        seen["joins"] = tuple(kw.get("joins", ()))
+        return ()
+    monkeypatch.setattr(tagteam, "ghost_scan", scan)
+    code, payload, _ = _run(capsys, target, "--stack", stack, "--cns", cns, "--authorize", "w", "--reason", "r")
+    assert code in (0, 3), payload["reason"]
+    assert {p.name for p in seen["joins"]} == set(commits)
+    code, payload, _ = _run(capsys, target, "--stack", stack, "--cns", tmp_path / "not-cns", "--authorize", "w",
+                            "--reason", "r")
+    assert code == 2 and "no contracts/warden-stack.json" in payload["reason"]
+    code, payload, _ = _run(capsys, target, "--stack", stack, "--cns", cns, "--stack-manifest",
+                            cns / "contracts" / "warden-stack.json", "--authorize", "w", "--reason", "r")
+    assert code == 2 and "give one" in payload["reason"]
