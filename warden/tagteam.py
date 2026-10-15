@@ -175,8 +175,12 @@ class TagTeam:
         suite_timeout: float = DEFAULT_SUITE_TIMEOUT,
         seat_timeout: Optional[float] = DEFAULT_SEAT_TIMEOUT,
         max_declined: int = DEFAULT_MAX_DECLINED,
+        joins: Sequence[Path] = (),
     ) -> None:
         self.ghost_tools_root = ghost_tools_root
+        #: Sibling checkouts Ghost reads beside the target (its --join), so a cross-repository
+        #: boundary is measured rather than reported as a gap. Never on anyone's import path.
+        self.joins = tuple(Path(j) for j in joins)
         self.swizzle_root = swizzle_root
         #: ASSAY checkout. With SWIZZLE, Ghost is graded against its answer key before anything is written.
         self.assay_root = assay_root
@@ -827,7 +831,7 @@ class TagTeam:
         try:
             with watch(target, "Ghost Tools"):
                 found = ghost_scan(target, ghost_tools_root=self.ghost_tools_root, python=python,
-                                   ghost_timeout=self.ghost_timeout)
+                                   ghost_timeout=self.ghost_timeout, joins=self.joins)
             self._absorb_ghost(found)
             blind = getattr(found, "blind", None)
             if blind:

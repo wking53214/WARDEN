@@ -270,3 +270,91 @@ def test_without_a_grant_no_scope_is_told(tmp_path, measured):
     drafter = ScopedDrafter()
     result = TagTeam(drafter=drafter).run(tmp_path, findings=[])
     assert result.decision == "REFUSED" and drafter.seen == [None]
+
+
+def _manifest(root: Path, repos: dict) -> Path:
+    path = root / "stack.json"
+    path.write_text(json.dumps({"schema": "warden-stack/1", "contract": "1", "repos": repos}), encoding="utf-8")
+    return path
+
+
+def _git_stack(root: Path) -> dict:
+    """Make every checkout in a stack folder a git repository and return name -> commit."""
+    from gitutil import commit_all, git
+    out = {}
+    for child in sorted(root.iterdir()):
+        if child.is_dir():
+            (child / "MARK.md").write_text(child.name + "\n", encoding="utf-8")
+            commit_all(child, "seed")
+            out[child.name] = git(child, "rev-parse", "HEAD").strip()
+    return out
+
+
+def test_a_join_inside_the_target_or_missing_is_a_usage_error(tmp_path, capsys, measured):
+    target = _repo(tmp_path / "proj")
+    stack = _stack(tmp_path / "stack")
+    (target / "vendor").mkdir()
+    code, payload, _ = _run(capsys, target, "--stack", stack, "--join", target / "vendor", "--authorize", "w",
+                         "--reason", "r")
+    assert code == 2 and payload["decision"] == "USAGE_ERROR" and "outside the target" in payload["reason"]
+    code, payload, _ = _run(capsys, target, "--stack", stack, "--join", tmp_path / "nowhere", "--authorize", "w",
+                         "--reason", "r")
+    assert code == 2 and "does not exist" in payload["reason"]
+
+
+def test_a_stack_manifest_pins_every_checkout_and_joins_all_but_the_target(tmp_path, capsys, measured, monkeypatch):
+    target = _repo(tmp_path / "proj")
+    stack = _stack(tmp_path / "stack")
+    commits = _git_stack(stack)
+    seen = {}
+
+    def scan(t, **kw):
+        seen["joins"] = tuple(kw.get("joins", ()))
+        return ()
+    monkeypatch.setattr(tagteam, "ghost_scan", scan)
+    manifest = _manifest(tmp_path, {name: sha for name, sha in commits.items()})
+    code, payload, _ = _run(capsys, target, "--stack", stack, "--stack-manifest", manifest, "--authorize", "w",
+                         "--reason", "r")
+    assert code in (0, 3), payload["reason"]
+    assert {p.name for p in seen["joins"]} == set(commits)
+    assert len(payload["versions"]["joins"]) == len(commits)
+    assert all(j["commit"] for j in payload["versions"]["joins"])
+    # the target itself, when listed, is governed and not joined
+    stack2 = _stack(tmp_path / "stack2")
+    commits2 = _git_stack(stack2)
+    target2 = _repo(stack2 / "widget")
+    from gitutil import commit_all, git
+    commit_all(target2, "seed")
+    commits2["widget"] = git(target2, "rev-parse", "HEAD").strip()
+    manifest2 = _manifest(tmp_path / "stack2", commits2)
+    code, payload, _ = _run(capsys, target2, "--stack", stack2, "--stack-manifest", manifest2, "--authorize", "w",
+                         "--reason", "r")
+    assert code in (0, 3), payload["reason"]
+    assert "widget" not in {p.name for p in seen["joins"]} and len(seen["joins"]) == len(commits2) - 1
+    # a clone of the target at the same commit, governed from outside the stack, is the same repository
+    clone = tmp_path / "clone"
+    import subprocess
+    subprocess.run(["git", "clone", "-q", str(target2), str(clone)], check=True)
+    code, payload, _ = _run(capsys, clone, "--stack", stack2, "--stack-manifest", manifest2, "--authorize", "w",
+                            "--reason", "r")
+    assert code in (0, 3), payload["reason"]
+    assert "widget" not in {p.name for p in seen["joins"]} and len(seen["joins"]) == len(commits2) - 1
+
+
+def test_a_stack_manifest_at_the_wrong_commit_or_wrong_shape_runs_nothing(tmp_path, capsys, measured):
+    target = _repo(tmp_path / "proj")
+    stack = _stack(tmp_path / "stack")
+    commits = _git_stack(stack)
+    wrong = dict(commits)
+    first = sorted(wrong)[0]
+    wrong[first] = "0" * 40
+    code, payload, _ = _run(capsys, target, "--stack", stack, "--stack-manifest", _manifest(tmp_path, wrong),
+                         "--authorize", "w", "--reason", "r")
+    assert code == 2 and payload["decision"] == "USAGE_ERROR"
+    assert first in payload["reason"] and "is at" in payload["reason"] and (target / "NOTE.md").read_text() == "old\n"
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"schema": "other", "repos": {}}), encoding="utf-8")
+    code, payload, _ = _run(capsys, target, "--stack", stack, "--stack-manifest", bad, "--authorize", "w", "--reason", "r")
+    assert code == 2 and "schema" in payload["reason"]
+    code, payload, _ = _run(capsys, target, "--stack-manifest", bad, "--authorize", "w", "--reason", "r")
+    assert code == 2 and "needs --stack" in payload["reason"]

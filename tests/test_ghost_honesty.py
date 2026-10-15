@@ -342,3 +342,20 @@ def test_audit_with_unchanged_ids_behaves_as_before():
     second = audit.update(first, [_f("ghost-a"), _f("ghost-b", "x.py", "other")])
     ids = [(r.id, r.ghost, r.status) for r in audit.existing_rows(second)]
     assert ("H1", "ghost-a", "Open") in ids and len(ids) == 2
+
+
+def test_joins_are_passed_to_ghost_and_the_single_repo_flag_is_dropped(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(cmd, 0, '{"findings": [], "status": "ok", "files_scanned": 1, "files_skipped": 0}', "scanning 1 file(s)")
+    monkeypatch.setattr(ghost, "run_instrument", fake_run)
+    sibling = tmp_path / "sibling"
+    sibling.mkdir()
+    ghost.scan(tmp_path, ghost_tools_root=tmp_path / "g", joins=[sibling])
+    cmd = seen["cmd"]
+    assert "--single-repo" not in cmd
+    assert cmd[cmd.index("--join") + 1] == str(sibling.resolve())
+    ghost.scan(tmp_path, ghost_tools_root=tmp_path / "g")
+    assert "--single-repo" in seen["cmd"] and "--join" not in seen["cmd"]

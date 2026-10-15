@@ -142,6 +142,74 @@ def _clean_import_path(target: Path) -> None:
     importlib.invalidate_caches()
 
 
+STACK_MANIFEST_SCHEMA = "warden-stack/1"
+
+
+def _stack_folders(stack: Path) -> dict[str, Path]:
+    """The checkouts in a --stack folder by lower-cased name (the same matching as `_resolve_stack`)."""
+    out: dict[str, Path] = {}
+    for child in sorted(stack.iterdir()):
+        if child.is_dir():
+            out.setdefault(child.name.lower(), child)
+    return out
+
+
+def _joins_from_manifest(manifest_path: Path, stack: Optional[Path], target: Path) -> tuple[list[Path], str]:
+    """The checkouts a stack manifest names, each verified to be in the --stack folder at the pinned
+    commit, minus the target itself. Returns (joins, "") or ([], the reason nothing can be run)."""
+    from .versions import own_commit
+    if stack is None:
+        return [], "--stack-manifest needs --stack: the manifest names checkouts inside that folder"
+    try:
+        data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as err:
+        return [], f"the stack manifest {str(manifest_path)!r} cannot be read: {type(err).__name__}: {err}"
+    if not isinstance(data, dict) or data.get("schema") != STACK_MANIFEST_SCHEMA:
+        return [], (f"the stack manifest {str(manifest_path)!r} does not say \"schema\": "
+                    f"\"{STACK_MANIFEST_SCHEMA}\"")
+    if str(data.get("contract")) != CONTRACT:
+        return [], (f"the stack manifest is for seat contract {data.get('contract')!r}; this Warden "
+                    f"speaks contract {CONTRACT!r}")
+    repos = data.get("repos")
+    if not isinstance(repos, dict) or not repos or not all(
+            isinstance(k, str) and isinstance(v, str) and v for k, v in repos.items()):
+        return [], "the stack manifest's \"repos\" must map each checkout name to a commit"
+    folders = _stack_folders(Path(stack))
+    joins: list[Path] = []
+    target = target.resolve()
+    target_commit = own_commit(target)
+    for name, pinned in repos.items():
+        folder = folders.get(name.lower())
+        if folder is None:
+            return [], f"the stack manifest names {name!r}, which is not in the --stack folder"
+        actual = own_commit(folder)
+        if actual is None:
+            return [], f"the stack manifest pins {name!r} to {pinned[:12]}, but {str(folder)!r} is not a git checkout"
+        if not (actual == pinned or (len(pinned) >= 7 and actual.startswith(pinned))):
+            return [], (f"the stack manifest pins {name!r} to {pinned[:12]}, but the checkout at "
+                        f"{str(folder)!r} is at {actual[:12]}")
+        real = folder.resolve()
+        if real == target or real.is_relative_to(target) or target.is_relative_to(real):
+            continue  # the target itself: governed, not joined
+        if target_commit is not None and actual == target_commit:
+            continue  # a clone of the target at the same commit: the same repository, so not joined either
+        joins.append(real)
+    return joins, ""
+
+
+def _join_problem(joins, target: Path) -> str:
+    """The reason a --join cannot be used, or empty. A join must exist and lie wholly outside the target."""
+    target = target.resolve()
+    for join in joins:
+        real = Path(join).expanduser().resolve()
+        if not real.is_dir():
+            return f"--join {str(join)!r} does not exist or is not a directory"
+        if real == target or real.is_relative_to(target) or target.is_relative_to(real):
+            return (f"--join {str(join)!r} is the folder being governed or overlaps it; a joined checkout "
+                    "must lie outside the target")
+    return ""
+
+
 def _instrument_inside(args, target: Path) -> str:
     """The reason to refuse, when an instrument checkout (Ghost, SWIZZLE, ASSAY) is the folder being
     governed or lies inside it; empty when none is. Like a seat, an instrument the run could edit is
@@ -258,6 +326,15 @@ def main(argv: list[str] | None = None) -> int:
                           "--ghost-root, --swizzle-root, --assay-root, --drafter, --judge and --finisher "
                           "with them; an option you give explicitly wins. Every one of the six must be "
                           "there, or the command is a usage error and nothing is run")
+    p_t.add_argument("--join", type=Path, action="append", default=[], metavar="PATH",
+                     help="a sibling checkout Ghost may read beside the target (repeatable). A boundary the "
+                          "target reaches across is then measured instead of reported as a gap that holds the "
+                          "result. A joined checkout is read, never imported, and must lie outside the target")
+    p_t.add_argument("--stack-manifest", type=Path, default=None, metavar="FILE",
+                     help="with --stack: a JSON file naming the circuit's checkouts and the commit each must be "
+                          "at ({\"schema\": \"warden-stack/1\", \"contract\": \"1\", \"repos\": {name: commit}}). "
+                          "Every named checkout is verified against the folder and joined for Ghost, the target "
+                          "itself excepted; a missing or mismatched one is a usage error and nothing is run")
     p_t.add_argument("--authorize", default=None, metavar="ACTOR")
     p_t.add_argument("--reason", default="")
     p_t.add_argument("--scope", default="documentation",
@@ -356,6 +433,18 @@ def _tagteam(args) -> int:
     if shadowed:
         _governed = None
         return _stop("SEAT_NOT_LOADED", shadowed)
+    joins = [Path(j).expanduser().resolve() for j in (args.join or [])]
+    if args.stack_manifest is not None:
+        from_manifest, problem = _joins_from_manifest(args.stack_manifest, args.stack, _governed)
+        if problem:
+            _governed = None
+            return _stop("USAGE_ERROR", f"{problem}. Nothing was run.")
+        joins += [j for j in from_manifest if j not in joins]
+    problem = _join_problem(joins, _governed)
+    if problem:
+        _governed = None
+        return _stop("USAGE_ERROR", f"{problem}. Nothing was run.")
+    args.joins = tuple(joins)
     saved_path = list(sys.path)  # put back afterwards so an in-process caller (a test) is not left changed
     try:
         _clean_import_path(_governed)
@@ -392,7 +481,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
                    assay_root=args.assay_root, assay_floor=args.assay_floor,
                    drafter=drafter, finisher=finisher, judge=judge, max_cycles=args.max_cycles,
                    ghost_timeout=args.ghost_timeout, suite_timeout=args.suite_timeout,
-                   seat_timeout=args.seat_timeout)
+                   seat_timeout=args.seat_timeout, joins=getattr(args, "joins", ()))
     # A seat that print()s, or writes straight to file descriptor 1, must not corrupt the JSON on stdout.
     with runstate.stdout_to_stderr():
         result = team.run(args.path, authorization=auth, findings=findings)
@@ -436,7 +525,8 @@ def _versions(args, drafter, finisher, judge) -> dict:
         target=Path(args.path).resolve(),
         seats={"drafter": versions.seat(args.drafter, drafter, Path(args.path).resolve()),
                "finisher": versions.seat(args.finisher, finisher, Path(args.path).resolve()),
-               "judge": versions.seat(args.judge, judge, Path(args.path).resolve())})
+               "judge": versions.seat(args.judge, judge, Path(args.path).resolve())},
+        joins=tuple(getattr(args, "joins", ())))
 
 
 def _load_seat(spec, warnings: list[str] | None = None):  # `warnings` is kept for old callers; unused now

@@ -206,8 +206,14 @@ def scan(
     ghost_tools_root: Optional[Path] = None,
     python: str = sys.executable,
     ghost_timeout: float = DEFAULT_TIMEOUT,
+    joins: Sequence[Path] = (),
 ) -> tuple[dict[str, Any], ...]:
     """Read-only Ghost Tools scan. Does not operate, does not write a ledger.
+
+    `joins` are sibling checkouts Ghost may read beside the target (its `--join`), so a boundary
+    the target reaches across is looked at instead of reported as a gap. Without any, the scan
+    is single-repository and Ghost says so. Ghost only reads a joined checkout; it is never on
+    the import path (see `isolation`).
 
     Returns the findings list (a `Findings`; with new Ghost it also carries `status`,
     `scan_counts`, `gaps` and `declined`, see `_gaps` for the rule). Raises if the CLI cannot be run,
@@ -221,7 +227,7 @@ def scan(
         "ghost_buster.cli",
         str(target),
         "--json",
-        "--single-repo",
+        *(["--single-repo"] if not joins else []),
         "--no-tests",
         "--no-secrets",
         "--no-ledger",
@@ -229,6 +235,8 @@ def scan(
         "--no-project",
         "--no-correlate",
     ]
+    for join in joins:
+        cmd += ["--join", str(Path(join).resolve())]
     try:
         proc = run_instrument(cmd, roots=[ghost_tools_root], timeout=ghost_timeout)
     except subprocess.TimeoutExpired as exc:
