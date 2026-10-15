@@ -282,7 +282,7 @@ class _JsonParser(argparse.ArgumentParser):
 
     def error(self, message: str):  # type: ignore[override]
         reason = f"usage error: {message}. Nothing was run."
-        _print_json({"decision": "USAGE_ERROR", "reason": reason, "contract": CONTRACT, "notes": [reason]})
+        _print_json(_record("USAGE_ERROR", reason))
         self.print_usage(sys.stderr)
         print(f"warden: {reason}", file=sys.stderr)
         raise SystemExit(EXIT_CODES["USAGE_ERROR"])
@@ -383,9 +383,23 @@ def _print_json(payload) -> None:
     print(json.dumps(payload, indent=2))
 
 
+#: The contract every run record Warden prints is written against (cns.run in the CNS repository).
+CNS_RUN_SCHEMA = "cns.run/1"
+
+
+def _record(decision: str, reason: str, notes: list[str] | None = None, **extra) -> dict:
+    """A run record that ended before the run started: every field cns.run/1 requires, false where the
+    run never reached that point. The reason is always text, never null."""
+    record = {"schema": CNS_RUN_SCHEMA, "decision": decision, "reason": reason or "", "contract": CONTRACT,
+              "converged": False, "finished": False, "put_back": False, "held_digest": "",
+              "notes": list(notes or []) + ([reason] if reason else []), "observed": [], "unmeasured": []}
+    record.update(extra)
+    return record
+
+
 def _stop(decision: str, reason: str, notes: list[str] | None = None) -> int:
     """End before a run: valid JSON on stdout, the reason on stderr, and the exit code for `decision`."""
-    _print_json({"decision": decision, "reason": reason, "contract": CONTRACT, "notes": (notes or []) + [reason]})
+    _print_json(_record(decision, reason, notes))
     print(f"warden: {reason}", file=sys.stderr)
     return EXIT_CODES[decision]
 
@@ -503,6 +517,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
     with runstate.stdout_to_stderr():
         result = team.run(args.path, authorization=auth, findings=findings)
     payload = {
+        "schema": CNS_RUN_SCHEMA,
         "decision": result.decision,
         "converged": result.converged,
         "cycles": [{"number": c.number, "outcome": c.outcome, "observed": c.observed}
@@ -510,7 +525,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "finished": result.finished,
         "put_back": result.put_back,
         "held_digest": result.held_digest,
-        "reason": None if result.decision == "ACCEPT" else (result.reason or (result.notes[-1] if result.notes else "")),
+        "reason": "" if result.decision == "ACCEPT" else (result.reason or (result.notes[-1] if result.notes else "")),
         "notes": list(result.notes) + list(warnings),
         "observed": [d.identity for d in result.observed],
         "reobserved": [d.identity for d in result.reobserved],
