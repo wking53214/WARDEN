@@ -144,6 +144,8 @@ def _clean_import_path(target: Path) -> None:
 
 
 STACK_MANIFEST_SCHEMA = "warden-stack/1"
+#: Where CNS, the hub, keeps the circuit's stack manifest (relative to a CNS checkout).
+CNS_MANIFEST = Path("contracts") / "warden-stack.json"
 
 
 def _stack_folders(stack: Path) -> dict[str, Path]:
@@ -336,6 +338,10 @@ def main(argv: list[str] | None = None) -> int:
                           "at ({\"schema\": \"warden-stack/1\", \"contract\": \"1\", \"repos\": {name: commit}}). "
                           "Every named checkout is verified against the folder and joined for Ghost, the target "
                           "itself excepted; a missing or mismatched one is a usage error and nothing is run")
+    p_t.add_argument("--cns", type=Path, default=None, metavar="DIR",
+                     help="with --stack: a checkout of CNS, the hub that holds the circuit's stack manifest at "
+                          "contracts/warden-stack.json. The same as --stack-manifest pointed at that file: every "
+                          "named checkout is verified at its commit and joined for Ghost. CNS is read, never written")
     p_t.add_argument("--authorize", default=None, metavar="ACTOR")
     p_t.add_argument("--reason", default="")
     p_t.add_argument("--scope", default="documentation",
@@ -435,8 +441,18 @@ def _tagteam(args) -> int:
         _governed = None
         return _stop("SEAT_NOT_LOADED", shadowed)
     joins = [Path(j).expanduser().resolve() for j in (args.join or [])]
-    if args.stack_manifest is not None:
-        from_manifest, problem = _joins_from_manifest(args.stack_manifest, args.stack, _governed)
+    manifest = args.stack_manifest
+    if args.cns is not None:
+        if manifest is not None:
+            _governed = None
+            return _stop("USAGE_ERROR", "--cns and --stack-manifest both name a manifest; give one. Nothing was run.")
+        manifest = Path(args.cns).expanduser() / CNS_MANIFEST
+        if not manifest.is_file():
+            _governed = None
+            return _stop("USAGE_ERROR", f"--cns {str(args.cns)!r} has no {CNS_MANIFEST}; is it a CNS checkout? "
+                                        "Nothing was run.")
+    if manifest is not None:
+        from_manifest, problem = _joins_from_manifest(manifest, args.stack, _governed)
         if problem:
             _governed = None
             return _stop("USAGE_ERROR", f"{problem}. Nothing was run.")

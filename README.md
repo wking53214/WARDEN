@@ -23,7 +23,7 @@ cycles until the Drafter has nothing left to propose (or a cycle limit is
 hit). Only then does Warden hand the code, once, to the Finisher, together with the facts it measured (the suite result and what Ghost still reports), so the Finisher counts and detects nothing itself. The Finisher beautifies the code and writes the final README. The Finisher's change goes through
 the same gate.
 
-Version `0.11.2` (seat contract `"1"`, unchanged). `0.11.2` adds `--join PATH` and `--stack-manifest FILE` (see LIFECYCLE), and refuses an instrument checkout inside the target and any edit under a fixture folder. `0.11.1` hardens the tree watch around each seat: source files are compared byte for byte (a same-size write with the old time put back no longer passes), and `.venv`, `venv`, `env` and `node_modules` are watched by name, size and time (see KNOWN DEFECTS). `0.11.0` adds `--stack DIR`, which seats the whole circuit from one folder of checkouts, and the scope handoff: a Drafter or Finisher that keeps a `scope` attribute is told the grant's scope before it is asked. The seats (Judge, Drafter, Burnish) pin the tag `v0.11.0` and run unchanged on this version. `v0.10.1` carries the held-result rule (an `ACCEPT_UNVERIFIED` run is put back and saved as a held result) and the instrument isolation fix (instruments see only their named roots). The earlier tag `v0.9.0` (`882b2be`) predates both.
+Version `0.11.3` (seat contract `"1"`, unchanged). `0.11.3` adds `--cns DIR`, which reads the stack manifest from CNS, the hub, instead of a file. `0.11.2` adds `--join PATH` and `--stack-manifest FILE` (see LIFECYCLE), and refuses an instrument checkout inside the target and any edit under a fixture folder. `0.11.1` hardens the tree watch around each seat: source files are compared byte for byte (a same-size write with the old time put back no longer passes), and `.venv`, `venv`, `env` and `node_modules` are watched by name, size and time (see KNOWN DEFECTS). `0.11.0` adds `--stack DIR`, which seats the whole circuit from one folder of checkouts, and the scope handoff: a Drafter or Finisher that keeps a `scope` attribute is told the grant's scope before it is asked. The seats (Judge, Drafter, Burnish) pin the tag `v0.11.0` and run unchanged on this version. `v0.10.1` carries the held-result rule (an `ACCEPT_UNVERIFIED` run is put back and saved as a held result) and the instrument isolation fix (instruments see only their named roots). The earlier tag `v0.9.0` (`882b2be`) predates both.
 
 ## WHY IT EXISTS
 
@@ -151,8 +151,9 @@ outside the target. `--stack-manifest FILE`, with `--stack`, does this from a pi
 file `{"schema": "warden-stack/1", "contract": "1", "repos": {name: commit}}` naming the circuit's
 checkouts and the commit each must be at. Every named checkout is verified against the folder
 (wrong commit, missing folder, not a git checkout: usage error, nothing runs) and joined for Ghost,
-the target itself excepted (a clone of the target at the same commit counts as the target). The manifest is the shape CNS is meant to hold for the circuit: which
-versions belong together, decided outside any repository under test. The output's `versions`
+the target itself excepted (a clone of the target at the same commit counts as the target). `--cns DIR`, a checkout of CNS, reads the same manifest from the hub at `contracts/warden-stack.json`
+(CNS 1.5.0, `cns.stack` is its shape); CNS is read, never written. The manifest is what CNS holds for
+the circuit: which versions belong together, decided outside any repository under test. The output's `versions`
 object lists every join with its path, commit and version.
 
     warden tagteam PATH --stack .. --authorize "Your Name" --reason "why" --scope code
