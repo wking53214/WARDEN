@@ -41,6 +41,7 @@ from .models import Defect, FileEdit, Transformation, TransformationStatus, safe
 from .roles import Evidence, Facts, Finisher, Drafter, Judge, Verdict
 from .suite import DEFAULT_TIMEOUT as DEFAULT_SUITE_TIMEOUT, SuiteRun, preserved, run_suite
 from .swizzle import assay_score, governor_attacks, swizzle_proofs_hold
+from . import cns_check
 
 DEFAULT_MAX_CYCLES = 10
 DEFAULT_GHOST_TIMEOUT = 600
@@ -400,6 +401,8 @@ class TagTeam:
             notes.append("SWIZZLE attacks on the governor: "
                          + ("not run" if attacks is None else
                             f"{sum(a['status'] == 'violated' for a in attacks)} of {len(attacks)} violated"))
+            if attacks is not None:
+                notes.extend(cns_check.attack_notes(attacks))
         suite_after = self._suite(target, python, notes, "final state, for the Judge")  # may stop the run
         first_suite = next((c.suite_before for c in cycles if c.suite_before is not None), None)
         ghost = self.ghost_tools_root is not None
@@ -813,6 +816,7 @@ class TagTeam:
                  notes: list[str]) -> tuple[Defect, ...]:
         if findings is not None:
             observed = _defects(findings)
+            notes.extend(cns_check.finding_notes(findings))
             self._absorb_ghost(findings)
             notes.append(f"Ghost Tools findings loaded ({len(observed)}), not scanned in this process.")
             return observed
@@ -823,6 +827,7 @@ class TagTeam:
         stale = [f for f in raw if isinstance(f, Mapping) and f.get("detector") == STALE_BASELINE_DETECTOR]
         self._stale_baseline = _inert_baseline_entries(stale)
         observed = _defects(raw)
+        notes.extend(cns_check.finding_notes(raw))
         notes.append(f"Ghost Tools observed {len(observed)} finding(s).")
         return observed
 
