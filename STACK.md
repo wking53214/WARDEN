@@ -54,6 +54,13 @@ without regard to case):
 
 ```bash
 warden tagteam PATH --stack FOLDER --authorize "Your Name" --reason "why" --scope code
+
+A target that imports a sibling (every repository in this circuit does) is, to Ghost, a scan with a
+gap, and the result is held as `ACCEPT_UNVERIFIED` rather than accepted. Join the siblings so the
+boundary is measured: `--join PATH` for each, or `--stack-manifest FILE` with a pinned list
+(`{"schema": "warden-stack/1", "contract": "1", "repos": {name: commit}}`); every named checkout
+is verified at its commit and joined, the target itself excepted. The manifest is the shape CNS is
+meant to hold for the circuit.
 ```
 
 Exit 0 means `ACCEPT` and nothing else does. Recorded run: 2026-10-14, every seat live on a

@@ -174,8 +174,9 @@ def seat(spec: Optional[str], filled, target: Optional[Path] = None) -> Optional
 
 
 def report(*, warden_module, contract: str, version: str, ghost_root, swizzle_root, assay_root,
-           seats: dict, target: Optional[Path] = None) -> dict:
-    """The `versions` object: Warden, each instrument root given, and each seat that was loaded."""
+           seats: dict, target: Optional[Path] = None, joins: tuple = ()) -> dict:
+    """The `versions` object: Warden, each instrument root given, each seat that was loaded, and each
+    checkout joined for Ghost (its path, commit, version and whether it had uncommitted work)."""
     me = _installed("warden", getattr(warden_module, "__file__", None), target)
     return {
         "warden": {"version": version, "contract": contract, "commit": me["commit"], "dirty": me["dirty"]},
@@ -183,4 +184,5 @@ def report(*, warden_module, contract: str, version: str, ghost_root, swizzle_ro
         "swizzle": instrument(swizzle_root),
         "assay": instrument(assay_root),
         "seats": seats,
+        "joins": [instrument(j) for j in joins],
     }
