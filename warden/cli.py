@@ -311,6 +311,9 @@ def main(argv: list[str] | None = None) -> int:
     p_t.add_argument("--suite-timeout", type=_positive_number, default=900,
                      help="seconds one run of the target's own test suite may take; longer counts as the "
                           "suite not running (default 900)")
+    p_t.add_argument("--suite-runner", choices=("auto", "pytest", "cargo"), default="auto",
+                     help="which tool measures the target's suite: auto picks cargo for a Rust project with no "
+                          "Python tests and pytest otherwise (default auto)")
     p_t.add_argument("--seat-timeout", type=_positive_number, default=3600,
                      help="seconds one seat call (Drafter, Finisher, Judge, or building a seat) may take "
                           "before the run stops as ERROR (default 3600)")
@@ -511,7 +514,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
     team = TagTeam(ghost_tools_root=args.ghost_root, swizzle_root=args.swizzle_root,
                    assay_root=args.assay_root, assay_floor=args.assay_floor,
                    drafter=drafter, finisher=finisher, judge=judge, max_cycles=args.max_cycles,
-                   ghost_timeout=args.ghost_timeout, suite_timeout=args.suite_timeout,
+                   ghost_timeout=args.ghost_timeout, suite_timeout=args.suite_timeout, suite_runner=args.suite_runner,
                    seat_timeout=args.seat_timeout, joins=getattr(args, "joins", ()))
     # A seat that print()s, or writes straight to file descriptor 1, must not corrupt the JSON on stdout.
     with runstate.stdout_to_stderr():

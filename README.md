@@ -338,6 +338,22 @@ counts. Text the suite prints (at the end, at exit, or anywhere) is never read, 
 turn a green one red. A suite that forces exit 1 with every test green is not green, and the
 description says `pytest exited 1`.
 
+**Rust projects.** A target with a `Cargo.toml` and no Python test setup (no `pytest.ini`,
+`conftest.py`, `tox.ini`, `setup.cfg`, `setup.py`, `pyproject.toml`, and no `test_*.py` file) is
+measured with `cargo test` instead; `--suite-runner pytest|cargo` overrides the choice, and
+Python wins when both are present. Warden asks the test harness for its JSON summary
+(`--format json`, which needs `RUSTC_BOOTSTRAP=1` on a stable toolchain, set for that one run
+only) and requires Cargo's exit status to agree with it. Build output goes to a fresh temporary
+folder per run, `--locked` keeps `Cargo.lock` as it is, and tests run one at a time so timing
+tests are not measured under self-inflicted load. Unit, integration and example targets are
+built; documentation tests are not run. Differences from the pytest path, stated plainly: there
+is no private file with a one-time code, so a test that writes forged JSON straight to the process
+output can inflate the pass count (it cannot turn a failing run green, because a failure makes
+Cargo exit non-zero and is counted); and a Rust source file edited by the suite is noticed the
+same way a Python one is. `Cargo.toml`, `build.rs`, `rust-toolchain*`, `.cargo/`, and test files
+and folders are in the protected list. Ghost Tools analyses Python, so on a Rust project the
+Rule 7 gate is the only behavior check.
+
 **What a proposal may touch.** Never: anything outside the target, version control and
 environments, and the files that judge or build the work: test files and folders (`tests`,
 `test`, `testing`, `tests.py`), `conftest.py`, every pytest/tox/setup/nox/make/pyproject
@@ -402,6 +418,7 @@ its markers is Warden's; every other section survives reruns untouched.
 - With `--assay-root` and `--swizzle-root`, Ghost is graded against ASSAY's answer key before anything is written; an unproven key or an ungradable specimen stops the run, and the score goes to the Judge with the floor (default 3; on 2026-10-14 Ghost catches 5 of the 7 known failure modes, after ASSAY gained two and Ghost three detectors). **VERIFIED** by `tests/test_assay_in_loop.py`, and live on CNS (Ghost caught 3 of the 5 modes known then).
 - SWIZZLE's proofs failing stops the write; not configuring SWIZZLE is said out loud. **VERIFIED** by `tests/test_tagteam.py`.
 - A change that breaks the target's suite is put back; a red or empty suite means nothing is written. **VERIFIED** by `tests/test_rule7_suite_gate.py`.
+- The same gate runs `cargo test` for a Rust project, reads the harness's JSON, and needs Cargo's exit status to agree; Cargo's `target/` folder is never hashed or snapshotted, and Rust manifests, `build.rs` and test files are protected. **VERIFIED** by `tests/test_rule7_cargo_runner.py`.
 - Audit IDs survive reruns, are never reused, and a Fixed defect that returns is reopened under its own ID. **VERIFIED** by `tests/test_audit.py`.
 - No Warden module imports Burnish, Drafter or any other repository in the stack, and none of the beautification modules remain. **VERIFIED** by `tests/test_independence.py`.
 - A run that does not end accepted leaves the tree as found (rejected, not converged, suite red in a later cycle, a seat that raises or returns the wrong type). The CLI always prints valid JSON. **VERIFIED** by `tests/test_closing_false_accepts.py`.

@@ -12,6 +12,7 @@ scope, outside the files that judge the work).
 
 from __future__ import annotations
 
+import os
 import ast
 import fnmatch
 import unicodedata
@@ -42,6 +43,9 @@ _PROTECTED_NAMES = {
     # test and build configuration
     "conftest.py", "pytest.ini", ".pytest.ini", "tox.ini", "setup.cfg", "setup.py", "pyproject.toml",
     "noxfile.py", ".coveragerc", "makefile", "gnumakefile", "justfile", "tests.py", ".pre-commit-config.yaml",
+    # Rust: the manifest sets which tests exist and how they run, build.rs runs arbitrary code at build time,
+    # the toolchain file picks the compiler
+    "cargo.toml", "build.rs", "rust-toolchain", "rust-toolchain.toml", "clippy.toml", "tests.rs",
     # CI
     ".gitlab-ci.yml", ".gitlab-ci.yaml", "jenkinsfile", "azure-pipelines.yml", "azure-pipelines.yaml",
     ".travis.yml", "appveyor.yml", "bitbucket-pipelines.yml", "cloudbuild.yaml", "cloudbuild.yml",
@@ -53,7 +57,7 @@ _PROTECTED_NAMES = {
     "dockerfile",
 }
 _PROTECTED_PATTERNS = (
-    "pytest*.ini", ".pytest*.ini", "test_*", "*_test.py", "*.lock",
+    "pytest*.ini", ".pytest*.ini", "test_*", "*_test.py", "*_test.rs", "*.lock",
     "requirements*.txt", "constraints*.txt", "requirements*.in", "constraints*.in",
     "*requirements*.txt", "*constraints*.txt",
     "dockerfile*", "*.dockerfile", "docker-compose*.yml", "docker-compose*.yaml", "compose*.yml", "compose*.yaml",
@@ -66,7 +70,7 @@ _PROTECTED_PATTERNS = (
 _FIXTURE_DIRS = {"fixtures", "fixture", "specimens", "specimen", "testdata", "test_data", "golden", "snapshots",
                  "__snapshots__", "corpus"}
 _PROTECTED_DIRS = {"tests", "test", "testing", ".github", ".circleci", ".githooks", ".gitlab", ".buildkite",
-                   ".husky", ".azure-pipelines"} | _FIXTURE_DIRS
+                   ".husky", ".azure-pipelines", ".cargo"} | _FIXTURE_DIRS
 #: Any file or folder whose name starts with this is Ghost's own bookkeeping (ledger, baseline, archive marker).
 _PROTECTED_DIR_PATTERNS = (".ghost_*",)
 
@@ -85,8 +89,26 @@ class SeatBrokeCharter(RuntimeError):
     """A seat-filler changed the tree when its role does not allow it."""
 
 
+def iter_tree(target: Path) -> list[Path]:
+    """Every file and folder under `target`, sorted, without descending into Cargo's build output.
+
+    `target/` beside a `Cargo.toml` is compiler output, often gigabytes. Hashing it would make a Rust
+    tree look too big to put back, and it is rebuilt from source anyway. A folder called `target` that
+    has no `Cargo.toml` beside it is ordinary and is walked like any other.
+    """
+    root = Path(target)
+    found: list[Path] = []
+    for here, dirs, files in os.walk(root):
+        here_path = Path(here)
+        if (here_path / "Cargo.toml").is_file() and "target" in dirs:
+            dirs.remove("target")
+        found.extend(here_path / name for name in dirs)
+        found.extend(here_path / name for name in files)
+    return sorted(found)
+
+
 def _walk(target: Path) -> Iterator[Path]:
-    for path in sorted(Path(target).rglob("*")):
+    for path in iter_tree(target):
         if path.is_file() and not _SKIP.intersection(path.relative_to(target).parts):
             yield path
 
@@ -94,7 +116,7 @@ def _walk(target: Path) -> Iterator[Path]:
 def _env_stats(target: Path) -> Dict[str, tuple]:
     """Name, size and time of every file under an environment folder (see `_ENV_DIRS`)."""
     out: Dict[str, tuple] = {}
-    for path in Path(target).rglob("*"):
+    for path in iter_tree(target):
         parts = path.relative_to(target).parts
         if ".git" in parts or not _ENV_DIRS.intersection(parts) or not path.is_file():
             continue
@@ -149,7 +171,7 @@ class Snapshot:
         self.git = _git_guard(self.target)
 
     def _dirs(self) -> set:
-        return {str(p.relative_to(self.target)) for p in sorted(self.target.rglob("*"))
+        return {str(p.relative_to(self.target)) for p in iter_tree(self.target)
                 if p.is_dir() and not p.is_symlink() and not _SKIP.intersection(p.relative_to(self.target).parts)}
 
     def _stats(self) -> Dict[str, tuple]:
@@ -274,7 +296,8 @@ def is_test_code(rel: str) -> bool:
     """Test files and their folders only (the subset of `is_protected` that is Python test code)."""
     parts = _name_parts(rel)
     name = parts[-1] if parts else ""
-    return (name in {"conftest.py", "tests.py"} or name.startswith("test_") or name.endswith("_test.py")
+    return (name in {"conftest.py", "tests.py", "tests.rs"} or name.startswith("test_")
+            or name.endswith(("_test.py", "_test.rs"))
             or bool({"tests", "test", "testing"}.intersection(parts[:-1])))
 
 

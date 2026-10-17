@@ -35,11 +35,11 @@ from . import gitstate, held, runstate, textio
 from .authorization import Authorization, Unauthorized, is_stack_actor
 from .deletion import commented_variant, is_deletion, keep_variant, stamp_now
 from .ghost import GhostCrashed, GhostRefused, _clean as _plain, defects_from_ghost, scan as ghost_scan
-from .guard import (FORBIDDEN_DIRS, SeatBrokeCharter, Snapshot, _RESTORE_LIMIT, is_protected,
+from .guard import (FORBIDDEN_DIRS, iter_tree, SeatBrokeCharter, Snapshot, _RESTORE_LIMIT, is_protected,
                     is_test_code, violation, watch)
 from .models import Defect, FileEdit, Transformation, TransformationStatus, safe_id
 from .roles import Evidence, Facts, Finisher, Drafter, Judge, Verdict
-from .suite import DEFAULT_TIMEOUT as DEFAULT_SUITE_TIMEOUT, SuiteRun, preserved, run_suite
+from .suite import DEFAULT_TIMEOUT as DEFAULT_SUITE_TIMEOUT, CargoSuiteRun, SuiteRun, preserved, run_suite
 from .swizzle import assay_score, governor_attacks, swizzle_proofs_hold
 from cns.finding import Finding
 
@@ -174,6 +174,7 @@ class TagTeam:
         run_tests: bool = True,
         ghost_timeout: float = DEFAULT_GHOST_TIMEOUT,
         suite_timeout: float = DEFAULT_SUITE_TIMEOUT,
+        suite_runner: str = "auto",
         seat_timeout: Optional[float] = DEFAULT_SEAT_TIMEOUT,
         max_declined: int = DEFAULT_MAX_DECLINED,
         joins: Sequence[Path] = (),
@@ -198,6 +199,8 @@ class TagTeam:
         self.ghost_timeout = ghost_timeout
         #: Seconds the target's suite may take per run; longer counts as the suite not running.
         self.suite_timeout = suite_timeout
+        #: Which runner measures the suite: `auto` (Cargo for a Rust project with no Python tests), `pytest` or `cargo`.
+        self.suite_runner = suite_runner
         #: Seconds one seat call may take. None or 0 turns the limit off.
         self.seat_timeout = seat_timeout
         self.max_declined = max_declined
@@ -935,8 +938,9 @@ class TagTeam:
             return None
         source_before = _source_hash(target)
         self._suite_ran = True
-        result = run_suite(target, python, self.suite_timeout)
-        notes.append(f"Rule 7 suite {when}: {result.describe()}.")
+        result = run_suite(target, python, self.suite_timeout, self.suite_runner)
+        runner = " (cargo)" if isinstance(result, CargoSuiteRun) else ""
+        notes.append(f"Rule 7 suite{runner} {when}: {result.describe()}.")
         if _source_hash(target) != source_before:
             notes.append(f"Rule 7: {SOURCE_CHANGED_NOTE}.")
             raise SuiteChangedSource(SOURCE_CHANGED_NOTE)
@@ -980,7 +984,7 @@ def _fingerprint(target: Path) -> str:
     """A short hash of the tree, so a proposal can say which state it was written against."""
     digest = hashlib.sha256()
     skip = {".git", "__pycache__", ".pytest_cache", ".venv", "node_modules"}
-    for path in sorted(Path(target).rglob("*")):
+    for path in iter_tree(target):
         if path.is_file() and not skip.intersection(path.relative_to(target).parts):
             digest.update(str(path.relative_to(target)).encode())
             digest.update(path.read_bytes())
@@ -1057,9 +1061,11 @@ def _defects(findings) -> tuple[Defect, ...]:
 
 
 def _source_hash(target: Path) -> str:
-    """A hash of the target's non-test Python files, to notice a suite that rewrites source."""
+    """A hash of the target's non-test Python and Rust files, to notice a suite that rewrites source."""
     digest = hashlib.sha256()
-    for path in sorted(Path(target).rglob("*.py")):
+    for path in iter_tree(target):
+        if path.suffix not in (".py", ".rs"):
+            continue
         rel = path.relative_to(target)
         if FORBIDDEN_DIRS.intersection(p.lower() for p in rel.parts) or is_test_code(rel.as_posix()):
             continue
