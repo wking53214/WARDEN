@@ -6,7 +6,8 @@
 It builds a small scratch git repository, then runs the real `warden tagteam` command line twice:
 
   1. observe only (no Drafter): the instruments are consulted live, nothing can be proposed, so the run must
-     end `INCONCLUSIVE` (exit 6) with SWIZZLE's proofs held, ASSAY's key graded and Ghost scanning;
+     end `INCONCLUSIVE` (exit 6) with SWIZZLE's proofs held, ASSAY's key graded and Ghost scanning, each loaded
+     from its own checkout; a Ghost or SWIZZLE root that is not a checkout must fail closed;
   2. a governed change (a one-line README edit proposed by a stub Drafter, judged by a stub Judge, both
      defined here), with a receipt: Warden must not return a plain `ACCEPT` unless every check ran, the
      receipt must name the ASSAY specimens, and a floor above what Ghost catches must stop the stub Judge's
@@ -147,6 +148,15 @@ def main(argv: list[str]) -> int:
         versions = out["versions"]
         for name in ("ghost_tools", "swizzle", "assay"):
             check(bool(versions[name] and versions[name]["commit"]), f"versions names the {name} commit")
+            check(versions[name]["module_in_root"] is True, f"{name} was loaded from its own checkout")
+
+        # A root that is not the checkout fails closed, whatever is installed in this Python.
+        code, out, _ = run_warden(["tagteam", str(target), "--ghost-root", str(base / "no-ghost")], base, seats)
+        check(code == 6 and out["decision"] == "INCONCLUSIVE" and "ghost" in out["unmeasured"],
+              "a --ghost-root that is not a checkout is refused (INCONCLUSIVE, Ghost unmeasured)")
+        code, out, _ = run_warden(["tagteam", str(target), "--swizzle-root", str(base / "no-swizzle")], base, seats)
+        check(code == 2 and out["swizzle_sound"] is False,
+              "a --swizzle-root that is not a checkout proves nothing (swizzle_sound false, exit 2)")
 
         receipt = base / "receipt.json"
         governed = ["tagteam", str(target), *instruments, "--drafter", "smoke_seats:Drafter",

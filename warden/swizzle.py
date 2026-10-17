@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from cns.attack import AttackResult
-from .isolation import absolute, run_instrument
+from .isolation import InstrumentRootError, absolute, run_instrument
 
 
 #: The SWIZZLE contract number Warden was written against (SWIZZLE's docs/CONTRACT.md). A SWIZZLE that
@@ -38,7 +38,10 @@ def swizzle_contract_holds(
     parses SWIZZLE's text and JSON output, and it will not do that for a SWIZZLE it cannot identify.
     """
     try:
-        proc = run_instrument([python, "-m", "swizzle.cli", "--contract"], roots=[swizzle_root], timeout=60)
+        proc = run_instrument([python, "-m", "swizzle.cli", "--contract"], roots=[swizzle_root], timeout=60,
+                              packages={"swizzle": swizzle_root})
+    except InstrumentRootError as exc:
+        return False, f"SWIZZLE contract not confirmed: {exc}"
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"SWIZZLE contract not confirmed: `swizzle --contract` could not run ({type(exc).__name__})"
     if proc.returncode != 0:
@@ -80,8 +83,8 @@ def swizzle_proofs_hold(
             return False, why
     try:
         proc = run_instrument([python, "-m", "swizzle.cli", "prove"],
-                              roots=[swizzle_root], timeout=180)
-    except (OSError, subprocess.TimeoutExpired) as exc:
+                              roots=[swizzle_root], timeout=180, packages={"swizzle": swizzle_root})
+    except (OSError, subprocess.TimeoutExpired, InstrumentRootError) as exc:
         return False, f"SWIZZLE proofs could not run: {exc}"
     return _read_proofs(proc)
 
@@ -141,7 +144,10 @@ def governor_attacks(
     try:
         proc = run_instrument(
             [python, "-m", "swizzle.cli", "governor", "--warden", str(absolute(warden_root)), "--json"],
-            roots=[swizzle_root], timeout=900)
+            roots=[swizzle_root], timeout=900, packages={"swizzle": swizzle_root})
+    except InstrumentRootError as exc:
+        unmeasured(str(exc))
+        return None
     except (OSError, subprocess.TimeoutExpired) as exc:
         unmeasured(f"it could not run ({type(exc).__name__})")
         return None
@@ -248,9 +254,19 @@ def assay_score(
     if ghost_root is not None:
         cmd += ["--ghost-tools", str(absolute(ghost_root))]
     retried = False
+    packages = {"swizzle": swizzle_root, "assay_production": assay_root}
+    if ghost_root is not None:
+        packages["ghost_buster"] = ghost_root
     while True:
         try:
-            proc = run_instrument(cmd, roots=[swizzle_root], timeout=600)
+            proc = run_instrument(cmd, roots=[swizzle_root], timeout=600, packages=packages)
+        except InstrumentRootError as exc:
+            # The two answers SWIZZLE itself gives with nothing installed: a SWIZZLE that cannot start is "not
+            # run" (exit 1), and a bad --assay or --ghost-tools path leaves the key unusable (exit 2). Never
+            # graded against an installed copy in their place.
+            if exc.package == "swizzle":
+                return None, {}, f"ASSAY grading could not run: {exc}"
+            return False, {}, f"ASSAY grading failed (key unproven or specimen unscorable): {exc}"
         except (OSError, subprocess.TimeoutExpired) as exc:
             return None, {}, f"ASSAY grading could not run: {exc}"
         if proc.returncode != 2:

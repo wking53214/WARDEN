@@ -38,6 +38,7 @@ from .deletion import commented_variant, is_deletion, keep_variant, stamp_now
 from .ghost import GhostCrashed, GhostRefused, _clean as _plain, defects_from_ghost, scan as ghost_scan
 from .guard import (FORBIDDEN_DIRS, iter_tree, SeatBrokeCharter, Snapshot, _RESTORE_LIMIT, is_protected,
                     is_test_code, violation, watch)
+from .isolation import InstrumentRootError
 from .models import Defect, FileEdit, Transformation, TransformationStatus, safe_id
 from .roles import Evidence, Facts, Finisher, Drafter, Judge, Verdict
 from .suite import DEFAULT_TIMEOUT as DEFAULT_SUITE_TIMEOUT, CargoSuiteRun, SuiteRun, preserved, run_suite
@@ -923,6 +924,9 @@ class TagTeam:
             return found
         except SeatBrokeCharter:
             raise
+        except InstrumentRootError as err:
+            logger.warning("ghost root refused: %s", err)
+            raise GhostUnavailable(f"{err} Observation is UNKNOWN; nothing further was attempted.") from err
         except (GhostCrashed, GhostRefused) as err:
             logger.warning("ghost scan failed: %s", err)
             # Ghost itself died or refused to start: an instrument fault, so INCONCLUSIVE (never a finding).

@@ -217,9 +217,10 @@ def scan(
     the import path (see `isolation`).
 
     Returns the findings list (a `Findings`; with new Ghost it also carries `status`,
-    `scan_counts`, `gaps` and `declined`, see `_gaps` for the rule). Raises if the CLI cannot be run,
-    does not finish within `ghost_timeout` seconds, or prints something that is
-    not a list of findings. That is UNKNOWN-as-exception, not 'zero findings'.
+    `scan_counts`, `gaps` and `declined`, see `_gaps` for the rule). Raises `InstrumentRootError` when
+    `ghost_tools_root` is not an existing directory holding `ghost_buster` (an installed copy never stands in),
+    and raises if the CLI cannot be run, does not finish within `ghost_timeout` seconds, or prints something
+    that is not a list of findings. That is UNKNOWN-as-exception, not 'zero findings'.
     """
     target = Path(target).resolve()
     cmd = [
@@ -239,7 +240,8 @@ def scan(
     for join in joins:
         cmd += ["--join", str(Path(join).resolve())]
     try:
-        proc = run_instrument(cmd, roots=[ghost_tools_root], timeout=ghost_timeout)
+        proc = run_instrument(cmd, roots=[ghost_tools_root], timeout=ghost_timeout,
+                              packages={"ghost_buster": ghost_tools_root})
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"ghost_buster did not finish within {ghost_timeout:g} seconds") from exc
     # New Ghost: 0 clean, 1 findings, 2 did not start, 3 crashed. Old Ghost: 2 was usage.
