@@ -20,8 +20,10 @@ record says what was measured, not only the verdict.
 WHAT IT RUNS
 
 `python -m pytest -q -p no:cacheprovider` in the target's own directory, with
-the target's own configuration. It only runs after a human has authorized a
-write, because running a repository's tests runs that repository's code.
+the target's own configuration. For a Rust project (a Cargo.toml and no Python
+test setup) it runs `cargo test` instead; see `_run_cargo`. It only runs after
+a human has authorized a write, because running a repository's tests runs that
+repository's code.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ import secrets
 import signal
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from cns.suite import SuiteRun  # the shared row: cns 1.7.0
@@ -121,7 +124,45 @@ def _read_report(path: Path, nonce: str) -> Optional[dict]:
     return data
 
 
-def run_suite(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
+RUNNERS = ("auto", "pytest", "cargo")
+
+#: Files whose presence at the top of the target mean its tests are Python's.
+_PYTHON_TEST_MARKERS = ("pytest.ini", ".pytest.ini", "conftest.py", "tox.ini", "setup.cfg", "setup.py",
+                        "pyproject.toml")
+
+
+def detect_runner(target: Path) -> str:
+    """`cargo` for a Rust project with no Python test setup, otherwise `pytest`.
+
+    Python wins whenever both are present, so no project that ran before changes how it runs. A
+    mixed project that wants Cargo says so with `--suite-runner cargo`.
+    """
+    root = Path(target)
+    if not (root / "Cargo.toml").is_file():
+        return "pytest"
+    if any((root / name).is_file() for name in _PYTHON_TEST_MARKERS):
+        return "pytest"
+    for here, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in {".git", "target", ".venv", "venv", "node_modules"}]
+        if any(f.startswith("test_") and f.endswith(".py") or f.endswith("_test.py") for f in files):
+            return "pytest"
+    return "cargo"
+
+
+def run_suite(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT, runner: str = "auto") -> SuiteRun:
+    """Run the target's own tests with the right runner and return what it reported.
+
+    `runner` is `auto` (see `detect_runner`), `pytest` or `cargo`.
+    """
+    if runner not in RUNNERS:
+        return SuiteRun(ran=False, reason=f"unknown suite runner {runner!r}")
+    chosen = detect_runner(target) if runner == "auto" else runner
+    if chosen == "cargo":
+        return _run_cargo(Path(target), timeout)
+    return _run_pytest(target, python, timeout)
+
+
+def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
     """Run the target's tests and read pytest's own result, never its printed text.
 
     The result is pytest's exit status plus a count file written by a plugin Warden loads (see
@@ -185,6 +226,95 @@ def run_suite(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> Su
     return SuiteRun(ran=True, passed=report["passed"], failed=report["failed"], errors=report["errors"],
                     skipped=report["skipped"], xfailed=report["xfailed"], xpassed=report["xpassed"],
                     exit_code=code, reason=reason)
+
+
+@dataclass(frozen=True)
+class CargoSuiteRun(SuiteRun):
+    """A SuiteRun measured by Cargo. It differs only in what it calls the runner when it describes itself."""
+
+    def describe(self) -> str:
+        text = super().describe()
+        return text.replace("; pytest exited", "; cargo exited", 1)
+
+
+#: What `cargo test` is asked to do. `--locked` keeps Cargo.lock as it is, so a build never rewrites a
+#: file in the target. Unit tests, integration tests and examples are built; documentation tests are
+#: not run, because their results cannot be read in the form below.
+_CARGO_ARGS = ("test", "--locked", "--workspace", "--no-fail-fast", "--lib", "--bins", "--tests", "--examples",
+               "--", "-Z", "unstable-options", "--format", "json", "--test-threads=1")
+
+
+def _run_cargo(target: Path, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
+    """Run `cargo test` and read the test harness's own structured result, never its printed text.
+
+    The harness prints one JSON line per suite with its pass, fail and ignore counts. Those lines
+    are read, and Cargo's exit status must agree with them. A suite that prints text, or one test
+    that fails, cannot be hidden by what the tests say: a failing test makes Cargo exit non-zero
+    whatever was printed.
+
+    Two things differ from the pytest runner, and the record should be honest about both:
+
+      * The JSON output is a nightly feature of the test harness, so `RUSTC_BOOTSTRAP=1` is set for
+        this run only. Cargo has no stable machine-readable test result.
+      * There is no private file to carry a one-time code, as pytest has. A test that writes forged
+        JSON straight to the process's output could inflate the pass count. It cannot turn a failing
+        run green, because the exit status and the failure count must both be clean for that.
+
+    Build output goes to a fresh temporary folder per run, so nothing stale from an earlier run can
+    pass for a fresh build and nothing is left in the target's own tree.
+    """
+    with tempfile.TemporaryDirectory(prefix="warden-cargo-") as private:
+        env = dict(os.environ, RUSTC_BOOTSTRAP="1", CARGO_TARGET_DIR=str(Path(private) / "target"),
+                   CARGO_TERM_COLOR="never", CARGO_INCREMENTAL="0")
+        try:
+            proc = subprocess.Popen(
+                ["cargo", *_CARGO_ARGS], cwd=str(target), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL, text=True, errors="replace", env=env, start_new_session=True)
+        except OSError as exc:
+            return SuiteRun(ran=False, reason=f"cargo could not run: {exc}")
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_group(proc)
+            proc.communicate()
+            return SuiteRun(ran=False, reason=f"cargo could not run: timed out after {timeout:g} seconds")
+        except BaseException:
+            _kill_group(proc)
+            raise
+        finally:
+            _kill_group(proc)
+        code = proc.returncode
+    passed = failed = ignored = suites = 0
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != "suite" or event.get("event") not in ("ok", "failed"):
+            continue
+        counts = [event.get(k) for k in ("passed", "failed", "ignored")]
+        if not all(isinstance(n, int) and not isinstance(n, bool) and n >= 0 for n in counts):
+            continue
+        suites += 1
+        passed, failed, ignored = passed + counts[0], failed + counts[1], ignored + counts[2]
+    build_errors = stderr.count("error: could not compile")
+    last = (stderr.strip().splitlines() or [f"exit {code}"])[-1][:160]
+    if suites == 0:
+        return SuiteRun(ran=False, exit_code=code, reason=f"cargo reported no test results (exit {code}): {last}")
+    if passed + failed == 0 and code == 0:
+        return SuiteRun(ran=False, exit_code=code, reason="cargo ran no tests")
+    reason = ""
+    if code != 0 and not failed and not build_errors:
+        reason = "the exit status says the run failed but no test is reported as failing"
+    elif code != 0 and not failed:
+        reason = "a test target did not build"
+    elif code == 0 and failed:
+        reason = "the exit status says the run passed but the report lists failures"
+    return CargoSuiteRun(ran=True, passed=passed, failed=failed, errors=build_errors, skipped=ignored,
+                         exit_code=code, reason=reason)
 
 
 def preserved(before: SuiteRun, after: SuiteRun) -> Optional[str]:
