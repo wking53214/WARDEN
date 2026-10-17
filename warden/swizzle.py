@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from cns.attack import AttackResult
 from .isolation import absolute, run_instrument
 
 
@@ -113,6 +114,11 @@ def governor_attacks(
     for item in items:
         if not isinstance(item, dict) or not all(isinstance(item.get(k), str) for k in ("scenario", "severity", "status")):
             unmeasured("an item in its report was malformed", proc.stderr)
+            return None
+        try:
+            AttackResult.from_dict(item)
+        except ValueError as err:
+            unmeasured(f"an item in its report does not meet cns.attack/1 ({err})", proc.stderr)
             return None
         status = item["status"].strip().lower()
         if status not in _STATUSES:

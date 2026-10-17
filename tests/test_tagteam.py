@@ -99,7 +99,7 @@ def test_a_finisher_that_breaks_the_suite_is_put_back_and_so_is_the_unfinished_l
 def test_the_finisher_is_handed_the_measured_facts(tmp_path: Path):
     _tree(tmp_path)
     finisher = FakeFinisher()
-    findings = [{"id": "ghost-1", "severity": "minor", "status": "confirmed", "summary": "left over"}]
+    findings = [{"id": "ghost-1", "detector": "unused_code", "severity": "minor", "status": "confirmed", "summary": "left over"}]
     TagTeam(drafter=FakeDrafter(steps=()), finisher=finisher).run(
         tmp_path, findings=findings, authorization=_auth(tmp_path))
     assert finisher.facts.suite.green and finisher.facts.suite.passed == 1
