@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import warden
 from warden.cli import EXIT_CODES
 
@@ -94,3 +96,39 @@ def test_the_readme_says_who_uses_the_horsemen_interface():
 def test_no_document_uses_an_em_dash():
     for path in [ROOT / "README.md", ROOT / "CHANGELOG.md", *sorted((ROOT / "docs").glob("*.md"))]:
         assert "\u2014" not in path.read_text(encoding="utf-8"), path.name
+
+
+def test_the_two_assay_floor_defaults_are_the_documented_ones(tmp_path, monkeypatch, capsys):
+    """The command line starts from floor 3 and the library from floor 0. That difference is on purpose, so it
+    is written down (README, docs/EXIT_CODES.md) and asserted here: change either default and this fails."""
+    import inspect
+
+    from warden import cli, tagteam
+    from warden.tagteam import TagTeam
+
+    # the library: no floor unless the caller passes one
+    assert inspect.signature(TagTeam.__init__).parameters["assay_floor"].default == 0 == tagteam.LIBRARY_ASSAY_FLOOR
+    assert TagTeam().assay_floor == 0
+    # the command line: 3, in the parser and in what reaches the run
+    assert cli.CLI_ASSAY_FLOOR == 3
+    seen = {}
+
+    def spy(args, *rest, **kw):
+        seen["floor"] = args.assay_floor
+        return 0
+
+    monkeypatch.setattr(cli, "_run_team", spy)
+    assert cli.main(["tagteam", str(tmp_path)]) == 0 and seen["floor"] == 3
+    assert cli.main(["tagteam", str(tmp_path), "--assay-floor", "0"]) == 0 and seen["floor"] == 0
+    capsys.readouterr()
+    with pytest.raises(SystemExit):
+        cli.main(["tagteam", "--help"])
+    assert "(default 3)" in capsys.readouterr().out
+
+    # the documents say so
+    page = (ROOT / "docs" / "EXIT_CODES.md").read_text(encoding="utf-8")
+    assert "| `warden tagteam` | `--assay-floor 3`" in page
+    assert "| `TagTeam(...)` in the library | `assay_floor=0`" in page
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    assert "The default is 3 **on the command line only**" in readme
+    assert "`TagTeam(assay_floor=...)` in the library defaults to `0`" in readme

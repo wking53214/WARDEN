@@ -207,7 +207,11 @@ and the tree is put back. `--ghost-timeout` is unchanged.
 
 **`--assay-floor`.** A whole number. Below 0 is a usage error. `0` is the one explicit way to
 skip enforcement: the score is still recorded, the notes say the floor was not enforced, and the
-Judge is told the floor is 0. The default is 3.
+Judge is told the floor is 0. The default is 3 **on the command line only**: `TagTeam(assay_floor=...)` in the
+library defaults to `0` (`warden.tagteam.LIBRARY_ASSAY_FLOOR`), so a library caller that does not pass it
+enforces no floor, and one that wants the command line's behaviour passes `assay_floor=3`
+(`warden.cli.CLI_ASSAY_FLOOR`). Nothing about either default changed; the difference is documented in
+[docs/EXIT_CODES.md](docs/EXIT_CODES.md) and pinned by `tests/test_docs.py`.
 
 **Cut short.** SIGTERM, SIGHUP and SIGINT stop the run in an orderly way: the keep-test trap is
 removed, the whole tree is put back, valid JSON is printed (`decision` `INTERRUPTED`) and the exit

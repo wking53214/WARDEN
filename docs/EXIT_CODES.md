@@ -23,6 +23,21 @@ with the reason in the record.
 `ACCEPT_UNVERIFIED` (3) is the distinct code for a run that could not be fully measured: the changes are
 put back and held, and nothing stands until a person approves the digest with `warden keep`.
 
+## The ASSAY floor has two defaults
+
+A graded ASSAY score below the floor is a `REJECT` (exit 1) that Warden decides itself, whatever the Judge
+said. The command line and the library do not start from the same floor:
+
+| caller | default | what it means |
+|---|---|---|
+| `warden tagteam` | `--assay-floor 3` (`warden.cli.CLI_ASSAY_FLOOR`) | Ghost must catch at least 3 known failure modes, or the run is a `REJECT`. |
+| `TagTeam(...)` in the library | `assay_floor=0` (`warden.tagteam.LIBRARY_ASSAY_FLOOR`) | The floor is not enforced: a graded score is recorded, and the notes say the floor was not enforced. |
+
+A library caller who wants the command line's behaviour passes `assay_floor=3`. `0` is the one
+explicit way to skip the floor, in either place; below 0 is a usage error on the command line. A floor is
+only applied to a score that was measured: when ASSAY could not be graded, `assay` is in `unmeasured` and
+the run is never a plain `ACCEPT`, whatever the floor.
+
 ## What each code means
 
 This is the text of `warden tagteam --help`.

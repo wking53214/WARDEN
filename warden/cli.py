@@ -27,6 +27,11 @@ from .tagteam import TagTeam
 logger = warden_log.get("cli")
 
 
+#: The ASSAY floor `warden tagteam --assay-floor` uses when the option is not given. The library's
+#: `TagTeam(assay_floor=...)` defaults to `warden.tagteam.LIBRARY_ASSAY_FLOOR` (0, not enforced) instead.
+CLI_ASSAY_FLOOR = 3
+
+
 #: What `warden tagteam` exits with, by decision. Anything not listed here exits 1, never 0.
 EXIT_CODES = {
     "ACCEPT": 0,
@@ -331,9 +336,9 @@ def main(argv: list[str] | None = None) -> int:
                      help="SWIZZLE checkout; its proofs must hold before anything is ACCEPTed")
     p_t.add_argument("--assay-root", type=Path, default=None,
                      help="ASSAY checkout; with --swizzle-root, Ghost is graded against its answer key first")
-    p_t.add_argument("--assay-floor", type=_assay_floor, default=3,
+    p_t.add_argument("--assay-floor", type=_assay_floor, default=CLI_ASSAY_FLOOR,
                      help="the fewest known failure modes Ghost must catch for the Judge to accept "
-                          "(default 3). 0 is the one explicit way to skip: the score "
+                          f"(default {CLI_ASSAY_FLOOR}). 0 is the one explicit way to skip: the score "
                           "is recorded, nothing requires it, and the output says so. Below 0 is rejected")
     p_t.add_argument("--from-ghost", type=Path, default=None, help="findings JSON instead of a live scan")
     p_t.add_argument("--stack", type=Path, default=None, metavar="DIR",

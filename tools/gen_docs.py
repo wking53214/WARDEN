@@ -23,7 +23,8 @@ END = "<!-- END GENERATED MODULES -->"
 
 
 def exit_codes_md() -> str:
-    from warden.cli import EXIT_CODE_HELP, EXIT_CODES
+    from warden.cli import CLI_ASSAY_FLOOR, EXIT_CODE_HELP, EXIT_CODES
+    from warden.tagteam import LIBRARY_ASSAY_FLOOR
 
     by_code: dict[int, list[str]] = {}
     for decision, code in EXIT_CODES.items():
@@ -49,6 +50,25 @@ def exit_codes_md() -> str:
         "",
         "`ACCEPT_UNVERIFIED` (3) is the distinct code for a run that could not be fully measured: the changes are",
         "put back and held, and nothing stands until a person approves the digest with `warden keep`.",
+        "",
+        "## The ASSAY floor has two defaults",
+        "",
+        "A graded ASSAY score below the floor is a `REJECT` (exit 1) that Warden decides itself, whatever the Judge",
+        "said. The command line and the library do not start from the same floor:",
+        "",
+        "| caller | default | what it means |",
+        "|---|---|---|",
+        f"| `warden tagteam` | `--assay-floor {CLI_ASSAY_FLOOR}` (`warden.cli.CLI_ASSAY_FLOOR`) | Ghost must catch at "
+        f"least {CLI_ASSAY_FLOOR} known failure modes, or the run is a `REJECT`. |",
+        f"| `TagTeam(...)` in the library | `assay_floor={LIBRARY_ASSAY_FLOOR}` "
+        "(`warden.tagteam.LIBRARY_ASSAY_FLOOR`) | "
+        "The floor is not enforced: a graded score is recorded, and the notes say the floor was not enforced. |",
+        "",
+        f"A library caller who wants the command line's behaviour passes `assay_floor={CLI_ASSAY_FLOOR}`. "
+        "`0` is the one",
+        "explicit way to skip the floor, in either place; below 0 is a usage error on the command line. A floor is",
+        "only applied to a score that was measured: when ASSAY could not be graded, `assay` is in `unmeasured` and",
+        "the run is never a plain `ACCEPT`, whatever the floor.",
         "",
         "## What each code means",
         "",

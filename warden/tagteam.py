@@ -48,6 +48,10 @@ from cns.finding import Finding
 logger = logging.getLogger("warden.tagteam")
 
 DEFAULT_MAX_CYCLES = 10
+#: The ASSAY floor a `TagTeam` built from the library enforces when `assay_floor` is not given: none. The command
+#: line does not share this default (`warden.cli.CLI_ASSAY_FLOOR`, 3). A library caller that wants the command
+#: line's behaviour passes `assay_floor=3`.
+LIBRARY_ASSAY_FLOOR = 0
 DEFAULT_GHOST_TIMEOUT = 600
 #: The Ghost detector that reports baseline entries matching nothing in the scan.
 STALE_BASELINE_DETECTOR = "stale_baseline"
@@ -172,7 +176,7 @@ class TagTeam:
         ghost_tools_root: Optional[Path] = None,
         swizzle_root: Optional[Path] = None,
         assay_root: Optional[Path] = None,
-        assay_floor: int = 0,
+        assay_floor: int = LIBRARY_ASSAY_FLOOR,
         drafter: Optional[Drafter] = None,
         finisher: Optional[Finisher] = None,
         judge: Optional[Judge] = None,
