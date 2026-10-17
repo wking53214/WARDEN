@@ -22,17 +22,62 @@ from cns.attack import AttackResult
 from .isolation import absolute, run_instrument
 
 
+#: The SWIZZLE contract number Warden was written against (SWIZZLE's docs/CONTRACT.md). A SWIZZLE that
+#: does not answer `--contract` with exactly this number, under the name "swizzle", is not read at all.
+SUPPORTED_CONTRACT = 1
+
+
+def swizzle_contract_holds(
+    *,
+    swizzle_root: Optional[Path] = None,
+    python: str = sys.executable,
+) -> tuple[bool, str]:
+    """Whether this SWIZZLE speaks the contract Warden reads: `swizzle --contract` says name "swizzle" and
+    contract 1. Fails closed: a SWIZZLE with no such flag (older than 0.8.0), a different contract number,
+    another tool answering as SWIZZLE, or output that is not that JSON all return (False, reason). Warden
+    parses SWIZZLE's text and JSON output, and it will not do that for a SWIZZLE it cannot identify.
+    """
+    try:
+        proc = run_instrument([python, "-m", "swizzle.cli", "--contract"], roots=[swizzle_root], timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"SWIZZLE contract not confirmed: `swizzle --contract` could not run ({type(exc).__name__})"
+    if proc.returncode != 0:
+        return False, ("SWIZZLE contract not confirmed: `swizzle --contract` exited "
+                       f"{proc.returncode}; a SWIZZLE older than 0.8.0 has no contract, and Warden supports "
+                       f"contract {SUPPORTED_CONTRACT}")
+    try:
+        doc = json.loads(proc.stdout)
+    except ValueError:
+        doc = None
+    if not isinstance(doc, dict):
+        return False, "SWIZZLE contract not confirmed: `swizzle --contract` did not print a JSON object"
+    number = doc.get("contract")
+    if doc.get("name") != "swizzle" or isinstance(number, bool) or not isinstance(number, int):
+        return False, "SWIZZLE contract not confirmed: its answer is not a swizzle contract document"
+    if number != SUPPORTED_CONTRACT:
+        return False, (f"SWIZZLE contract {number} is not supported: Warden reads contract "
+                       f"{SUPPORTED_CONTRACT}")
+    return True, f"SWIZZLE contract {number} confirmed."
+
+
 def swizzle_proofs_hold(
     *,
     swizzle_root: Optional[Path] = None,
     python: str = sys.executable,
+    check_contract: bool = True,
 ) -> tuple[bool, str]:
     """Whether SWIZZLE's own instrument is sound: every planted defect proven.
 
     This is a calibration check on the adversary, not a judgement of the
     target. An adversary whose proofs fail cannot back an ACCEPT. Returns
     (holds, one-line summary); a run that cannot start is (False, reason).
+    The SWIZZLE contract is confirmed first (`check_contract`, on by default), and a SWIZZLE whose contract
+    is absent or different is (False, reason) without `prove` being run.
     """
+    if check_contract:
+        confirmed, why = swizzle_contract_holds(swizzle_root=swizzle_root, python=python)
+        if not confirmed:
+            return False, why
     try:
         proc = run_instrument([python, "-m", "swizzle.cli", "prove"],
                               roots=[swizzle_root], timeout=180)

@@ -30,11 +30,11 @@ jobs:
       - uses: actions/checkout@v4
       # ASSAY is public; checking it out makes test_live_assay_registry
       # run here instead of skipping, so a broken ASSAY link turns CI red.
-      # Pinned to ASSAY 4da3919f19a04cb59b45c6d07d55229c923e5126.
+      # Pinned to ASSAY 5aafbf3b45c68d0948574ff4364cde614890839e (0.11.0).
       - uses: actions/checkout@v4
         with:
           repository: wking53214/ASSAY
-          ref: 4da3919f19a04cb59b45c6d07d55229c923e5126
+          ref: 5aafbf3b45c68d0948574ff4364cde614890839e
           path: _assay
       - uses: actions/setup-python@v5
         with:
@@ -51,23 +51,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # ASSAY 4da3919f19a04cb59b45c6d07d55229c923e5126
+      # ASSAY 5aafbf3b45c68d0948574ff4364cde614890839e (0.11.0)
       - uses: actions/checkout@v4
         with:
           repository: wking53214/ASSAY
-          ref: 4da3919f19a04cb59b45c6d07d55229c923e5126
+          ref: 5aafbf3b45c68d0948574ff4364cde614890839e
           path: _circuit/ASSAY
-      # ghost_tools dd1b8039a9b32fe41cfa2823228ab3a03c394d0f
+      # ghost_tools 288cefa7608cace8be0f91cabcc305930466d84b (1.10.0)
       - uses: actions/checkout@v4
         with:
           repository: wking53214/ghost_tools
-          ref: dd1b8039a9b32fe41cfa2823228ab3a03c394d0f
+          ref: 288cefa7608cace8be0f91cabcc305930466d84b
           path: _circuit/ghost_tools
-      # SWIZZLE 9eb2a10ed1a05f3d15041c68f08b9c1c8c8c036f
+      # SWIZZLE 04b72b197b703e7e64be62039509c1c9e6c3bf20 (0.8.0)
       - uses: actions/checkout@v4
         with:
           repository: wking53214/SWIZZLE
-          ref: 9eb2a10ed1a05f3d15041c68f08b9c1c8c8c036f
+          ref: 04b72b197b703e7e64be62039509c1c9e6c3bf20
           path: _circuit/SWIZZLE
       - uses: actions/setup-python@v5
         with:
@@ -76,9 +76,9 @@ jobs:
       - run: >
           python tools/circuit_smoke.py
           --ghost-tools _circuit/ghost_tools --swizzle _circuit/SWIZZLE --assay _circuit/ASSAY
-          --expect ghost_tools=dd1b8039a9b32fe41cfa2823228ab3a03c394d0f
-          --expect swizzle=9eb2a10ed1a05f3d15041c68f08b9c1c8c8c036f
-          --expect assay=4da3919f19a04cb59b45c6d07d55229c923e5126
+          --expect ghost_tools=288cefa7608cace8be0f91cabcc305930466d84b
+          --expect swizzle=04b72b197b703e7e64be62039509c1c9e6c3bf20
+          --expect assay=5aafbf3b45c68d0948574ff4364cde614890839e
 
   # Newest ASSAY, on purpose, to learn early when ASSAY's published answer key drifts from what Warden reads.
   # Never blocks a merge.

@@ -39,9 +39,9 @@ dev = ["pytest>=8", "ruff==0.17.1", "mypy==2.4.0"]
 # warden.ghost runs Ghost Tools when it is installed, and still reads Ghost
 # JSON produced elsewhere when it is not. Declared here so the dependency is
 # visible and pinned: `pip install "warden[ghost]"`. Pinned to a full commit SHA
-# (ghost_tools main as of 0.13.0, after V1.9.1); to bump it, change the SHA and
+# (ghost_tools 1.10.0, branch claude/horsemen-production-status-5wsndb); to bump it, change the SHA and
 # note the tag or version it corresponds to here.
-ghost = ["ghost-tools @ git+https://github.com/wking53214/ghost_tools@dd1b8039a9b32fe41cfa2823228ab3a03c394d0f"]
+ghost = ["ghost-tools @ git+https://github.com/wking53214/ghost_tools@288cefa7608cace8be0f91cabcc305930466d84b"]
 
 [tool.setuptools]
 packages = ["warden", "warden.horsemen"]

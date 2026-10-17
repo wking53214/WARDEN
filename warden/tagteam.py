@@ -41,7 +41,7 @@ from .guard import (FORBIDDEN_DIRS, iter_tree, SeatBrokeCharter, Snapshot, _REST
 from .models import Defect, FileEdit, Transformation, TransformationStatus, safe_id
 from .roles import Evidence, Facts, Finisher, Drafter, Judge, Verdict
 from .suite import DEFAULT_TIMEOUT as DEFAULT_SUITE_TIMEOUT, CargoSuiteRun, SuiteRun, preserved, run_suite
-from .swizzle import assay_score, governor_attacks, swizzle_proofs_hold
+from .swizzle import assay_score, governor_attacks, swizzle_contract_holds, swizzle_proofs_hold
 from cns.finding import Finding
 
 logger = logging.getLogger("warden.tagteam")
@@ -235,6 +235,10 @@ class TagTeam:
         self._down: set[str] = set()
         self._suite_ran = False
         self._sound: Optional[bool] = None
+        #: False when SWIZZLE's `--contract` was absent or not the contract Warden reads (its output is then
+        #: not used at all); None until checked.
+        self._contract_ok: Optional[bool] = None
+        self._why_unsound = ""
         #: True when SWIZZLE's proofs held but its attacks on the governor did not run or could not be read.
         self._attacks_missing = False
         self._attacks: Optional[tuple] = None
@@ -615,7 +619,8 @@ class TagTeam:
             return stop("REFUSED", "Human authorization missing. Proposal stands. No write.",
                         cycles=[cycle])
         if sound is False:
-            return stop("INCONCLUSIVE", "SWIZZLE's own proofs do not hold; nothing was written.")
+            return stop("INCONCLUSIVE", (self._why_unsound or "SWIZZLE's own proofs do not hold")
+                        + "; nothing was written.")
         if self._assay_state is False:
             return stop("INCONCLUSIVE", "ASSAY's answer key could not be used to grade Ghost; nothing was written.")
 
@@ -852,7 +857,14 @@ class TagTeam:
         if self.swizzle_root is None:
             notes.append("SWIZZLE proofs NOT RUN: no swizzle_root. The adversary is uncalibrated.")
             return None
-        sound, summary = swizzle_proofs_hold(swizzle_root=self.swizzle_root, python=python)
+        self._contract_ok, summary = swizzle_contract_holds(swizzle_root=self.swizzle_root, python=python)
+        self._why_unsound = ""
+        if self._contract_ok:
+            sound, summary = swizzle_proofs_hold(swizzle_root=self.swizzle_root, python=python,
+                                                 check_contract=False)
+        else:
+            sound = False  # an unidentified SWIZZLE is unmeasured: nothing it prints is believed
+            self._why_unsound = summary
         logger.info("swizzle proofs: %s (%s)", "hold" if sound else "do NOT hold", summary)
         notes.append(summary)
         self._sound = sound
@@ -865,6 +877,9 @@ class TagTeam:
             return
         if self.swizzle_root is None:
             notes.append("ASSAY grading NOT RUN: it is done by SWIZZLE and no swizzle_root was given.")
+            return
+        if self._contract_ok is False:
+            notes.append("ASSAY grading NOT RUN: it is done by SWIZZLE, whose contract was not confirmed.")
             return
         self._assay_state, self._assay, summary = assay_score(
             swizzle_root=self.swizzle_root, assay_root=self.assay_root,

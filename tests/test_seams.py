@@ -265,7 +265,12 @@ def test_a_forged_authorization_with_a_forbidden_actor_is_refused_anywhere(tmp_p
 
 # -- Ghost unreachable is UNKNOWN, said plainly -------------------------------
 
-def test_an_unreachable_ghost_is_inconclusive_not_a_crash_and_not_zero_findings(tmp_path):
+def test_an_unreachable_ghost_is_inconclusive_not_a_crash_and_not_zero_findings(tmp_path, monkeypatch):
+    import warden.ghost as ghost
+    real = ghost.run_instrument
+    # Ghost must really be unreachable whether or not `warden[ghost]` put it in site-packages: `-S` leaves
+    # site-packages off the interpreter's path, so only the (nonexistent) root could have supplied it.
+    monkeypatch.setattr(ghost, "run_instrument", lambda cmd, **kw: real([cmd[0], "-S", *cmd[1:]], **kw))
     _repo(tmp_path)
     result = TagTeam(drafter=FakeDrafter(), ghost_tools_root=Path("/nonexistent")).run(
         tmp_path, findings=None, authorization=_auth(tmp_path))

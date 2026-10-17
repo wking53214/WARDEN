@@ -16,7 +16,9 @@ A decision the code does not know exits 1, never 0.
 | 7 | `INTERRUPTED` |
 
 One decision exits with a code that is not its own: when SWIZZLE's own proofs do not hold, the JSON says
-`INCONCLUSIVE` (which is otherwise exit 6) and `swizzle_sound` false, and the exit is 2.
+`INCONCLUSIVE` (which is otherwise exit 6) and `swizzle_sound` false, and the exit is 2. A SWIZZLE that
+does not declare contract 1 (`swizzle --contract` absent, or a different number) is treated the same way,
+with the reason in the record.
 
 `ACCEPT_UNVERIFIED` (3) is the distinct code for a run that could not be fully measured: the changes are
 put back and held, and nothing stands until a person approves the digest with `warden keep`.

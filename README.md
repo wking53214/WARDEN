@@ -23,7 +23,7 @@ cycles until the Drafter has nothing left to propose (or a cycle limit is
 hit). Only then does Warden hand the code, once, to the Finisher, together with the facts it measured (the suite result and what Ghost still reports), so the Finisher counts and detects nothing itself. The Finisher beautifies the code and writes the final README. The Finisher's change goes through
 the same gate.
 
-Version `0.13.0` (seat contract `"1"`, unchanged). The history of every release is in
+Version `0.13.1` (seat contract `"1"`, unchanged). The history of every release is in
 [CHANGELOG.md](CHANGELOG.md); the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the exit codes in
 [docs/EXIT_CODES.md](docs/EXIT_CODES.md). The seats (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by
 tag; each seat's `pyproject.toml` names the commit. Releases after `v0.11.4` are not tagged yet.
@@ -107,7 +107,7 @@ ACCEPT / FINISH_REJECTED
 | `warden.textio` | byte-faithful reads and writes: line endings kept, non-UTF-8 files refused |
 | `warden.cli` | `tagteam`, `keep` and `audit`; the exit-code table, the seat handshake, and `--stack` |
 
-Ghost Tools is optional. Install it with Warden as `warden[ghost]`, which pins it to a commit; without it, `warden.ghost` still reads Ghost JSON produced elsewhere, and treats a missing Ghost as unknown, never as clean.
+Ghost Tools is optional. Install it with Warden as `warden[ghost]`, which pins it to a commit (ghost_tools 1.10.0); without it, `warden.ghost` still reads Ghost JSON produced elsewhere, and treats a missing Ghost as unknown, never as clean.
 
 ## KEY INTERNAL CONCEPTS
 
@@ -172,7 +172,7 @@ will not take the value is noted; the grant checks every proposal either way. Th
 contract stays `"1"`.
 Without `--authorize` it proposes and writes nothing (`REFUSED`). `--reason` must
 not be empty. If SWIZZLE's own proofs do not hold, nothing is written and the
-command exits 2. The target path must be an existing folder, or the command exits 2
+command exits 2. The same happens when the SWIZZLE cannot be identified (see "Reading the instruments"). The target path must be an existing folder, or the command exits 2
 at once. Without
 `--swizzle-root` the notes say `SWIZZLE proofs NOT RUN`, the adversary is
 uncalibrated, `swizzle` is in `unmeasured`, and the run ends `ACCEPT_UNVERIFIED` (exit 3) under either scope, whatever
@@ -315,6 +315,13 @@ same detector, summary and line whose path is the old path with folders in front
 when that match is unique both ways. Anything else becomes a new row, as before.
 
 **Reading the instruments.** Warden believes an instrument only when it is exact.
+Before it runs anything else in SWIZZLE it asks `python -m swizzle.cli --contract` (SWIZZLE's
+`docs/CONTRACT.md`) and requires a JSON object with `name` `"swizzle"` and `contract` `1`. A SWIZZLE with no
+such flag (older than 0.8.0), another contract number, another tool answering as SWIZZLE, or output that is not
+that JSON is not read at all: the proof gate is unmeasured (`swizzle_sound` false, `swizzle` in `unmeasured`),
+ASSAY grading, which runs through SWIZZLE, is not run, nothing is written, the run is `INCONCLUSIVE` (exit 2) and
+the reason is in `reason` and `notes`. It is never a plain `ACCEPT`. A matching SWIZZLE changes nothing in the
+record (`tests/test_swizzle_contract.py`).
 `swizzle prove` must exit 0 and print a whole line `N of M proofs hold` with N equal
 to M and M at least 1 (`0 of 0` and `1 of 12` are not sound). SWIZZLE's governor
 report counts only if it exited 0 or 1 and every item has text for `scenario`,
@@ -441,6 +448,7 @@ its markers is Warden's; every other section survives reruns untouched.
 - The finisher runs once, only after convergence. A finishing change that breaks the suite is put back, and because the run is then not accepted, the loop's edits are put back too. **VERIFIED** by `tests/test_tagteam.py` and `tests/test_closing_false_accepts.py`.
 - With `--assay-root` and `--swizzle-root`, Ghost is graded against ASSAY's answer key before anything is written; an unproven key or an ungradable specimen stops the run, and the score goes to the Judge with the floor (default 3; on 2026-10-14 Ghost catches 5 of the 7 known failure modes, after ASSAY gained two and Ghost three detectors). **VERIFIED** by `tests/test_assay_in_loop.py`, and live on CNS (Ghost caught 3 of the 5 modes known then).
 - SWIZZLE's proofs failing stops the write; not configuring SWIZZLE is said out loud. **VERIFIED** by `tests/test_tagteam.py`.
+- A SWIZZLE that does not declare contract 1 (`swizzle --contract`) is unmeasured and stops the write. **VERIFIED** by `tests/test_swizzle_contract.py`.
 - A change that breaks the target's suite is put back; a red or empty suite means nothing is written. **VERIFIED** by `tests/test_rule7_suite_gate.py`.
 - The same gate runs `cargo test` for a Rust project, reads the harness's JSON, and needs Cargo's exit status to agree; Cargo's `target/` folder is never hashed or snapshotted, and Rust manifests, `build.rs` and test files are protected. **VERIFIED** by `tests/test_rule7_cargo_runner.py`.
 - Audit IDs survive reruns, are never reused, and a Fixed defect that returns is reopened under its own ID. **VERIFIED** by `tests/test_audit.py`.

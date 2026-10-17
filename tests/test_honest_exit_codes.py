@@ -398,11 +398,15 @@ def _proc(out="", err="", code=0):
 ])
 def test_swizzle_prove_is_not_believed_unless_it_is_exactly_n_of_n(monkeypatch, out, code):
     monkeypatch.setattr(swizzle, "run_instrument", lambda *a, **kw: _proc(out, "", code))
-    assert swizzle.swizzle_proofs_hold(swizzle_root=Path("/x"))[0] is False
+    assert swizzle.swizzle_proofs_hold(swizzle_root=Path("/x"), check_contract=False)[0] is False
 
 
 def test_swizzle_prove_is_believed_when_it_is_exactly_n_of_n(monkeypatch):
-    monkeypatch.setattr(swizzle, "run_instrument", lambda *a, **kw: _proc("\n12 of 12 proofs hold.\n", "", 0))
+    def fake(cmd, **kw):
+        if "--contract" in cmd:
+            return _proc('{"name": "swizzle", "contract": 1}')
+        return _proc("\n12 of 12 proofs hold.\n", "", 0)
+    monkeypatch.setattr(swizzle, "run_instrument", fake)
     assert swizzle.swizzle_proofs_hold(swizzle_root=Path("/x")) == (True, "SWIZZLE proofs: 12 of 12 proofs hold.")
 
 

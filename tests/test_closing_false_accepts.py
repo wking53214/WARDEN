@@ -60,6 +60,11 @@ def measured(monkeypatch):
 
 LIE = "print('12 of 12 proofs hold.')\n"
 
+#: What a SWIZZLE that declares the contract Warden reads prints for `--contract` (SWIZZLE's docs/CONTRACT.md).
+DECLARES_CONTRACT = ("import sys\nif sys.argv[1:] == ['--contract']:\n"
+                     "    print('{\"name\": \"swizzle\", \"contract\": 1, \"swizzle_version\": \"0.8.0\"}')\n"
+                     "    raise SystemExit(0)\n")
+
 
 def test_a_fake_swizzle_inside_the_target_is_not_believed(tmp_path, monkeypatch):
     target = tmp_path / "target"
@@ -81,7 +86,7 @@ def test_the_real_root_is_used_even_when_the_target_has_a_fake(tmp_path, monkeyp
     target.mkdir()
     root.mkdir()
     _fake_package(target, "swizzle", LIE)
-    _fake_package(root, "swizzle", "print('3 of 3 proofs hold.')\n")
+    _fake_package(root, "swizzle", DECLARES_CONTRACT + "print('3 of 3 proofs hold.')\n")
     monkeypatch.chdir(target)
     holds, summary = swizzle_proofs_hold(swizzle_root=Path("../root"))  # a relative root is made absolute
     assert holds is True and "3 of 3" in summary and "12 of 12" not in summary
@@ -102,10 +107,17 @@ def test_a_fake_ghost_inside_the_target_is_not_used_by_the_scan(tmp_path, monkey
     target, root = tmp_path / "target", tmp_path / "root"
     target.mkdir()
     root.mkdir()
-    _fake_package(target, "ghost_buster", "print('[]')\n")
+    _fake_package(target, "ghost_buster", "print('[{\"id\": \"FAKE-IN-TARGET\"}]')\n")
     monkeypatch.chdir(target)
-    with pytest.raises(RuntimeError):
-        scan(target, ghost_tools_root=root)
+    # With Ghost Tools not installed the empty root has no ghost_buster and the scan fails (it must not fall
+    # back to the target's). With it installed (`warden[ghost]`) the real Ghost answers. Either way the
+    # fake in the target is never the one that ran.
+    try:
+        found = scan(target, ghost_tools_root=root)
+    except RuntimeError:
+        return
+    assert "FAKE-IN-TARGET" not in [f.get("id") for f in found]
+    assert not getattr(found, "version_unverified", False)
 
 
 def test_a_run_started_inside_the_target_does_not_trust_a_fake_swizzle(tmp_path, monkeypatch):

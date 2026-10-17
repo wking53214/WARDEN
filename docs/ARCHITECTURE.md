@@ -11,7 +11,8 @@ without becoming any of them.
 1. The command line (`warden.cli`) loads the seats (`--drafter`, `--finisher`, `--judge`), checking each
    declares `requires_contract = "1"`, and refuses any seat or instrument that lives inside the target.
 2. `warden.tagteam.TagTeam.run` takes the per-target lock, refuses a dirty git folder, and snapshots the tree.
-3. SWIZZLE's own proofs are checked, ASSAY's answer key grades Ghost, and Ghost observes (`warden.swizzle`,
+3. SWIZZLE must first declare the contract Warden reads (`swizzle --contract`, contract 1; absent or different
+   means unmeasured and nothing is written). Then SWIZZLE's own proofs are checked, ASSAY's answer key grades Ghost, and Ghost observes (`warden.swizzle`,
    `warden.ghost`, always in an empty directory via `warden.isolation`).
 4. The loop: the Drafter proposes one change as data; `warden.guard` and the human grant decide whether it
    may touch anything; `warden.suite` runs the target's own suite before and after (Rule 7); Ghost

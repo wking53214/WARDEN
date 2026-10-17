@@ -4,8 +4,34 @@ All notable changes to Warden. The format follows [Keep a Changelog](https://kee
 and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single source of truth.
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
-Tags exist for v0.8.0 to v0.11.4 only. `0.11.5`, `0.12.0` and `0.13.0` are not tagged: tagging is the owner's
+Tags exist for v0.8.0 to v0.11.4 only. `0.11.5`, `0.12.0`, `0.13.0` and `0.13.1` are not tagged: tagging is the owner's
 decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
+
+## [0.13.1] - 2026-10-17
+
+### Behavior changes
+
+- **Warden checks SWIZZLE's contract before it reads anything SWIZZLE prints.** It runs
+  `python -m swizzle.cli --contract` and requires a JSON object with `name` `"swizzle"` and `contract` `1`
+  (SWIZZLE 0.8.0, `docs/CONTRACT.md`). Fails closed: a SWIZZLE with no such flag (older than 0.8.0), a different
+  contract number, another tool answering as SWIZZLE, output that is not that JSON, or a check that cannot run
+  makes the SWIZZLE proof gate unmeasured: `swizzle_sound` is false, `swizzle` is in `unmeasured`, ASSAY
+  grading (which runs through SWIZZLE) is not run, nothing is written, and the run ends `INCONCLUSIVE`
+  (exit 2, like any SWIZZLE whose proofs do not hold), never a plain `ACCEPT`. The reason is in `reason` and
+  `notes`. A matching SWIZZLE changes nothing.
+- New API: `warden.swizzle.swizzle_contract_holds`, and `swizzle_proofs_hold(..., check_contract=True)`, which
+  returns `(False, reason)` for an unconfirmed SWIZZLE without running `prove`. The seat contract
+  (`warden.CONTRACT`) is still `"1"` and no other public name changed.
+
+### Changed
+
+- The `ghost` extra is pinned to ghost_tools 1.10.0 (`288cefa7608cace8be0f91cabcc305930466d84b`).
+- CI sibling pins moved to the fixed siblings so the `circuit` job tests what is shipped: ghost_tools 1.10.0
+  (`288cefa7608cace8be0f91cabcc305930466d84b`), SWIZZLE 0.8.0 (`04b72b197b703e7e64be62039509c1c9e6c3bf20`)
+  and ASSAY 0.11.0 (`5aafbf3b45c68d0948574ff4364cde614890839e`). The non-blocking `assay-latest` job is kept.
+- `tests/test_closing_false_accepts.py::test_a_fake_ghost_inside_the_target_is_not_used_by_the_scan` no longer
+  assumes Ghost Tools is absent: with `warden[ghost]` installed the real Ghost answers, and the test checks the
+  fake in the target is not the one that ran, in either environment.
 
 ## [0.13.0] - 2026-10-17
 
