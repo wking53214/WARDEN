@@ -23,7 +23,10 @@ cycles until the Drafter has nothing left to propose (or a cycle limit is
 hit). Only then does Warden hand the code, once, to the Finisher, together with the facts it measured (the suite result and what Ghost still reports), so the Finisher counts and detects nothing itself. The Finisher beautifies the code and writes the final README. The Finisher's change goes through
 the same gate.
 
-Version `0.12.0` (seat contract `"1"`, unchanged). `0.12.0` enforces the two CNS rows where Warden reads the records it takes from other repositories. A Ghost finding that does not meet `cns.finding` stops the observation as unreadable, so the run is INCONCLUSIVE; a SWIZZLE attack result that does not meet `cns.attack` leaves the attacks not measured. Both use the paths that already exist for unreadable records. Clean records are read as before. The dependency is pinned to CNS `v1.8.0`. `0.11.5` checked the two records against their rows and noted any drift without refusing it. `0.11.4` `0.11.4` imports the shared rows (defects, seat rows, epistemic vocabulary, suite result) from CNS 1.7.0 instead of carrying its own copies; the classes and their behavior are unchanged, and the dependency is pinned to the `v1.7.0` tag. `0.11.4` also prints every run record as `cns.run/1`. `0.11.3` adds `--cns DIR`, which reads the stack manifest from CNS, the hub, instead of a file. `0.11.2` adds `--join PATH` and `--stack-manifest FILE` (see LIFECYCLE), and refuses an instrument checkout inside the target and any edit under a fixture folder. `0.11.1` hardens the tree watch around each seat: source files are compared byte for byte (a same-size write with the old time put back no longer passes), and `.venv`, `venv`, `env` and `node_modules` are watched by name, size and time (see KNOWN DEFECTS). `0.11.0` adds `--stack DIR`, which seats the whole circuit from one folder of checkouts, and the scope handoff: a Drafter or Finisher that keeps a `scope` attribute is told the grant's scope before it is asked. The seats (Judge, Drafter, Burnish) pin the tag `v0.11.0` and run unchanged on this version. `v0.10.1` carries the held-result rule (an `ACCEPT_UNVERIFIED` run is put back and saved as a held result) and the instrument isolation fix (instruments see only their named roots). The earlier tag `v0.9.0` (`882b2be`) predates both.
+Version `0.13.0` (seat contract `"1"`, unchanged). The history of every release is in
+[CHANGELOG.md](CHANGELOG.md); the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the exit codes in
+[docs/EXIT_CODES.md](docs/EXIT_CODES.md). The seats (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by
+tag; each seat's `pyproject.toml` names the commit. Releases after `v0.11.4` are not tagged yet.
 
 ## WHY IT EXISTS
 
@@ -42,7 +45,7 @@ opinion about what better code looks like. The opinion moved to Burnish on
 - Rule 9, the audit file: `WARDEN_AUDIT.md`, Ghost findings under IDs that never change meaning
 - The SWIZZLE proof gate: SWIZZLE's own proofs must hold before anything is accepted
 - The tag-team loop that *calls* Ghost Tools, SWIZZLE, a Drafter and a Finisher without becoming any of them
-- The Four Horsemen interface: typed handoffs between ASSAY, Ghost Tools, SWIZZLE and Warden
+- The Four Horsemen interface: typed handoffs between ASSAY, Ghost Tools, SWIZZLE and Warden. Warden's own command line drives it through `--receipt`; ASSAY's tests import `AssayAdapter`; Judge, Drafter and Burnish do not import it (they import `warden.models`, `warden.roles` and `warden.authorization` only)
 
 ## WHAT IT DOES NOT OWN
 
@@ -95,7 +98,8 @@ ACCEPT / FINISH_REJECTED
 | `warden.swizzle` | the SWIZZLE proof gate |
 | `warden.ghost` | JSON consumer plus an optional read-only scan |
 | `warden.registry` | campaign record; the current one is `docs/REGISTRY.json` |
-| `warden.horsemen` | typed handoffs, scoped grants, receipts. `AssayAdapter` reads ASSAY's `assay_production/registry.json` and raises `AssayUnavailable` rather than return no specimens |
+| `warden.horsemen` | typed handoffs, scoped grants, receipts. `AssayAdapter` reads ASSAY's `assay_production/registry.json` and raises `AssayUnavailable` rather than return no specimens. `warden.horsemen.circuit.receipt_for_run` is what `--receipt` calls; a result an adapter does not know is `INCONCLUSIVE`, never a pass |
+| `warden.log` | stdlib logging to stderr only: `-v` / `-vv` or `WARDEN_LOG_LEVEL` |
 | `warden.isolation` | runs SWIZZLE, Ghost and ASSAY grading in an empty directory, with absolute roots |
 | `warden.runstate` | the per-target lock and the keep-test journal, kept in the repository's own git folder (or a private per-user state folder), never in TMPDIR and never through a symlink; also the SIGTERM/SIGHUP/SIGINT handlers, the seat timer and the fd 1 redirect |
 | `warden.gitstate` | read-only questions to git: is the folder dirty, where is its git folder, what is `core.hooksPath` |
@@ -103,7 +107,7 @@ ACCEPT / FINISH_REJECTED
 | `warden.textio` | byte-faithful reads and writes: line endings kept, non-UTF-8 files refused |
 | `warden.cli` | `tagteam`, `keep` and `audit`; the exit-code table, the seat handshake, and `--stack` |
 
-Ghost Tools is optional. Install it with Warden as `warden[ghost]`, which pins it to a release tag; without it, `warden.ghost` still reads Ghost JSON produced elsewhere, and treats a missing Ghost as unknown, never as clean.
+Ghost Tools is optional. Install it with Warden as `warden[ghost]`, which pins it to a commit; without it, `warden.ghost` still reads Ghost JSON produced elsewhere, and treats a missing Ghost as unknown, never as clean.
 
 ## KEY INTERNAL CONCEPTS
 
@@ -170,8 +174,9 @@ Without `--authorize` it proposes and writes nothing (`REFUSED`). `--reason` mus
 not be empty. If SWIZZLE's own proofs do not hold, nothing is written and the
 command exits 2. The target path must be an existing folder, or the command exits 2
 at once. Without
-`--swizzle-root` the notes say `SWIZZLE proofs NOT RUN` and the adversary is
-uncalibrated.
+`--swizzle-root` the notes say `SWIZZLE proofs NOT RUN`, the adversary is
+uncalibrated, `swizzle` is in `unmeasured`, and the run ends `ACCEPT_UNVERIFIED` (exit 3) under either scope, whatever
+the Judge says (`tests/test_judge_independence.py`).
 
 **A dirty folder is refused.** If the target is inside a git work tree and
 `git status --porcelain` shows anything (modified, staged or untracked files; ignored files do
@@ -183,6 +188,17 @@ the start snapshot is the only way back. `warden audit` prints and exits as befo
 `warden audit --authorize`, which writes `WARDEN_AUDIT.md` into the target, follows the same rule
 (it exits 2 and writes nothing in a dirty folder), except that `WARDEN_AUDIT.md` itself being new
 or modified does not count, so the audit can be rerun to update its table.
+
+**Logs and receipts.** Stdout is always one JSON document. Logs go to stderr only, through the standard
+library's `logging` (`warden.log`): `-v` logs one line per seam (each seat loaded, each instrument run and how it
+exited, the suite, the verdict and the exit code, the put-back), `-vv` adds commands and detail, and
+`WARDEN_LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, ...) sets the level by name. The default is `WARNING`, which is quiet
+on a normal run. `--receipt FILE` writes the horsemen production receipt for an authorized run: the ASSAY specimens
+read by `AssayAdapter`, the Ghost findings before and after, SWIZZLE's proofs and attacks as a verdict handoff, the
+proposal, the scoped human grant, the files changed and the final verdict. An answer key that cannot be read, a
+check that was not measured and changes that were put back are recorded as `UNKNOWN`, and a receipt never claims CNS
+readiness. The file must lie outside the target; a receipt that cannot be written is said on stderr and does not change
+the run's exit code. A run with no human grant has no receipt.
 
 **Time limits.** `--suite-timeout` (default 900 seconds) limits one run of the target's suite;
 `--seat-timeout` (default 3600) limits each seat call (Drafter, Finisher, Judge, and building a
@@ -207,13 +223,13 @@ applied change created are removed again when it is put back. A tree over 200 MB
 snapshotted, so Warden will not write to it at all: the run ends `INCONCLUSIVE` with a reason,
 before any seat is asked.
 
-Exit codes for `tagteam` (the same table is in `warden tagteam --help`). Only 0 means
+Exit codes for `tagteam` (the same table is in `warden tagteam --help` and, generated from the code, in [docs/EXIT_CODES.md](docs/EXIT_CODES.md)). Only 0 means
 the change was accepted, so a CI job can trust the exit code alone:
 
 | code | decision | what it means |
 |---|---|---|
 | 0 | `ACCEPT` | Measured, judged, and standing. The only success. |
-| 1 | `REJECT`, `JUDGE_REJECTED`, `NOT_CONVERGED`, `FINISH_REJECTED` | The change was rejected, did not settle, or the finishing step was refused. Anything else that is a rejection also exits 1. |
+| 1 | `REJECT`, `JUDGE_REJECTED`, `NOT_CONVERGED`, `FINISH_REJECTED` | The change was rejected, did not settle, or the finishing step was refused. Anything else that is a rejection also exits 1. A graded ASSAY score below `--assay-floor` is a `REJECT` decided by Warden itself, whatever the Judge said. |
 | 2 | (usage error, seat not loaded, or SWIZZLE unsound) | The command was used wrongly (an unknown or bad option prints JSON with `decision` `USAGE_ERROR`; so does a target folder that does not exist), a seat could not be loaded, asked for a different contract, or was found inside the folder being governed, or SWIZZLE's own proofs do not hold (the JSON says `INCONCLUSIVE` and `swizzle_sound` false; the exit is still 2, whether the proofs failed before the loop or after it). Nothing was written. |
 | 3 | `ACCEPT_UNVERIFIED` | A check did not run or the Judge could not decide. The changes were put back and saved as a held result under a digest (`held_digest` in the JSON). Nothing stands until a person approves that exact digest with `warden keep`. |
 | 4 | `ERROR` | A seat failed, timed out, or gave the wrong kind of answer. A Judge that raises, returns a type that is not a verdict, or returns a label other than `ACCEPT`, `REJECT` or `INSUFFICIENT` is this. Nothing was approved and the tree was put back. |
@@ -241,12 +257,19 @@ held result and are not run again; approving a held result accepts that they are
 unmeasured. Nothing here is a substitute for those checks.
 
 
-A decision the code does not know exits 1, never 0. The JSON always has `decision`,
+A decision the code does not know exits 1, never 0.
+
+**What a Judge cannot waive.** Warden enforces three things itself, whatever the Judge says. The unmeasured list: a
+Judge's ACCEPT on a run with `unmeasured` entries other than `judge` is `ACCEPT_UNVERIFIED`. The ASSAY floor: a graded
+score below `--assay-floor` is `REJECT`, with or without a Judge. A readable verdict: a Judge that returns anything but
+a verdict (a string, `None`), a label other than `ACCEPT`, `REJECT` or `INSUFFICIENT`, or a verdict whose reasons are
+empty or blank ends the run as `ERROR` and the tree is put back. Stub Judges that rubber-stamp each of these are in
+`tests/test_judge_independence.py`. The JSON always has `decision`,
 `notes`, `unmeasured`, and `reason`. `reason` is one plain sentence saying why a run
 that was not a plain `ACCEPT` ended as it did. `unmeasured` is true: it names `ghost`
 when Ghost was down, timed out, scanned nothing or gave unreadable output, `suite`
 when the suite was never run, `swizzle` when its proofs failed or could not run, and
-`assay` when the answer key was unusable, and `ghost_partial` when Ghost ran but
+`assay` when the answer key was unusable, `swizzle_attacks` when SWIZZLE's proofs held but its attacks on the governor could not be run or read, and `ghost_partial` when Ghost ran but
 could not look at everything it should have (see below). `warden audit` exits 2 when it cannot read
 the findings or will not write; it never prints a clean-looking report for a Ghost
 that looked at nothing.
@@ -323,10 +346,11 @@ A Judge verdict with no judge name or with extra fields is reported in the notes
 and does not crash the run.
 
 **Releasing, and the seats' pins.** Judge, Drafter and Burnish each depend on one exact Warden
-commit or `vX.Y.Z` tag, not on `main`. After a Warden change that seats must pick up (any change
-to `CONTRACT`, or to what a seat is checked for), tag the merge commit `vX.Y.Z` (matching
-`version` in `pyproject.toml`), then open one pull request per seat that moves its pin
-(see "Bumping the Warden pin" in each seat's README). Merge seats before the Warden change that
+full commit SHA, not on `main`. After a Warden change that seats must pick up (any change
+to `CONTRACT`, or to what a seat is checked for), the owner tags the merge commit `vX.Y.Z` (matching
+the version in `warden/__init__.py`, which `pyproject.toml` reads), then one pull request per seat moves its pin
+(see "Bumping the Warden pin" in each seat's README). Tagging is the owner's decision; this repository's newest tag is
+`v0.11.4`. Merge seats before the Warden change that
 needs them: this release makes a seat without `requires_contract` refuse to load, so the seats
 must declare it first.
 
@@ -443,11 +467,19 @@ its markers is Warden's; every other section survives reruns untouched.
 - `--stack` fills every root and seat from one folder, case-blind, refuses a folder with a part missing or two parts differing only by case, lets an explicit option win, and still refuses a seat inside the target; the grant's scope reaches a Drafter and a Finisher before their first call, a seat without a `scope` attribute is left alone, and one that will not take it is noted. **VERIFIED** by `tests/test_stack_option.py`.
 - The whole circuit, all seven live (Ghost, SWIZZLE, ASSAY, Drafter, Judge, Burnish, through `--stack`), on a scratch repository with a dead function, a trailing-whitespace line and a stale README count: under a `code` grant the function was commented out, the whitespace tidied and the README given its generated facts section, 3 changes, Judge ACCEPT, exit 0; under a `documentation` grant the Drafter skipped the dead code with a reason and only the README changed, again ACCEPT, exit 0. Run by hand on 2026-10-14 and recorded in `docs/REGISTRY.json`; not a recorded test.
 
-535 tests are collected in this tree. Run 2026-10-14 on CPython 3.13 with all seven circuit checkouts on `PYTHONPATH` and `ASSAY_ROOT` set (so the live ASSAY read runs and nothing is skipped): 535 pass.
+- A Judge cannot waive the ASSAY floor, the unmeasured list or the verdict's shape: a rubber-stamp ACCEPT under `--assay-floor 7` is `REJECT`, an ACCEPT with no reasons or a string return is `ERROR`, and no `--swizzle-root` is `ACCEPT_UNVERIFIED` under either scope. **VERIFIED** by `tests/test_judge_independence.py`.
+- SWIZZLE attacks on the governor that could not run hold the run (`swizzle_attacks` in `unmeasured`). **VERIFIED** by `tests/test_judge_independence.py`.
+- The horsemen interface, end to end: a governed run becomes a production receipt through `AssayAdapter`, `GhostToolsAdapter`, `SwizzleAdapter` and `HorsemenWorkflow`, from the library and from `warden tagteam --receipt`; an unreadable answer key is `UNKNOWN`, never "no specimens"; a SWIZZLE result Warden does not know is not a pass. **VERIFIED** by `tests/test_horsemen_circuit.py` and `tests/test_assay_link.py`.
+- The target's suite is not handed the caller's credentials (a cheap hardening, not a sandbox). **VERIFIED** by `tests/test_suite_env.py`.
+- Logging goes to stderr only and never into the JSON. **VERIFIED** by `tests/test_logging.py`.
+- The version, the pins, the CI gates, the exit-code page and the module table agree with the code. **VERIFIED** by `tests/test_docs.py`.
+- The live circuit: the real command line against ASSAY, ghost_tools and SWIZZLE at pinned commits, in CI as the `circuit` job (`tools/circuit_smoke.py`), and by hand with `python tools/circuit_smoke.py --ghost-tools DIR --swizzle DIR --assay DIR`.
+
+Count the tests with `pytest --collect-only -q`; this README states no count, because a number written here goes stale. The suite is run with `ASSAY_ROOT` set to an ASSAY checkout, so the live ASSAY read runs and nothing is skipped on that account; a few tests skip when something they exercise is absent: the real Judge seat (`judge.seat`) and `cargo`.
 
 Instruments (SWIZZLE, Ghost Tools, ASSAY grading) run with only their named roots on `PYTHONPATH`. An inherited `PYTHONPATH` is dropped (`warden/isolation.py`, `instrument_env`), so a missing root fails instead of silently using a sibling checkout found on the caller's path. Before this change, five tests failed under the full environment (four in `tests/test_closing_false_accepts.py`, one in `tests/test_seams.py`); they pass now.
 
-Most tests start real `pytest` or `warden` processes, so the full run takes minutes (about 16 minutes on the 2026-10-12 run; `pytest -n 2` helps). CI runs the suite on 3.11 and 3.12.
+Most tests start real `pytest` or `warden` processes, so the full run takes minutes (about 16 minutes on the 2026-10-12 run; `pytest -n 2` helps). CI runs the suite on Python 3.11, 3.12 and 3.13, plus `ruff check .`, `mypy` and the circuit smoke test.
 
 ## WHAT IS BEAUTIFUL
 
@@ -469,8 +501,14 @@ and Burnish, Ghost, SWIZZLE and ASSAY, through `--stack`. Both are recorded in
 
 ## WHAT IS NOT PROVEN
 
-- The loop run live on a real repository. Every recorded run so far used a scratch repository built for it.
-- Live `ghost-buster` + `warden tagteam` + `swizzle prove` on a corpus repository.
+- The loop run live on a repository that is not one of the circuit's own. `docs/REGISTRY.json` records runs on
+  scratch repositories built for the run (rows 1 to 4) and two rows (5 and 6) in which `warden tagteam --stack`
+  governed fresh clones of the circuit's own seven repositories (ASSAY, JUDGE, BURNISH, DRAFTER, SWIZZLE, WARDEN,
+  ghost_tools). Row 5 (2026-10-14) reports `ACCEPT` for Judge, Burnish and Drafter and held `ACCEPT_UNVERIFIED` results
+  for the other four; row 6 (2026-10-15, with every sibling joined for Ghost) reports `ACCEPT` for Warden and held
+  results for SWIZZLE, ASSAY and ghost_tools. The clones' changes were not kept. These are self-reported rows written by
+  the people who ran them, not independent records; they predate 0.13.0; and none is a third-party repository.
+- Live `ghost-buster` + `warden tagteam` + `swizzle prove` on a corpus repository outside the circuit.
 
 ## WHAT DOES NOT WORK
 
@@ -488,7 +526,7 @@ and Burnish, Ghost, SWIZZLE and ASSAY, through `--stack`. Both are recorded in
 
 ## KNOWN DEFECTS
 
-- The target's own test suite still runs inside the target, with the target's code. A hostile suite can do anything the user can do. Warden now notices a suite that rewrites source files, but not one that does something else.
+- The target's own test suite still runs inside the target, with the target's code. A hostile suite can do anything the user can do. Warden notices a suite that rewrites source files, but not one that does something else. Two cheap hardenings exist and are all there is: the suite has a time limit (`--suite-timeout`, killed as a process group) and is not handed credential-named environment variables (`warden.isolation.suite_env`; `PYTHONPATH` and the rest of the environment are kept, and `WARDEN_SUITE_ENV_PASSTHROUGH=1` turns it off). It is not sandboxed: it can still read files, use the network, and read credentials from disk.
 - The tree watch around each seat compares bytes for source files and name, size and time for files under `.venv`, `venv`, `env` and `node_modules` (a write there is reported and the run is `REJECT`ed; a file added there is removed, but a file changed there is not put back, since those folders are watched, not copied). Pure caches (`__pycache__`, `.ruff_cache`, `.pytest_cache`, `.mypy_cache`) are not watched at all. The suite never reads `__pycache__` from the tree (it runs with `PYTHONPYCACHEPREFIX` elsewhere), so a planted `.pyc` cannot change a suite result, but a later run by the user could pick one up.
 - An instrument checkout (`--ghost-root`, `--swizzle-root`, `--assay-root`, or one found by `--stack`) that is the governed folder or lies inside it is refused before anything runs, like a seat loaded from inside the target: the run could edit the thing measuring it. Govern a clone of an instrument's repository, with the instruments seated from another checkout.
 - The seats run inside Warden's own process. The watch catches a seat that writes the tree; it cannot catch a seat that changes Warden's own objects in memory. A seat is trusted code that is checked, not sandboxed.
@@ -501,21 +539,19 @@ and Burnish, Ghost, SWIZZLE and ASSAY, through `--stack`. Both are recorded in
 - Files that are not valid UTF-8 are reported at most by Ghost and are never edited.
 - Ghost Tools does not flag a documented test count larger than the suite;
   `doc_test_count_drift` only reports a count the suite has grown past.
-- With no `--swizzle-root`, a change can still be ACCEPTed. The notes say the
-  adversary is uncalibrated; the decision itself does not change.
 - Ghost reports how many files it scanned only on its error stream (`scanning N file(s)`), not in its JSON. Warden reads that line; if Ghost stops printing it, Warden cannot tell a clean tree from an empty one, except when Ghost itself exits with an error.
 - A run whose only proposals were all declined as out of scope ends as `ACCEPT` or `ACCEPT_UNVERIFIED` with nothing changed; the cycle records say `DECLINED`, and the Judge sees them.
 - `versions` reports what it can read from files (`.git`, `pyproject.toml`, installed package metadata). A checkout that is not a git folder, or a seat installed without version information, shows `null` for that field. SWIZZLE finds Ghost and ASSAY itself (`$GHOST_TOOLS`, `$ASSAY`, a sibling folder) when Warden does not pass them; in that case Warden does not know which copy SWIZZLE used.
-- SWIZZLE attacks that did not run are noted but do not by themselves turn an `ACCEPT` into `ACCEPT_UNVERIFIED`; the Judge receives them as not measured.
+- A seat is loaded by putting its folder on `sys.path` inside Warden's own process (`warden.cli`), after `''` and the target are taken off it. That is the in-process seat limit above, not a sandbox.
 
 ## ARCHITECTURAL DEBT
 
-- No typed Ghost Tools adapter beyond JSON.
+- Warden's Ghost consumer reads Ghost's JSON over a process boundary; `GhostToolsAdapter` (horsemen) is a typed reader used by the receipt, not the loop's live path.
 - SWIZZLE's `TargetAdapter` for Warden lives in the SWIZZLE repository, not here.
 
 ## WHAT REMAINS OUTSTANDING
 
-A live run on a real repository, recorded in the registry. The scratch-repository run with every seat filled is recorded there already.
+A live run on a repository outside the circuit, recorded in the registry. The scratch-repository runs and the circuit's own seven repositories are recorded there already (see WHAT IS NOT PROVEN).
 
 ## CLAIMS VS REALITY
 

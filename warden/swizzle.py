@@ -90,7 +90,8 @@ def governor_attacks(
     def unmeasured(why: str, stderr: str = "") -> None:
         if note is not None:
             tail = _tail(stderr)
-            note.append(f"SWIZZLE attacks on the governor not measured: {why}" + (f" (SWIZZLE said: {tail})" if tail else ""))
+            note.append(f"SWIZZLE attacks on the governor not measured: {why}"
+                        + (f" (SWIZZLE said: {tail})" if tail else ""))
 
     try:
         proc = run_instrument(
@@ -112,7 +113,8 @@ def governor_attacks(
         return None
     out = []
     for item in items:
-        if not isinstance(item, dict) or not all(isinstance(item.get(k), str) for k in ("scenario", "severity", "status")):
+        if not isinstance(item, dict) or not all(isinstance(item.get(k), str)
+                                                 for k in ("scenario", "severity", "status")):
             unmeasured("an item in its report was malformed", proc.stderr)
             return None
         try:

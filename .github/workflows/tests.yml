@@ -2,24 +2,99 @@ name: tests
 on:
   push:
   pull_request:
+
+# Sibling repositories are checked out by full commit SHA, never by branch, so a push to a sibling cannot
+# turn this repository red or green. To bump one: change the `ref:` SHA below (and the matching value in
+# the `circuit` job), read the sibling's CHANGELOG for what moved, and run the whole job set once.
+# The `assay-latest` job is the one place a sibling is taken at its newest commit, on purpose, and it
+# cannot fail the build.
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: mypy
+
   pytest:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       # ASSAY is public; checking it out makes test_live_assay_registry
       # run here instead of skipping, so a broken ASSAY link turns CI red.
+      # Pinned to ASSAY 4da3919f19a04cb59b45c6d07d55229c923e5126.
       - uses: actions/checkout@v4
         with:
           repository: wking53214/ASSAY
+          ref: 4da3919f19a04cb59b45c6d07d55229c923e5126
           path: _assay
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: pytest -q
+        env:
+          ASSAY_ROOT: ${{ github.workspace }}/_assay
+
+  # The horsemen circuit smoke test: the real `warden tagteam` command line against live ASSAY, ghost_tools
+  # and SWIZZLE checkouts at pinned commits (tools/circuit_smoke.py). Integration is exercised here, not
+  # only on a developer's machine.
+  circuit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ASSAY 4da3919f19a04cb59b45c6d07d55229c923e5126
+      - uses: actions/checkout@v4
+        with:
+          repository: wking53214/ASSAY
+          ref: 4da3919f19a04cb59b45c6d07d55229c923e5126
+          path: _circuit/ASSAY
+      # ghost_tools dd1b8039a9b32fe41cfa2823228ab3a03c394d0f
+      - uses: actions/checkout@v4
+        with:
+          repository: wking53214/ghost_tools
+          ref: dd1b8039a9b32fe41cfa2823228ab3a03c394d0f
+          path: _circuit/ghost_tools
+      # SWIZZLE 9eb2a10ed1a05f3d15041c68f08b9c1c8c8c036f
+      - uses: actions/checkout@v4
+        with:
+          repository: wking53214/SWIZZLE
+          ref: 9eb2a10ed1a05f3d15041c68f08b9c1c8c8c036f
+          path: _circuit/SWIZZLE
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: >
+          python tools/circuit_smoke.py
+          --ghost-tools _circuit/ghost_tools --swizzle _circuit/SWIZZLE --assay _circuit/ASSAY
+          --expect ghost_tools=dd1b8039a9b32fe41cfa2823228ab3a03c394d0f
+          --expect swizzle=9eb2a10ed1a05f3d15041c68f08b9c1c8c8c036f
+          --expect assay=4da3919f19a04cb59b45c6d07d55229c923e5126
+
+  # Newest ASSAY, on purpose, to learn early when ASSAY's published answer key drifts from what Warden reads.
+  # Never blocks a merge.
+  assay-latest:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: wking53214/ASSAY
+          path: _assay
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pytest -q tests/test_assay_link.py
         env:
           ASSAY_ROOT: ${{ github.workspace }}/_assay

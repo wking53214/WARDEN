@@ -70,7 +70,8 @@ class Findings(tuple):
     gaps: tuple[str, ...] = ()
     #: Names of checks left out because the caller asked (or they are opt-in). Information, not a gap.
     declined: tuple[str, ...] = ()
-    #: New Ghost only: what it said about its baseline file, {"path": str|None, "suppressed": int}. None: it said nothing.
+    #: New Ghost only: what it said about its baseline file, {"path": str|None, "suppressed": int}.
+    #: None: it said nothing.
     baseline: Optional[dict] = None
     #: True for an old Ghost that prints a bare list. It cannot say what it did not look at, so a clean
     #: result from it is accepted as before, but its version could not be verified.

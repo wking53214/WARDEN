@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "warden"
-version = "0.12.0"
+dynamic = ["version"]
 description = "The discipline of change: a human grant, a green suite before and after, SWIZZLE proofs, and a durable record. What counts as better lives in Burnish."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,11 +19,13 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Quality Assurance",
     ]
 # The shared rows (seat contract, defects, run record) come from the hub.
-# Pinned to a release tag; bump it on purpose.
-dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v1.8.0"]
+# Pinned to a full commit SHA (the v1.8.0 release); to bump it, change the SHA and the tag in the comment
+# together and run the full suite.
+dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@5252ceebe98185f7be81212d988055ccf9884568"]  # v1.8.0
 
 [project.urls]
 Homepage = "https://github.com/wking53214/Warden"
@@ -32,18 +34,40 @@ Homepage = "https://github.com/wking53214/Warden"
 warden = "warden.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+# ruff and mypy are pinned so the CI gates mean the same thing on every run; bump them on purpose.
+dev = ["pytest>=8", "ruff==0.17.1", "mypy==2.4.0"]
 # warden.ghost runs Ghost Tools when it is installed, and still reads Ghost
 # JSON produced elsewhere when it is not. Declared here so the dependency is
-# visible and pinned: `pip install "warden[ghost]"`. Pinned to a release tag;
-# bump it on purpose.
-ghost = ["ghost-tools @ git+https://github.com/wking53214/ghost_tools@V1.9.1"]
+# visible and pinned: `pip install "warden[ghost]"`. Pinned to a full commit SHA
+# (ghost_tools main as of 0.13.0, after V1.9.1); to bump it, change the SHA and
+# note the tag or version it corresponds to here.
+ghost = ["ghost-tools @ git+https://github.com/wking53214/ghost_tools@dd1b8039a9b32fe41cfa2823228ab3a03c394d0f"]
 
 [tool.setuptools]
 packages = ["warden", "warden.horsemen"]
+
+[tool.setuptools.dynamic]
+# One source of truth: warden/__init__.py. `warden --version` and the wheel both read it.
+version = { attr = "warden.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.ruff]
-line-length = 100
+line-length = 120
+extend-exclude = ["build"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures embed long source strings and long assertions; the package itself is held to 120.
+"tests/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["warden"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true

@@ -22,13 +22,6 @@ class HandoffKind(str, Enum):
     VERDICT = "VERDICT"
     RECEIPT = "RECEIPT"
 
-def try_import_shared_contracts():
-    try:
-        import horsemen_contracts
-        return horsemen_contracts
-    except ImportError:
-        return None
-
 @dataclass
 class Handoff:
     handoff_id: str

@@ -29,7 +29,7 @@ import ast
 import textwrap
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from . import textio
 from .guard import is_prose
@@ -59,7 +59,10 @@ def is_deletion(target: Path, proposal: Transformation) -> bool:
     return False
 
 
-def _defs(tree: ast.AST) -> Dict[str, ast.AST]:
+_Def = Union[ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef]
+
+
+def _defs(tree: ast.AST) -> Dict[str, _Def]:
     return {n.name: n for n in getattr(tree, "body", [])
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
 
@@ -68,7 +71,7 @@ def _boobytrap(text: str, only: Optional[set]) -> Optional[str]:
     """`text` with a raise as the first statement of each top-level def or class
     named in `only` (all of them when None). None when there is nothing to trap."""
     lines = text.splitlines()
-    indent = next((l[:len(l) - len(l.lstrip())] for l in lines if l.strip()), "")
+    indent = next((ln[:len(ln) - len(ln.lstrip())] for ln in lines if ln.strip()), "")
     body = textwrap.dedent(text)
     try:
         nodes = _defs(ast.parse(body))
@@ -84,7 +87,7 @@ def _boobytrap(text: str, only: Optional[set]) -> Optional[str]:
     out = body.splitlines()
     for at, col in sorted(marks, reverse=True):
         out.insert(at, " " * col + f"raise RuntimeError({_MESSAGE!r})")
-    return "\n".join((indent + l) if l.strip() else l for l in out) + ("\n" if text.endswith("\n") else "")
+    return "\n".join((indent + ln) if ln.strip() else ln for ln in out) + ("\n" if text.endswith("\n") else "")
 
 
 def removal_plan(target: Path, proposal: Transformation) -> Optional[Dict[str, Optional[set]]]:
@@ -166,12 +169,14 @@ def commented_variant(target: Path, proposal: Transformation, stamp: str) -> Opt
             spans = []
             for node in tree.body:
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in names:
+                    if node.end_lineno is None:
+                        return None
                     start = min([node.lineno] + [d.lineno for d in node.decorator_list]) - 1
                     spans.append((start, node.end_lineno))
             if not spans:
                 return None
         for start, end in sorted(spans, reverse=True):
-            block = [("# " + l) if l.strip() else "#" for l in lines[start:end]]
+            block = [("# " + ln) if ln.strip() else "#" for ln in lines[start:end]]
             lines[start:end] = [header] + block
         out[rel] = "\n".join(lines) + "\n"
     return out

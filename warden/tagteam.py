@@ -25,11 +25,12 @@ This module refuses three self-certifying loops:
 from __future__ import annotations
 
 import hashlib
+import logging
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 from . import gitstate, held, runstate, textio
 from .authorization import Authorization, Unauthorized, is_stack_actor
@@ -42,6 +43,8 @@ from .roles import Evidence, Facts, Finisher, Drafter, Judge, Verdict
 from .suite import DEFAULT_TIMEOUT as DEFAULT_SUITE_TIMEOUT, CargoSuiteRun, SuiteRun, preserved, run_suite
 from .swizzle import assay_score, governor_attacks, swizzle_proofs_hold
 from cns.finding import Finding
+
+logger = logging.getLogger("warden.tagteam")
 
 DEFAULT_MAX_CYCLES = 10
 DEFAULT_GHOST_TIMEOUT = 600
@@ -143,6 +146,8 @@ class TagTeamResult:
     #: Ghost's baseline report at the first and the last scan ({"before": {path, suppressed}|None,
     #: "after": ...}), the same values handed to the Judge. None: no scan reported one.
     ghost_baseline: Optional[dict] = None
+    #: SWIZZLE's attacks on the governor, as it reported them (scenario, severity, status), when they ran.
+    attacks: Optional[tuple] = None
 
     @property
     def suite_before(self) -> Optional[SuiteRun]:
@@ -215,6 +220,10 @@ class TagTeam:
     ) -> TagTeamResult:
         target = Path(target).resolve()
         _refuse_self_authorization(target, authorization)
+        logger.info("run: target=%s scope=%s authorized=%s judge=%s", target,
+                    authorization.scope if authorization is not None else "-",
+                    authorization.actor if authorization is not None and authorization.granted else "no",
+                    "yes" if self.judge is not None else "no")
         self._notes: list[str] = []
         self._trail: list[Cycle] = []
         self._assay_state: Optional[bool] = None
@@ -226,6 +235,9 @@ class TagTeam:
         self._down: set[str] = set()
         self._suite_ran = False
         self._sound: Optional[bool] = None
+        #: True when SWIZZLE's proofs held but its attacks on the governor did not run or could not be read.
+        self._attacks_missing = False
+        self._attacks: Optional[tuple] = None
         #: Real gaps in the latest Ghost scan (see ghost._gaps), and the summary shown in the output.
         self._ghost_gaps: list[str] = []
         self._stale_baseline: int = 0
@@ -269,11 +281,13 @@ class TagTeam:
             state = gitstate.tree_state(target)
             if state.kind == "dirty":
                 return self._early(target, "REFUSED",
-                                   f"The folder has uncommitted changes ({state.detail}). Commit or stash them, then run "
+                                   f"The folder has uncommitted changes ({state.detail}). "
+                                   "Commit or stash them, then run "
                                    "again, so everything Warden changes can be told apart from your own work. "
                                    "Nothing was written.")
             if state.kind == "unknown":
-                return self._early(target, "REFUSED", f"{state.detail[0].upper()}{state.detail[1:]}. Nothing was written.")
+                return self._early(target, "REFUSED",
+                                   f"{state.detail[0].upper()}{state.detail[1:]}. Nothing was written.")
             if state.kind == "not_git":
                 self._notes.append(NOT_GIT_NOTE)
             # Always taken: a run that does not end accepted puts the tree back to this.
@@ -364,7 +378,7 @@ class TagTeam:
             return replace(result, decision="ERROR", reason=message, held_digest=None,
                            put_back=not left,
                            notes=result.notes + ("WARNING: " + message,))
-        extra = (LOOP_PUT_BACK_NOTE,) if result.decision == "FINISH_REJECTED" and any(
+        extra: Tuple[str, ...] = (LOOP_PUT_BACK_NOTE,) if result.decision == "FINISH_REJECTED" and any(
             c.applied for c in result.cycles) else ()
         if result.decision == "ACCEPT_UNVERIFIED":
             if digest is None:
@@ -373,6 +387,8 @@ class TagTeam:
             else:
                 extra = extra + (f"The unverified result was saved as {digest}. It stands only if a person "
                                  "grants keep_unverified for that digest on this folder.",)
+        logger.info("put back: %d path(s) restored after %s%s", len(changed), result.decision,
+                    f"; held as {digest}" if digest else "")
         return replace(result, notes=result.notes + (PUT_BACK_NOTE,) + extra, put_back=True,
                        held_digest=digest)
 
@@ -401,6 +417,10 @@ class TagTeam:
             attacks = governor_attacks(swizzle_root=self.swizzle_root,
                                        warden_root=Path(warden.__file__).resolve().parents[1], python=python,
                                        note=notes)
+            self._attacks_missing = attacks is None
+            self._attacks = None if attacks is None else tuple(attacks)
+            logger.info("swizzle attacks on the governor: %s",
+                        "NOT RUN" if attacks is None else f"{len(attacks)} run")
             notes.append("SWIZZLE attacks on the governor: "
                          + ("not run" if attacks is None else
                             f"{sum(a['status'] == 'violated' for a in attacks)} of {len(attacks)} violated"))
@@ -420,6 +440,7 @@ class TagTeam:
             ghost_baseline_before=self._baseline_first, ghost_baseline_after=self._baseline_last)
         # A Judge that raises, or answers with the wrong kind of thing or an unknown label, has approved
         # nothing: the error ends the run (ERROR) and the whole tree is put back like any other non-accept.
+        assert self.judge is not None  # _judge is only reached when a Judge is seated
         with self._seated("The Judge"), watch(target, "The Judge"):
             verdict = self.judge.decide(evidence)
         reasons = getattr(verdict, "reasons", None)
@@ -430,7 +451,11 @@ class TagTeam:
             raise WrongAnswer("The Judge", verdict, "a verdict", message=(
                 f"The Judge returned the decision {_plain(verdict.decision, 30)!r}, which is not one of "
                 f"{', '.join(_JUDGE_LABELS)}"))
-        said = "; ".join(reasons) or "no reasons given"
+        if not any(r.strip() for r in reasons):
+            # A verdict nobody can read the grounds of cannot be recorded or trusted, whatever its label.
+            raise WrongAnswer("The Judge", verdict, "a verdict", message=(
+                f"The Judge's {verdict.decision} gave no reasons, so it cannot be recorded or trusted"))
+        said = "; ".join(r for r in reasons if r.strip())
         self._check_verdict_shape(verdict, notes)
         if verdict.decision == "ACCEPT":
             return "ACCEPT", verdict, f" Judge: ACCEPT ({said})."
@@ -450,10 +475,12 @@ class TagTeam:
         except TypeError:
             extra = []
         if extra:
-            notes.append(f"The Judge's verdict carried fields Warden does not know ({', '.join(map(str, extra))[:80]}); "
+            notes.append("The Judge's verdict carried fields Warden does not know "
+                         f"({', '.join(map(str, extra))[:80]}); "
                          "they were ignored.")
 
-    def _unmeasured(self, sound: Optional[bool], never_ran: bool = False, suite_pending: bool = False) -> tuple[str, ...]:
+    def _unmeasured(self, sound: Optional[bool], never_ran: bool = False,
+                    suite_pending: bool = False) -> tuple[str, ...]:
         """Checks that did not run or could not be read. The suite counts as unmeasured whenever it was
         never run (a run that changed nothing, or ended early, measured nothing about behavior), unless
         `suite_pending`: the Judge's final-state run is about to measure it. `never_ran` is kept for callers
@@ -468,11 +495,28 @@ class TagTeam:
             out.append("ghost_partial")
         if self.swizzle_root is None or sound is False or "swizzle" in self._down:
             out.append("swizzle")
+        elif self._attacks_missing:
+            # The proofs held but the attacks on the governor were not measured: the run is not whole.
+            out.append("swizzle_attacks")
         if not self.run_tests or "suite" in self._down or (not self._suite_ran and not suite_pending):
             out.append("suite")
         if self.judge is None:
             out.append("judge")
         return tuple(out)
+
+    def _below_floor(self) -> str:
+        """A plain sentence when the ASSAY score does not meet the floor, else "". Only a floor above 0 is
+        enforced; a score that was not measured is already in `unmeasured` and holds the run."""
+        if self.assay_floor <= 0 or self._assay_state is not True:
+            return ""
+        caught, modes = self._assay.get("caught"), self._assay.get("failure_modes")
+        if not isinstance(caught, int) or isinstance(caught, bool):
+            return (f"ASSAY floor of {self.assay_floor} cannot be applied: the score has no whole number of "
+                    "failure modes caught. Warden enforces the floor itself.")
+        if caught < self.assay_floor:
+            return (f"ASSAY floor not met: Ghost caught {caught} of {modes} known failure modes, below the floor "
+                    f"of {self.assay_floor}. Warden enforces the floor itself, whatever the Judge says.")
+        return ""
 
     def _tell_scope(self, target: Path, authorization: Optional[Authorization], notes: list[str]) -> None:
         """Tell the maker seats the grant's scope, when they keep one (see `warden.roles`).
@@ -490,7 +534,8 @@ class TagTeam:
         scope = authorization.scope if authorization is not None else ""
         if not scope:
             return
-        for who, seat in (("Drafter", self.drafter), ("Finisher", self.finisher)):
+        seats: Tuple[Tuple[str, Any], ...] = (("Drafter", self.drafter), ("Finisher", self.finisher))
+        for who, seat in seats:
             if seat is None:
                 continue
             with self._seated(f"The {who}"), watch(target, f"The {who}"):
@@ -533,8 +578,18 @@ class TagTeam:
                     target, authorization, tuple(cycles), first, reobserved, finish, finished,
                     sound, declined, python, notes, start)
                 why += extra
+                # The Judge's run can itself reveal a gap (SWIZZLE's attacks not run), so look again.
+                missing = self._unmeasured(shown_sound)
+                gaps = tuple(m for m in missing if m != "judge")
                 # Whatever the Judge says, a run with gaps in its measurements is not a plain ACCEPT.
                 decision = "ACCEPT_UNVERIFIED" if judged == "ACCEPT" and gaps else judged
+            if candidate and decision in {"ACCEPT", "ACCEPT_UNVERIFIED"}:
+                # The floor is Warden's to enforce: a Judge's ACCEPT (or none at all) does not waive it.
+                below = self._below_floor()
+                if below:
+                    decision = "REJECT"
+                    why += f" {below}"
+            logger.info("verdict: %s (unmeasured: %s) %s", decision, ", ".join(missing) or "none", why.strip()[:200])
             return TagTeamResult(
                 target=str(target), baseline=base0, observed=first,
                 reobserved=reobserved, cycles=tuple(cycles),
@@ -542,7 +597,8 @@ class TagTeam:
                 finish=finish, finished=finished, swizzle_sound=shown_sound, unmeasured=missing,
                 verdict=verdict, reason=why.strip(), ghost_scan=self._ghost_info,
                 ghost_baseline=self._baseline_report(),
-                drafter_skipped=self._skipped_lines(), informational=tuple(self._info))
+                drafter_skipped=self._skipped_lines(), informational=tuple(self._info),
+                attacks=self._attacks)
 
         if self._stale_baseline:
             return stop("REJECT", f"Ghost's baseline has {self._stale_baseline} entr"
@@ -664,7 +720,8 @@ class TagTeam:
                 continue
             observed = after
         if not converged:
-            return stop("NOT_CONVERGED", f"No convergence in {self.max_cycles} cycles.", cycles)  # attempts, not declined proposals
+            # attempts count, not declined proposals
+            return stop("NOT_CONVERGED", f"No convergence in {self.max_cycles} cycles.", cycles)
         if declined:
             notes.append(f"Removals declined and left in place: {sorted(map(safe_id, declined))}.")
         if observed and self.ghost_tools_root is not None:
@@ -710,7 +767,10 @@ class TagTeam:
 
     def _keep_test(self, target: Path, proposal: Transformation, observed: tuple[Defect, ...],
                    python: str, notes: list[str], number: int) -> tuple[str, str]:
-        """"What happens if I don't delete it?" Returns ("", "") on pass, else (scope, reason): "systemic" stops the loop, "candidate" declines this one removal.
+        """"What happens if I don't delete it?"
+
+        Returns ("", "") on pass, else (scope, reason): "systemic" stops the loop, "candidate" declines
+        this one removal.
 
         The code is kept but made to raise when it runs. If the suite then fails,
         something executes it. Files are restored whatever happens.
@@ -735,7 +795,7 @@ class TagTeam:
         if before.skipped or before.xfailed:
             return "candidate", (f"some tests did not run ({before.skipped} skipped, {before.xfailed} "
                                  "xfailed), so the suite cannot prove this code is unused")
-        snapshot: Dict[str, Optional[bytes]] = {rel: (target / rel).read_bytes() for rel in variant}
+        snapshot: Dict[str, bytes] = {rel: (target / rel).read_bytes() for rel in variant}
         # Saved outside the target first, so a kill during the trap cannot leave the trap behind.
         trapped_bytes = {rel: textio.encode_like(target / rel, text) for rel, text in variant.items()}
         runstate.write_journal(target, snapshot, trapped_bytes)
@@ -779,7 +839,7 @@ class TagTeam:
         except SuiteChangedSource:
             _restore(target, snapshot)
             raise
-        broken = preserved(before, after) if before is not None else None
+        broken = preserved(before, after) if before is not None and after is not None else None
         if broken is not None:
             _restore(target, snapshot)
             proposal.status = TransformationStatus.REJECTED
@@ -793,6 +853,7 @@ class TagTeam:
             notes.append("SWIZZLE proofs NOT RUN: no swizzle_root. The adversary is uncalibrated.")
             return None
         sound, summary = swizzle_proofs_hold(swizzle_root=self.swizzle_root, python=python)
+        logger.info("swizzle proofs: %s (%s)", "hold" if sound else "do NOT hold", summary)
         notes.append(summary)
         self._sound = sound
         return sound
@@ -808,6 +869,8 @@ class TagTeam:
         self._assay_state, self._assay, summary = assay_score(
             swizzle_root=self.swizzle_root, assay_root=self.assay_root,
             ghost_root=self.ghost_tools_root, python=python)
+        logger.info("assay grading: %s (%s)", {True: "usable", False: "UNUSABLE", None: "not run"}[self._assay_state],
+                    summary)
         notes.append(summary)
         if self.assay_floor == 0:
             notes.append("ASSAY floor NOT ENFORCED (--assay-floor 0): Ghost's score is recorded but nothing "
@@ -838,6 +901,7 @@ class TagTeam:
                                    ghost_timeout=self.ghost_timeout, joins=self.joins)
             self._absorb_ghost(found)
             blind = getattr(found, "blind", None)
+            logger.info("ghost scan: %d finding(s)%s", len(found), f", BLIND: {blind}" if blind else "")
             if blind:
                 self._down.add("ghost")
                 self._notes.append(f"{blind}. Ghost is counted as not measured.")
@@ -845,10 +909,12 @@ class TagTeam:
         except SeatBrokeCharter:
             raise
         except (GhostCrashed, GhostRefused) as err:
+            logger.warning("ghost scan failed: %s", err)
             # Ghost itself died or refused to start: an instrument fault, so INCONCLUSIVE (never a finding).
             raise GhostUnavailable(f"{err}. This is a fault in Ghost, not a finding. Observation is UNKNOWN; "
                                    "nothing further was attempted.") from err
         except Exception as err:  # noqa: BLE001 - any failure to see is UNKNOWN, not "no findings"
+            logger.warning("ghost scan could not be run or read: %s", type(err).__name__)
             raise GhostUnavailable(
                 f"Ghost could not be run or read ({type(err).__name__}: {str(err)[:120]}). "
                 "Observation is UNKNOWN; nothing further was attempted.") from err
@@ -1051,8 +1117,8 @@ def _defects(findings) -> tuple[Defect, ...]:
         try:
             Finding.from_dict(f)
         except ValueError as err:
-            raise GhostUnavailable(f"Ghost's findings could not be read (a finding does not meet cns.finding/1: {err}). "
-                                   "Observation is UNKNOWN; nothing further was attempted.") from err
+            raise GhostUnavailable("Ghost's findings could not be read (a finding does not meet cns.finding/1: "
+                                   f"{err}). Observation is UNKNOWN; nothing further was attempted.") from err
     try:
         return defects_from_ghost(findings)
     except (AttributeError, TypeError, ValueError) as err:
@@ -1112,7 +1178,7 @@ def _snapshot(target: Path, proposal: Transformation) -> Dict[str, Optional[byte
     return out
 
 
-def _restore(target: Path, snapshot: Dict[str, Optional[bytes]]) -> None:
+def _restore(target: Path, snapshot: Mapping[str, Optional[bytes]]) -> None:
     for rel, data in snapshot.items():
         path = target / rel
         if data is None:

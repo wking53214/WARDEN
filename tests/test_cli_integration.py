@@ -9,7 +9,6 @@ run is cut short.
 
 import json
 import os
-import signal
 import subprocess
 import sys
 from pathlib import Path

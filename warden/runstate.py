@@ -35,7 +35,7 @@ import stat
 import sys
 import threading
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Mapping, Optional
 
 from . import gitstate
 
@@ -128,7 +128,8 @@ def state_dir(target: Path) -> Path:
             return leaf
         except OSError as exc:
             errors.append(f"{base}: {exc}")
-    raise StateUnavailable("Warden could not make a safe place for its lock and journal (" + "; ".join(errors)[:300] + ")")
+    raise StateUnavailable("Warden could not make a safe place for its lock and journal ("
+                           + "; ".join(errors)[:300] + ")")
 
 
 def lock_path(target: Path) -> Path:
@@ -155,7 +156,8 @@ class TargetLock:
         try:
             fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
         except OSError as exc:
-            raise StateUnavailable(f"the lock file could not be opened safely ({exc.strerror or type(exc).__name__})") from exc
+            raise StateUnavailable(
+                f"the lock file could not be opened safely ({exc.strerror or type(exc).__name__})") from exc
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1:
             os.close(fd)
@@ -183,7 +185,8 @@ def _b64(data: bytes) -> str:
     return base64.b64encode(data).decode("ascii")
 
 
-def write_journal(target: Path, originals: Dict[str, bytes], trapped: Optional[Dict[str, bytes]] = None) -> None:
+def write_journal(target: Path, originals: Mapping[str, bytes],
+                  trapped: Optional[Mapping[str, bytes]] = None) -> None:
     """Record every file, its original bytes and the exact trap bytes about to be written.
 
     Written to a new file created exclusively (a symlink at its name is an error, not a path to
@@ -305,7 +308,7 @@ def interrupts() -> Iterator[None]:
         yield
         return
     names = [n for n in ("SIGTERM", "SIGHUP", "SIGINT") if hasattr(signal, n)]
-    previous = {}
+    previous: Dict[int, Any] = {}
 
     def handler(signum, _frame):
         for sig in previous:

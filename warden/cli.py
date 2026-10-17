@@ -1,4 +1,4 @@
-"""warden — govern a change: observe, authorize, gate on the suite, record.
+"""warden: govern a change: observe, authorize, gate on the suite, record.
 
 Warden does not decide what a good fix or good code looks like. A Drafter
 (in the loop) and a Finisher (once, after it) do; see `warden.roles`.
@@ -12,15 +12,19 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
 import sys
-from typing import Optional
+from typing import Any, Optional, Sequence
 from pathlib import Path
 
 from . import CONTRACT, __version__
 from .authorization import Unauthorized, grant
 from . import audit as audit_file, gitstate, runstate, textio, versions
+from . import log as warden_log
 from .ghost import load_report, scan as ghost_scan
 from .tagteam import TagTeam
+
+logger = warden_log.get("cli")
 
 
 #: What `warden tagteam` exits with, by decision. Anything not listed here exits 1, never 0.
@@ -45,7 +49,8 @@ exit codes (only 0 means the change was accepted):
   1  REJECT, JUDGE_REJECTED, NOT_CONVERGED, FINISH_REJECTED, or any other rejection.
   2  usage error (the JSON says USAGE_ERROR), a seat could not be loaded, or SWIZZLE's own proofs are
      unsound (the JSON says INCONCLUSIVE; the exit is still 2). Nothing was written.
-  3  ACCEPT_UNVERIFIED. A check did not run or the Judge could not decide. Changes were put back and held; keep them only with `warden keep`.
+  3  ACCEPT_UNVERIFIED. A check did not run or the Judge could not decide. Changes were put back and
+     held; keep them only with `warden keep`.
   4  ERROR. A seat failed, timed out, or gave the wrong kind of answer (an unknown Judge label counts).
      Nothing was approved and the tree was put back.
   5  REFUSED. No human authorization, or the folder has uncommitted git changes (commit or stash
@@ -280,7 +285,7 @@ def _assay_floor(text: str) -> int:
 class _JsonParser(argparse.ArgumentParser):
     """An argument parser whose errors also come out as valid JSON on stdout, exit 2, like every other stop."""
 
-    def error(self, message: str):  # type: ignore[override]
+    def error(self, message: str):
         reason = f"usage error: {message}. Nothing was run."
         _print_json(_record("USAGE_ERROR", reason))
         self.print_usage(sys.stderr)
@@ -292,8 +297,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = _JsonParser(prog="warden")
     parser.add_argument("--version", action="version", version=f"warden {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
+    common = _JsonParser(add_help=False)
+    common.add_argument("-v", "--verbose", action="count", default=0,
+                        help="log the seams (seats, instruments, verdict) to stderr: -v for INFO, -vv for DEBUG. "
+                             "WARDEN_LOG_LEVEL sets the level by name. Stdout stays the JSON run record")
 
-    p_t = sub.add_parser("tagteam", help="loop: observe → propose → apply → re-inspect, until converged; then finish once",
+    p_t = sub.add_parser("tagteam", parents=[common],
+                         help="loop: observe → propose → apply → re-inspect, until converged; then finish once",
                          epilog=EXIT_CODE_HELP, formatter_class=argparse.RawDescriptionHelpFormatter)
     p_t.add_argument("path", type=Path)
     p_t.add_argument("--ghost-root", type=Path, default=None)
@@ -352,14 +362,20 @@ def main(argv: list[str] | None = None) -> int:
                           "or CMakeLists.txt). code: anything outside tests, test and build config, CI, "
                           "dependency lists and git hooks")
 
-    p_k = sub.add_parser("keep", help="apply one held unverified result, only with a human grant for its digest")
+    p_t.add_argument("--receipt", type=Path, default=None, metavar="FILE",
+                     help="after an authorized run, write the horsemen production receipt (JSON) here. It must "
+                          "lie outside the target. The run's decision and exit code are unchanged")
+
+    p_k = sub.add_parser("keep", parents=[common],
+                         help="apply one held unverified result, only with a human grant for its digest")
     p_k.add_argument("path", type=Path)
     p_k.add_argument("--digest", required=True, help="the held_digest a tagteam run reported for this folder")
     p_k.add_argument("--authorize", default=None, metavar="ACTOR",
                      help="the human approving this exact result; without it nothing is applied")
     p_k.add_argument("--reason", default="")
 
-    p_a = sub.add_parser("audit", help="WARDEN_AUDIT.md: Ghost findings under durable IDs (Rules 5, 9)")
+    p_a = sub.add_parser("audit", parents=[common],
+                         help="WARDEN_AUDIT.md: Ghost findings under durable IDs (Rules 5, 9)")
     p_a.add_argument("path", type=Path)
     p_a.add_argument("--ghost-root", type=Path, default=None)
     p_a.add_argument("--from-ghost", type=Path, default=None, help="findings JSON instead of a live scan")
@@ -368,6 +384,8 @@ def main(argv: list[str] | None = None) -> int:
     p_a.add_argument("--reason", default="")
 
     args = parser.parse_args(argv)
+    warden_log.configure(args.verbose)
+    logger.debug("warden %s: %s", __version__, args.command)
     if args.command == "audit":
         return _audit(args)
     if args.command == "keep":
@@ -404,6 +422,7 @@ def _stop(decision: str, reason: str, notes: list[str] | None = None) -> int:
     """End before a run: valid JSON on stdout, the reason on stderr, and the exit code for `decision`."""
     _print_json(_record(decision, reason, notes))
     print(f"warden: {reason}", file=sys.stderr)
+    logger.info("stopped before a run: %s (exit %s)", decision, EXIT_CODES[decision])
     return EXIT_CODES[decision]
 
 
@@ -436,6 +455,11 @@ def _tagteam(args) -> int:
     if not path.is_dir():
         what = "does not exist" if not path.exists() else "is not a directory"
         return _stop("USAGE_ERROR", f"The target {str(path)!r} {what}. Nothing was run.")
+    if args.receipt is not None:
+        receipt_path = Path(args.receipt).expanduser().resolve()
+        if receipt_path.is_relative_to(path.resolve()):
+            return _stop("USAGE_ERROR", "--receipt names a file inside the target, which would change the folder "
+                                        "being governed. Name a file outside it. Nothing was run.")
     seat_paths: list[Path] = []
     if args.stack is not None:
         seat_paths, problem = _resolve_stack(args)
@@ -545,10 +569,33 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
             "judge": result.verdict.judge},
     }
     _print_json(payload)
+    code = 2 if result.swizzle_sound is False else EXIT_CODES.get(result.decision, 1)
+    logger.info("tagteam finished: decision=%s exit=%s put_back=%s unmeasured=%s", result.decision, code,
+                result.put_back, ",".join(result.unmeasured) or "none")
+    if args.receipt is not None:
+        _write_receipt(args, auth, result)
     if result.swizzle_sound is False:
         print("warden: SWIZZLE's own proofs do not hold; nothing was written.", file=sys.stderr)
-        return 2
-    return EXIT_CODES.get(result.decision, 1)
+    return code
+
+
+def _write_receipt(args, auth, result) -> None:
+    """Write the horsemen production receipt for a finished run. A failure is said on stderr and never
+    changes the run's decision or exit code: the run is over, and the JSON on stdout is the record."""
+    from .horsemen import receipt_for_run
+    target = Path(args.path).resolve()
+    try:
+        receipt = receipt_for_run(result=result, target=target, authorization=auth,
+                                  baseline_sha=versions.own_commit(target) or "unknown", assay_root=args.assay_root)
+        out = Path(args.receipt).expanduser()
+        tmp = out.with_name(f".{out.name}.{os.getpid()}.part")
+        tmp.write_text(json.dumps(receipt.to_dict(), indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, out)
+    except Exception as e:  # noqa: BLE001 - a receipt that cannot be written is said, never a traceback
+        logger.error("receipt not written: %s: %s", type(e).__name__, str(e)[:200])
+        print(f"warden: the receipt was not written ({type(e).__name__}: {str(e)[:120]}).", file=sys.stderr)
+        return
+    print(f"warden: receipt written to {out}", file=sys.stderr)
 
 
 def _versions(args, drafter, finisher, judge) -> dict:
@@ -587,6 +634,7 @@ def _load_seat(spec, warnings: list[str] | None = None):  # `warnings` is kept f
     if not isinstance(wanted, str) or wanted != CONTRACT:
         raise ContractMismatch(f"The seat {spec} was written for Warden contract {wanted!r} but this Warden "
                                f"is contract {CONTRACT!r}. Nothing was run.")
+    logger.info("seat loaded: %s (%s, requires_contract=%s)", spec, type(seat).__name__, wanted)
     return seat
 
 
@@ -596,6 +644,7 @@ def _audit(args) -> int:
     if not root.is_dir():
         print(f"warden: the target {str(args.path)!r} does not exist or is not a directory.", file=sys.stderr)
         return 2
+    findings: Optional[Sequence[Any]]
     try:
         if args.from_ghost:
             findings = load_report(args.from_ghost)
@@ -607,11 +656,13 @@ def _audit(args) -> int:
         print(f"warden: the findings could not be read ({type(e).__name__}: {str(e)[:120]}). "
               "Nothing was printed or written.", file=sys.stderr)
         return 2
-    if findings is not None and getattr(findings, "blind", None):
-        print(f"warden: {findings.blind}. Nothing was printed or written.", file=sys.stderr)
+    blind = getattr(findings, "blind", None)
+    if blind:
+        print(f"warden: {blind}. Nothing was printed or written.", file=sys.stderr)
         return 2
-    if getattr(findings, "gaps", None):
-        print("warden: warning: Ghost's scan had gaps (" + "; ".join(findings.gaps[:3]) + "), so a row marked "
+    gaps = getattr(findings, "gaps", None)
+    if gaps:
+        print("warden: warning: Ghost's scan had gaps (" + "; ".join(gaps[:3]) + "), so a row marked "
               "'not seen in latest scan' may only be one Ghost could not look at.", file=sys.stderr)
     if findings is None:
         print("warden: audit needs --ghost-root or --from-ghost; an audit of nothing "

@@ -29,15 +29,21 @@ repository's code.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets
 import signal
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from cns.suite import SuiteRun  # the shared row: cns 1.7.0
+
+from .isolation import suite_env
+
+logger = logging.getLogger("warden.suite")
 
 #: pytest's exit code when it collected nothing.
 _NO_TESTS = 5
@@ -142,7 +148,7 @@ def detect_runner(target: Path) -> str:
         return "pytest"
     if any((root / name).is_file() for name in _PYTHON_TEST_MARKERS):
         return "pytest"
-    for here, dirs, files in os.walk(root):
+    for _here, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in {".git", "target", ".venv", "venv", "node_modules"}]
         if any(f.startswith("test_") and f.endswith(".py") or f.endswith("_test.py") for f in files):
             return "pytest"
@@ -157,9 +163,15 @@ def run_suite(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT, runne
     if runner not in RUNNERS:
         return SuiteRun(ran=False, reason=f"unknown suite runner {runner!r}")
     chosen = detect_runner(target) if runner == "auto" else runner
+    logger.info("suite: running the target's own tests with %s (timeout %gs)", chosen, timeout)
+    started = time.monotonic()
     if chosen == "cargo":
-        return _run_cargo(Path(target), timeout)
-    return _run_pytest(target, python, timeout)
+        run = _run_cargo(Path(target), timeout)
+    else:
+        run = _run_pytest(target, python, timeout)
+    logger.info("suite: %s in %.1fs: %s", "ran" if run.ran else "did not run", time.monotonic() - started,
+                run.describe())
+    return run
 
 
 def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
@@ -185,7 +197,7 @@ def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> 
         report_path = private_dir / "report.json"
         pyc = private_dir / "pyc"
         pyc.mkdir()
-        env = dict(os.environ, PYTHONPYCACHEPREFIX=str(pyc), WARDEN_SUITE_REPORT=str(report_path),
+        env = dict(suite_env(), PYTHONPYCACHEPREFIX=str(pyc), WARDEN_SUITE_REPORT=str(report_path),
                    WARDEN_SUITE_NONCE=nonce)
         # The plugin's folder goes last, after everything the target set: its name is random, so nothing can shadow it.
         env["PYTHONPATH"] = os.pathsep.join([p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p]
@@ -264,7 +276,7 @@ def _run_cargo(target: Path, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
     pass for a fresh build and nothing is left in the target's own tree.
     """
     with tempfile.TemporaryDirectory(prefix="warden-cargo-") as private:
-        env = dict(os.environ, RUSTC_BOOTSTRAP="1", CARGO_TARGET_DIR=str(Path(private) / "target"),
+        env = dict(suite_env(), RUSTC_BOOTSTRAP="1", CARGO_TARGET_DIR=str(Path(private) / "target"),
                    CARGO_TERM_COLOR="never", CARGO_INCREMENTAL="0")
         try:
             proc = subprocess.Popen(
@@ -295,8 +307,9 @@ def _run_cargo(target: Path, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
             continue
         if not isinstance(event, dict) or event.get("type") != "suite" or event.get("event") not in ("ok", "failed"):
             continue
-        counts = [event.get(k) for k in ("passed", "failed", "ignored")]
-        if not all(isinstance(n, int) and not isinstance(n, bool) and n >= 0 for n in counts):
+        counts = [n for n in (event.get(k) for k in ("passed", "failed", "ignored"))
+                  if isinstance(n, int) and not isinstance(n, bool) and n >= 0]
+        if len(counts) != 3:
             continue
         suites += 1
         passed, failed, ignored = passed + counts[0], failed + counts[1], ignored + counts[2]

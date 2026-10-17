@@ -149,7 +149,8 @@ class HorsemenWorkflow:
         if not st.proposal_id:
             raise Unauthorized("Cannot authorize without a proposal.")
         if st.change_class in HIGH_RISK_CLASSES:
-            adv_hofs = [h for h in st.handoffs if h.kind == HandoffKind.VERDICT and h.payload.get("phase") == "adversarial"]
+            adv_hofs = [h for h in st.handoffs
+                        if h.kind == HandoffKind.VERDICT and h.payload.get("phase") == "adversarial"]
             if not adv_hofs or not self.swizzle.adversarial_passed(adv_hofs[-1]):
                 raise Unauthorized(
                     f"High-risk {st.change_class.value} requires SWIZZLE adversarial PASSED."

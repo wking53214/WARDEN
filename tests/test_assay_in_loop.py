@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 import warden.tagteam as tagteam
-from warden.authorization import grant
 from warden.tagteam import TagTeam
 
 from fakes import FakeDrafter, FakeJudge

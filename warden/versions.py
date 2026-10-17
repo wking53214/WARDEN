@@ -120,7 +120,8 @@ def _own_root(module_name: str, module_file: str) -> Optional[Path]:
             candidate = path.parents[index]
         except IndexError:
             continue
-        if (candidate / ".git").exists() and any((candidate / f).is_file() for f in ("pyproject.toml", "setup.py", "setup.cfg")):
+        if (candidate / ".git").exists() and any(
+                (candidate / f).is_file() for f in ("pyproject.toml", "setup.py", "setup.cfg")):
             return candidate
     return None
 

@@ -8,7 +8,7 @@ import pytest
 
 from warden.authorization import grant
 from warden.guard import Snapshot, is_protected, iter_tree
-from warden.suite import CargoSuiteRun, detect_runner, preserved, run_suite
+from warden.suite import CargoSuiteRun, detect_runner, run_suite
 from warden.tagteam import TagTeam
 
 from fakes import FakeDrafter

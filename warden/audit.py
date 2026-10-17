@@ -94,6 +94,8 @@ def has_markers(text: str) -> bool:
 
 def _split_location(location: str):
     m = re.match(r"^(?P<file>.*?)(?::(?P<line>\d+))?$", str(location))
+    if m is None:  # the pattern can match any text, but a type checker cannot know that
+        return str(location).replace("\\", "/"), ""
     return m.group("file").replace("\\", "/"), m.group("line") or ""
 
 

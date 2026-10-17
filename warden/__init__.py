@@ -25,6 +25,7 @@ WHAT IT MUST NEVER DO
     Let a Drafter or Finisher's good opinion outvote a red suite or a missing grant.
 """
 
+from . import log as _log  # noqa: F401 - installs the NullHandler: library use stays quiet
 from .epistemic import EpistemicState
 from .models import Defect, DefectLifecycle, Transformation, TransformationStatus
 from .authorization import Authorization, Unauthorized
@@ -32,7 +33,7 @@ from .roles import Facts, Finisher, Drafter
 from .tagteam import TagTeam, TagTeamResult
 from .horsemen import HorsemenWorkflow, ChangeClass, ScopedGrant
 
-__version__ = "0.12.0"
+__version__ = "0.13.0"
 
 #: The version of the shapes other repositories build against: Evidence, Verdict, Facts and
 #: Transformation. Bumped only when one of them changes in a way that breaks a seat written for

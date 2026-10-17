@@ -228,6 +228,9 @@ def test_accept_is_plain_accept_only_when_everything_ran(tmp_path, monkeypatch):
     monkeypatch.setattr(tagteam, "ghost_scan", lambda target, **kw: ())
     monkeypatch.setattr(TagTeam, "_calibrate", lambda self, python, notes: True)
     monkeypatch.setattr(tagteam, "assay_score", lambda **kw: (True, {"caught": 3, "failure_modes": 5}, "ok"))
+    # Everything ran, including SWIZZLE's attacks on the governor: without them the run is held (0.13.0).
+    monkeypatch.setattr(tagteam, "governor_attacks",
+                        lambda **kw: ({"scenario": "a", "severity": "high", "status": "held"},))
     result = _run(tmp_path, FakeDrafter(steps=("x\n",)), scope="documentation",
                   ghost_tools_root=Path("."), swizzle_root=Path("."), assay_root=Path("."), judge=FakeJudge("ACCEPT"))
     assert result.decision == "ACCEPT" and result.unmeasured == ()

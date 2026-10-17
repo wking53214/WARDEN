@@ -126,6 +126,12 @@ class GhostToolsAdapter:
             provenance=f"ghost_tools {phase}",
         )
 
+#: SWIZZLE results that mean the attack failed to hold, and the ones that mean it held. Anything else
+#: is unread, and an unread result is never counted as a pass.
+_FAILING = frozenset({"FAILED", "REJECT", "ESCAPED", "VIOLATED"})
+_PASSING = frozenset({"PASSED", "PASS", "HELD", "OK"})
+
+
 @dataclass
 class SwizzleVerdict:
     verdict_id: str
@@ -159,11 +165,15 @@ class SwizzleAdapter:
         return out
 
     def handoff_verdicts(self, verdicts, *, repository, repository_sha, baseline_id, phase="adversarial"):
-        failed = [v for v in verdicts if v.result.upper() in {"FAILED", "REJECT", "ESCAPED"}]
+        failed = [v for v in verdicts if v.result.upper() in _FAILING]
+        unread = [v for v in verdicts if v.result.upper() not in _FAILING and v.result.upper() not in _PASSING]
         if not verdicts:
             epistemic, result = EpistemicLabel.UNKNOWN, "NOT_TESTED"
         elif failed:
             epistemic, result = EpistemicLabel.CONFIRMED, "FAILED"
+        elif unread:
+            # A result Warden does not know (UNKNOWN, ERROR, NOT_RUN...) is not a pass.
+            epistemic, result = EpistemicLabel.UNKNOWN, "INCONCLUSIVE"
         else:
             epistemic, result = EpistemicLabel.REASONED, "PASSED"
         return Handoff.make(

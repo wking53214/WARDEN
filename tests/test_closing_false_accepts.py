@@ -20,7 +20,7 @@ from warden.swizzle import assay_score, governor_attacks, swizzle_proofs_hold
 from warden.tagteam import TagTeam
 from heldutil import keep_held
 
-from fakes import FakeDrafter, FakeFinisher, FakeJudge, RemovingDrafter
+from fakes import FakeDrafter, FakeFinisher, RemovingDrafter
 
 
 def _repo(root: Path, test_body: str = "    assert VALUE == 1\n") -> Path:
@@ -220,7 +220,7 @@ def test_watch_notices_a_removed_hook_and_a_seat_that_crashes_still_has_its_chan
     with pytest.raises(ZeroDivisionError):
         with watch(tmp_path, "A seat"):
             (tmp_path / ".git" / "config").write_text("[evil]\n", encoding="utf-8")
-            1 / 0
+            _ = 1 / 0
     assert (tmp_path / ".git" / "config").read_text(encoding="utf-8") == "[core]\n"
 
 
