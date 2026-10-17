@@ -438,7 +438,7 @@ def test_safe_id_keeps_only_plain_characters_on_one_line_and_caps_length():
 
 def test_an_id_with_a_newline_cannot_put_live_code_in_the_target(tmp_path, monkeypatch):
     evil = "ghost-dead1\nimport os\nos.system('touch pwned')"
-    finding = {"id": evil, "severity": "minor", "summary": "unused", "status": "confirmed"}
+    finding = {"id": evil, "detector": "unused_code", "severity": "minor", "summary": "unused", "status": "confirmed"}
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg" / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
     (tmp_path / "pkg" / "dead.py").write_text("def unused():\n    return 1\n", encoding="utf-8")

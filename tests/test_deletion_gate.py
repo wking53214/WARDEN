@@ -13,7 +13,7 @@ from warden.tagteam import TagTeam
 from fakes import FakeDrafter, RemovingDrafter
 from heldutil import keep_held
 
-DEAD = {"id": "ghost-dead1", "severity": "minor", "summary": "unused", "status": "confirmed"}
+DEAD = {"id": "ghost-dead1", "detector": "unused_code", "severity": "minor", "summary": "unused", "status": "confirmed"}
 DEAD_PY = "def unused():\n    return 1\n"
 
 
@@ -106,7 +106,7 @@ def test_a_removal_that_adds_ghost_findings_is_put_back(tmp_path, ghost, monkeyp
 
     def scan(target, **kw):
         if "WARDEN COMMENTED OUT" in _dead(Path(target)).read_text(encoding="utf-8"):
-            return ({"id": "ghost-new1", "severity": "minor", "summary": "x", "status": "confirmed"},)
+            return ({"id": "ghost-new1", "detector": "unused_code", "severity": "minor", "summary": "x", "status": "confirmed"},)
         return (DEAD,)
 
     monkeypatch.setattr(tagteam, "ghost_scan", scan)

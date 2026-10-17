@@ -46,7 +46,7 @@ def _read(root: Path, rel: str) -> str:
 
 def _scanner(monkeypatch, rel: str, ident: str = "ghost-dead1"):
     """Ghost reports the finding until the file has been commented out."""
-    finding = {"id": ident, "severity": "minor", "summary": "unused", "status": "confirmed"}
+    finding = {"id": ident, "detector": "unused_code", "severity": "minor", "summary": "unused", "status": "confirmed"}
 
     def fake_scan(target, **kw):
         p = Path(target) / rel
@@ -135,7 +135,7 @@ def test_a_removal_in_vendored_or_generated_code_is_declined(tmp_path, monkeypat
 
 def test_any_code_edit_in_a_vendored_directory_is_declined_not_only_removals(tmp_path):
     _repo(tmp_path, dead="vendor/lib/v.py", dead_text="X = 1\n")
-    finding = {"id": "ghost-1", "severity": "minor", "summary": "s", "status": "confirmed"}
+    finding = {"id": "ghost-1", "detector": "unused_code", "severity": "minor", "summary": "s", "status": "confirmed"}
 
     class Edits:
         def __init__(self):
@@ -299,7 +299,7 @@ def test_a_commented_out_crlf_file_stays_crlf(tmp_path, monkeypatch):
 def test_a_latin1_file_does_not_crash_the_run_and_edits_to_it_are_declined(tmp_path):
     _repo(tmp_path, dead="legacy.py", dead_text=b"# caf\xe9\nX = 1\n")
     legacy = (tmp_path / "legacy.py").read_bytes()
-    finding = {"id": "ghost-1", "severity": "minor", "summary": "s", "status": "confirmed", "evidence": {"file": "legacy.py"}}
+    finding = {"id": "ghost-1", "detector": "unused_code", "severity": "minor", "summary": "s", "status": "confirmed", "evidence": {"file": "legacy.py"}}
 
     class Edits:
         def propose(self, target, observed, baseline):
@@ -334,7 +334,7 @@ def test_apply_refuses_a_latin1_file_in_plain_words(tmp_path):
 
 def _findings_file(tmp_path: Path) -> Path:
     f = tmp_path / "f.json"
-    f.write_text(json.dumps([{"id": "ghost-1", "severity": "minor", "summary": "s"}]), encoding="utf-8")
+    f.write_text(json.dumps([{"id": "ghost-1", "detector": "unused_code", "severity": "minor", "summary": "s"}]), encoding="utf-8")
     return f
 
 
