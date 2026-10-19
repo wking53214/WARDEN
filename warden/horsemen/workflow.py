@@ -192,7 +192,8 @@ class HorsemenWorkflow:
         if current_sha != st.baseline_sha:
             raise Unauthorized(f"Baseline drifted: frozen={st.baseline_sha} current={current_sha}. REFUSE.")
         validate_scoped(st.grant, operation=operation, subject=subject,
-                        baseline_id=st.baseline_id, change_class=st.change_class)
+                        baseline_id=st.baseline_id, change_class=st.change_class,
+                        repository=st.repository)
         files = edit_fn()
         for i, check in enumerate(invariant_checks or ()):
             if not check():
