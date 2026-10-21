@@ -23,7 +23,7 @@ classifiers = [
     ]
 # The shared rows (seat contract, defects, run record) come from the hub.
 # Pinned to a release tag; bump it on purpose.
-dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v1.8.0"]
+dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v1.9.0"]
 
 [project.urls]
 Homepage = "https://github.com/wking53214/Warden"
