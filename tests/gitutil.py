@@ -15,6 +15,16 @@ def git(cwd: Path, *args: str) -> str:
     return done.stdout.strip()
 
 
+def as_checkout(root: Path) -> Path:
+    """Make `root` a checkout Warden can name as an instrument: a git commit of its own and a version. Warden refuses
+    an instrument root that is a plain copy of the package (see warden.isolation.verify_root)."""
+    pyproject = Path(root) / "pyproject.toml"
+    if not pyproject.exists():
+        pyproject.write_text('[project]\nname = "stand-in"\nversion = "1.0.0"\n', encoding="utf-8")
+    commit_all(root)
+    return Path(root)
+
+
 def commit_all(root: Path, message: str = "initial") -> None:
     """Make `root` a git repository (if it is not one yet) with everything committed and nothing left over."""
     if not (Path(root) / ".git").exists():

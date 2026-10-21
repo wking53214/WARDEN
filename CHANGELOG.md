@@ -41,6 +41,12 @@ SHA, not by tag.
   Ghost chosen by SWIZZLE itself when `--ghost-root` is not given is not checked, which is why that run is at best
   `ACCEPT_UNVERIFIED`). That behavior is unchanged.
 
+- Two older tests (`test_the_real_root_is_used_even_when_the_target_has_a_fake`,
+  `test_a_scan_that_hangs_is_ghost_being_down_not_a_hang`) built their instrument root as a bare copy of the package. A root
+  must now be a checkout with a commit and a version, so their fixtures make it one (`tests/gitutil.py::as_checkout`);
+  what they assert is unchanged. New tests: `tests/test_messages.py`, and in `tests/test_instrument_roots.py` the audit's
+  run with site-packages as the root, plain copies with and without the flag, and the editable-install checkout.
+
 ## [0.13.3] - 2026-10-21
 
 ### Changed

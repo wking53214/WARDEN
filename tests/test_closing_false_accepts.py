@@ -21,6 +21,7 @@ from warden.tagteam import TagTeam
 from heldutil import keep_held
 
 from fakes import FakeDrafter, FakeFinisher, RemovingDrafter
+from gitutil import as_checkout
 
 
 def _repo(root: Path, test_body: str = "    assert VALUE == 1\n") -> Path:
@@ -87,6 +88,7 @@ def test_the_real_root_is_used_even_when_the_target_has_a_fake(tmp_path, monkeyp
     root.mkdir()
     _fake_package(target, "swizzle", LIE)
     _fake_package(root, "swizzle", DECLARES_CONTRACT + "print('3 of 3 proofs hold.')\n")
+    as_checkout(root)       # an instrument root has to be a checkout Warden can name: a commit and a version
     monkeypatch.chdir(target)
     holds, summary = swizzle_proofs_hold(swizzle_root=Path("../root"))  # a relative root is made absolute
     assert holds is True and "3 of 3" in summary and "12 of 12" not in summary

@@ -23,6 +23,7 @@ from warden.cli import EXIT_CODES, main
 from warden.tagteam import TagTeam
 
 from fakes import FakeDrafter
+from gitutil import as_checkout
 
 SEATS = '''
 from pathlib import Path
@@ -360,6 +361,7 @@ def test_a_scan_that_hangs_is_ghost_being_down_not_a_hang(tmp_path, monkeypatch)
     hang.mkdir(parents=True)
     (hang / "__init__.py").write_text("", encoding="utf-8")
     (hang / "cli.py").write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
+    as_checkout(tmp_path / "ghost")       # an instrument root has to be a checkout Warden can name
     t = _repo(tmp_path / "t")
     result = TagTeam(drafter=FakeDrafter(), ghost_tools_root=tmp_path / "ghost", ghost_timeout=1).run(
         t, authorization=grant("w", "transform", str(t.resolve()), "documentation", "r"))
