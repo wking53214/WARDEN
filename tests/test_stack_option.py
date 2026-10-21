@@ -395,6 +395,75 @@ def test_a_full_lowercase_pin_equal_to_the_checkout_is_accepted(tmp_path, capsys
     assert len(payload["versions"]["joins"]) == len(commits)
 
 
+def _dirty_run(tmp_path, capsys, monkeypatch, dirty):
+    """Run a manifest-joined stack in which `dirty(folder)` has changed one checkout; return (code, payload, folder)."""
+    target = _repo(tmp_path / "proj")
+    stack = _stack(tmp_path / "stack")
+    for child in stack.iterdir():
+        (child / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+    commits = _git_stack(stack)
+    victim = stack / sorted(commits)[0]
+    dirty(victim)
+    monkeypatch.setattr(tagteam, "ghost_scan", lambda t, **kw: ())
+    code, payload, _ = _run(capsys, target, "--stack", stack, "--stack-manifest", _manifest(tmp_path, commits),
+                            "--authorize", "w", "--reason", "r")
+    return code, payload, victim, target
+
+
+def test_a_joined_checkout_with_a_modified_tracked_file_is_refused(tmp_path, capsys, measured, monkeypatch):
+    code, payload, victim, target = _dirty_run(
+        tmp_path, capsys, monkeypatch, lambda f: (f / "MARK.md").write_text("changed\n", encoding="utf-8"))
+    assert code == 2 and payload["decision"] == "USAGE_ERROR"
+    assert repr(str(victim)) in payload["reason"] and "1 path(s) are dirty" in payload["reason"]
+    assert payload["reason"].endswith("Nothing was run.")
+    assert (target / "NOTE.md").read_text() == "old\n"
+
+
+def test_a_joined_checkout_with_an_untracked_file_is_refused_and_the_count_is_exact(tmp_path, capsys, measured,
+                                                                                    monkeypatch):
+    def dirty(folder):
+        (folder / "stray.txt").write_text("x\n", encoding="utf-8")
+        (folder / "MARK.md").write_text("changed\n", encoding="utf-8")
+    code, payload, victim, target = _dirty_run(tmp_path, capsys, monkeypatch, dirty)
+    assert code == 2 and payload["decision"] == "USAGE_ERROR"
+    assert repr(str(victim)) in payload["reason"] and "2 path(s) are dirty" in payload["reason"]
+    assert payload["reason"].endswith("Nothing was run.")
+    assert (target / "NOTE.md").read_text() == "old\n"
+    code, payload, victim, _ = _dirty_run(
+        tmp_path / "again", capsys, monkeypatch, lambda f: (f / "stray.txt").write_text("x\n", encoding="utf-8"))
+    assert code == 2 and "1 path(s) are dirty" in payload["reason"]
+
+
+def test_a_joined_checkout_with_only_ignored_files_is_accepted(tmp_path, capsys, measured, monkeypatch):
+    def dirty(folder):
+        (folder / "__pycache__").mkdir()
+        (folder / "__pycache__" / "x.pyc").write_text("compiled\n", encoding="utf-8")
+    code, payload, victim, _ = _dirty_run(tmp_path, capsys, monkeypatch, dirty)
+    assert code in (0, 3), payload["reason"]
+    assert len(payload["versions"]["joins"]) == 6
+
+
+def test_a_clean_stack_is_still_joined(tmp_path, capsys, measured, monkeypatch):
+    code, payload, _, _ = _dirty_run(tmp_path, capsys, monkeypatch, lambda folder: None)
+    assert code in (0, 3), payload["reason"]
+    assert len(payload["versions"]["joins"]) == 6
+
+
+def test_the_governed_target_is_not_asked_whether_it_is_dirty_as_a_join(tmp_path, measured):
+    """The target is excluded from the joins; its own dirty policy (REFUSED, in TagTeam) applies to it instead."""
+    from gitutil import commit_all, git
+    from warden.cli import _joins_from_manifest
+    stack = _stack(tmp_path / "stack")
+    commits = _git_stack(stack)
+    target = _repo(stack / "widget")
+    commit_all(target, "seed")
+    commits["widget"] = git(target, "rev-parse", "HEAD").strip()
+    (target / "NOTE.md").write_text("edited by the owner\n", encoding="utf-8")
+    manifest = _manifest(tmp_path, commits)
+    joins, problem = _joins_from_manifest(manifest, stack, target)
+    assert problem == "" and "widget" not in {p.name for p in joins} and len(joins) == len(commits) - 1
+
+
 def test_cns_is_the_manifest_from_the_hub(tmp_path, capsys, measured, monkeypatch):
     target = _repo(tmp_path / "proj")
     stack = _stack(tmp_path / "stack")

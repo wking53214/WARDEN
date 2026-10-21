@@ -156,7 +156,8 @@ outside the target. `--stack-manifest FILE`, with `--stack`, does this from a pi
 file `{"schema": "warden-stack/1", "contract": "1", "repos": {name: commit}}` naming the circuit's
 checkouts and the commit each must be at, each a full 40-character lowercase commit (a short prefix or any other
 spelling is refused). Every named checkout is verified against the folder
-(wrong commit, missing folder, not a git checkout: usage error, nothing runs) and joined for Ghost,
+(wrong commit, missing folder, not a git checkout, uncommitted changes in it: usage error, nothing runs; ignored
+files do not count) and joined for Ghost,
 the target itself excepted (a clone of the target at the same commit counts as the target). `--cns DIR`, a checkout of CNS, reads the same manifest from the hub at `contracts/warden-stack.json`
 (CNS 1.5.0, `cns.stack` is its shape); CNS is read, never written. The manifest is what CNS holds for
 the circuit: which versions belong together, decided outside any repository under test. The output's `versions`

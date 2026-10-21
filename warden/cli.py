@@ -214,8 +214,29 @@ def _joins_from_manifest(manifest_path: Path, stack: Optional[Path], target: Pat
             continue  # the target itself: governed, not joined
         if target_commit is not None and actual == target_commit:
             continue  # a clone of the target at the same commit: the same repository, so not joined either
+        problem = _joined_checkout_problem(name, folder)
+        if problem:
+            return [], problem
         joins.append(real)
     return joins, ""
+
+
+def _joined_checkout_problem(name: str, folder: Path) -> str:
+    """The reason a checkout the manifest joins cannot be trusted to be its pinned commit, or empty.
+
+    The commit alone does not say what is in the folder: a modified file or an untracked one (what
+    `git status --porcelain` reports; ignored files do not count) is code the pin does not describe, and a seat
+    or an instrument from there would run it. The target is not asked: its own dirty policy applies to it."""
+    state = gitstate.tree_state(folder)
+    if state.kind == "clean":
+        return ""
+    if state.kind == "dirty":
+        return (f"the stack manifest joins {name!r}, but the checkout at {str(folder)!r} has uncommitted changes "
+                f"({state.changed} path(s) are dirty), so it is not the pinned commit. Commit, stash or remove "
+                "them, or restore the checkout, then run again")
+    detail = state.detail or "git would not say whether this folder has uncommitted work"
+    return (f"the stack manifest joins {name!r}, but whether the checkout at {str(folder)!r} has uncommitted "
+            f"changes cannot be ruled out: {detail}")
 
 
 def _join_problem(joins, target: Path) -> str:
@@ -370,7 +391,8 @@ def main(argv: list[str] | None = None) -> int:
                           "at ({\"schema\": \"warden-stack/1\", \"contract\": \"1\", \"repos\": {name: commit}}). "
                           "Each commit must be the full 40 characters (lowercase hex), not a prefix. Every named "
                           "checkout is verified against the folder and joined for Ghost, the target "
-                          "itself excepted; a missing or mismatched one is a usage error and nothing is run")
+                          "itself excepted; a missing, mismatched or uncommitted-changes one (modified or "
+                          "untracked files; ignored ones do not count) is a usage error and nothing is run")
     p_t.add_argument("--cns", type=Path, default=None, metavar="DIR",
                      help="with --stack: a checkout of CNS, the hub that holds the circuit's stack manifest at "
                           "contracts/warden-stack.json. The same as --stack-manifest pointed at that file: every "
