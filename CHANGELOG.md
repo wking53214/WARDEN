@@ -8,6 +8,45 @@ Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); t
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
 
+## [0.13.7] - 2026-10-21
+
+`CONTRACT` is still `"1"`. This release sits on top of the 0.13.6 commit `0c1ea567f0b69586cfd735f82260774aec9552bb`.
+
+### Fixed
+
+- **A stack manifest pin could be a prefix.** `_joins_from_manifest` accepted any prefix of 7 or more characters, so a
+  manifest that pinned ghost_tools to `c2ada82` ended `ACCEPT`, exit 0. A pin must now be the full 40 characters, lowercase
+  hex as git prints it, and equal the checkout's commit. A prefix, a longer string, non-hex text, uppercase or a padded pin
+  is a usage error, exit 2, "Nothing was run", naming the repository and saying a full 40-character commit is required.
+  (Step 1.)
+- **A dirty joined checkout was accepted.** A modified JUDGE seat that wrote a marker file still ended `ACCEPT`, exit 0,
+  with `judge.dirty: true` recorded and ignored. A checkout the manifest joins that has uncommitted changes (a modified
+  tracked file or an untracked file that is not ignored: what `git status --porcelain` reports, as `gitstate` reads it;
+  ignored files such as `__pycache__` do not count) is now a usage error, exit 2, "Nothing was run", naming the folder and
+  how many paths are dirty. A checkout whose state git cannot say is refused the same way. The governed target is still
+  excluded from the joins and keeps its own dirty policy. There is no opt-out: `--allow-uncommitted-instruments` means a
+  root with no commit of its own, not a dirty tree. (Step 2.)
+
+### Changed
+
+- The README and this file named `v0.11.4` as the newest tag. They now say release tags exist up to `v0.12.0`, that `0.13.x`
+  is not tagged, that the older `v0.10.0` tag does not match its tree (it points at a `0.9.0` tree), and that tagging is the
+  owner's decision. STACK.md's `bash` fence at "One command runs all seven" is closed where the command ends. The CI
+  workflow has `permissions: contents: read`. README and STACK.md say ASSAY's answer key needs numpy and matplotlib
+  installed normally, with matplotlib's own dependencies; with `--no-deps`, 56 of its 60 claims are proven. (Step 3.)
+- The tested set moved to the current mains: ghost_tools 1.10.5 `c2ada82d2f6c0404074a668ba749c7872743aad9`, SWIZZLE 0.8.4
+  `6bd88f3a6e9de1f83e64f401e13cbcb5233499fc`, JUDGE 0.4.7 `cf71fb468d483e868834c8c06b650a5d60726967` (CI checkouts, the
+  `--expect` values, the real-Judge install, the `ghost` extra, comments and the STACK.md table). ASSAY stays at
+  `54248beb5a36600f69de7c816cb2271dda20a879`. (Step 4.)
+
+### Tests
+
+- New: pin spellings refused and a full pin accepted; modified, untracked, ignored and clean joined checkouts; the target
+  not asked as a join; balanced Markdown fences; the read-only CI token; the ASSAY dependency note.
+- Edited because the behaviour they assert is what a step changed: the tag-sentence test in `tests/test_docs.py`
+  (step 3); the versions written next to each pin in `tests/test_docs.py`, and one docstring in
+  `tests/test_real_judge_loop.py` (step 4).
+
 ## [0.13.6] - 2026-10-21
 
 No change to the behaviour of the `warden` package; `CONTRACT` is still `"1"`. This release sits on top of the 0.13.5
