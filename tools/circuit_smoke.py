@@ -13,6 +13,10 @@ It builds a small scratch git repository, then runs the real `warden tagteam` co
      receipt must name the ASSAY specimens, and a floor above what Ghost catches must stop the stub Judge's
      ACCEPT.
 
+With `--real-judge` there is a third run: the same governed change judged by the real Judge (`judge.seat:Judge`,
+installed in this Python) against the live instruments and the default ASSAY floor of 3. The real Judge must
+decide on Warden's own evidence: anything but `ACCEPT` or `ACCEPT_UNVERIFIED` fails the smoke test.
+
 It exits 0 when every expectation holds and 1 with the first failed one. Integration with the other
 horsemen is exercised here, in CI, and not only on a developer's machine. Nothing is written outside a
 temporary folder.
@@ -118,6 +122,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--ghost-tools", type=Path, required=True)
     parser.add_argument("--swizzle", type=Path, required=True)
     parser.add_argument("--assay", type=Path, required=True)
+    parser.add_argument("--real-judge", action="store_true",
+                        help="also run the governed change under the real Judge (judge.seat:Judge, installed)")
     parser.add_argument("--expect", action="append", default=[], metavar="NAME=SHA",
                         help="the full commit each checkout must be at (ghost_tools, swizzle, assay)")
     args = parser.parse_args(argv)
@@ -185,6 +191,19 @@ def main(argv: list[str]) -> int:
         code, out, _ = run_warden(impossible, base, seats)
         check(out["decision"] == "REJECT" and code == 1, "a floor Ghost cannot meet rejects despite a Judge ACCEPT")
         check((target / "NOTE.md").read_text(encoding="utf-8") == "old\n", "the rejected run left the tree as found")
+
+        if args.real_judge:
+            real = ["tagteam", str(target), *instruments, "--drafter", "smoke_seats:Drafter",
+                    "--judge", "judge.seat:Judge", "--authorize", "smoke-operator",
+                    "--reason", "circuit smoke, real Judge"]
+            code, out, _ = run_warden(real, base, seats)
+            check(out["decision"] in {"ACCEPT", "ACCEPT_UNVERIFIED"},
+                  f"the real Judge decided on Warden's own evidence: {out['decision']} ({out['reason'][:160]})")
+            check(out["verdict"] is not None and out["verdict"]["decision"] in {"ACCEPT", "INSUFFICIENT"},
+                  f"the real Judge's verdict is {out['verdict'] and out['verdict']['decision']}")
+            check(bool(out["versions"]["seats"]["judge"]["version"]), "versions names the real Judge's version")
+            check((code == 0) == (out["decision"] == "ACCEPT"), "only ACCEPT exits 0")
+            git(target, "checkout", "--", ".")
     print("circuit smoke test passed")
     return 0
 
