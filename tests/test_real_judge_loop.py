@@ -1,6 +1,6 @@
 """The real Judge reads the evidence of the real Warden loop, in every shape the loop produces it.
 
-JUDGE 0.4.3 turns away evidence that contradicts itself (a cycle outcome it does not know, two cycles with one
+JUDGE since 0.4.3 turns away evidence that contradicts itself (a cycle outcome it does not know, two cycles with one
 number, more applied cycles than listed edits, listed edits nothing applied, declined removals with no declined
 cycle). Its own tests build that evidence by hand. These tests build it with Warden: a real `TagTeam` loop on a
 real target with a real suite, a fully measured run (the instruments are stood in for, as in the other

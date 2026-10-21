@@ -65,8 +65,8 @@ the target itself excepted. The manifest is the shape CNS is meant to hold for t
 
 ## The tested set
 
-Warden's CI runs against these sibling commits, each a full SHA (ghost_tools, SWIZZLE and JUDGE are on their
-branch `claude/horsemen-production-status-5wsndb` and are not tagged; a sibling's branch head may be ahead of its pin).
+Warden's CI runs against these sibling commits, each a full SHA (ghost_tools, SWIZZLE and JUDGE are the heads of their
+`main` branches and are not tagged; a sibling's head may be ahead of its pin).
 CNS is the exception: `pyproject.toml` pins it by the tag `v1.9.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag peels to.
 The ASSAY commit is the head of ASSAY's `main` (`54248be`, PR #23, whose cns extra is at the CNS v1.9.0 tag).
@@ -75,10 +75,10 @@ place that states one of them disagrees with the others.
 
 | Repository | Version | Commit |
 |---|---|---|
-| ghost_tools | 1.10.1 | `5d7a38638b12a75b25c84ab3652e4774acb9aa10` |
-| SWIZZLE | 0.8.1 | `8166c47f321ecfb66b8efa72c1deac5d954e8e48` |
+| ghost_tools | 1.10.5 | `c2ada82d2f6c0404074a668ba749c7872743aad9` |
+| SWIZZLE | 0.8.4 | `6bd88f3a6e9de1f83e64f401e13cbcb5233499fc` |
 | ASSAY | 0.11.2 | `54248beb5a36600f69de7c816cb2271dda20a879` |
-| JUDGE | 0.4.3 | `50f90f47660916d99deeb11370dd57bf85922dbe` |
+| JUDGE | 0.4.7 | `cf71fb468d483e868834c8c06b650a5d60726967` |
 | CNS | v1.9.0 | `da18e411743d4e3b0e783105394d845fb1c16746` |
 
 ASSAY's answer key needs numpy and matplotlib installed normally, with matplotlib's own dependencies (Pillow,
