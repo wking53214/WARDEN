@@ -4,9 +4,24 @@ All notable changes to Warden. The format follows [Keep a Changelog](https://kee
 and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single source of truth.
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
-The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.12.0`, `0.13.0`, `0.13.1`, `0.13.2`, `0.13.3`, `0.13.4` and `0.13.5` are
+The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.12.0`, `0.13.0`, `0.13.1`, `0.13.2`, `0.13.3`, `0.13.4`, `0.13.5` and `0.13.6` are
 not tagged: tagging is the owner's decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit
 SHA, not by tag.
+
+## [0.13.6] - 2026-10-21
+
+No change to the behaviour of the `warden` package; `CONTRACT` is still `"1"`. This release sits on top of the 0.13.5
+commit `decc3c3b5af479ad0eef3df4d66dbcb21e90897c`.
+
+### Changed
+
+- The CNS pin is spelled as the tag, `cns @ git+https://github.com/wking53214/CNS.git@v1.9.0`, in place of the full commit
+  SHA. The tag peels to `da18e411743d4e3b0e783105394d845fb1c16746`; STACK.md's CNS row names `v1.9.0` and that commit.
+  `tests/test_docs.py` now requires the exact tag spelling and that STACK.md row. This supersedes the 0.13.5 note that
+  the pin stays a full commit SHA.
+- The tested set's ASSAY pin moved from `01c713a316dc0513d30e566fffe4d94536888e81` to the head of ASSAY's `main`,
+  `54248beb5a36600f69de7c816cb2271dda20a879` (PR #23, ASSAY 0.11.2). CI (both checkouts and the `--expect` value), the
+  CI header comments and STACK.md say so.
 
 ## [0.13.5] - 2026-10-21
 
