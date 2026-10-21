@@ -4,9 +4,9 @@ All notable changes to Warden. The format follows [Keep a Changelog](https://kee
 and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single source of truth.
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
-The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.12.0`, `0.13.0`, `0.13.1`, `0.13.2`, `0.13.3`, `0.13.4`, `0.13.5` and `0.13.6` are
-not tagged: tagging is the owner's decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit
-SHA, not by tag.
+Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged. The
+older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
+decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
 
 ## [0.13.6] - 2026-10-21
 

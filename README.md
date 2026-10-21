@@ -26,8 +26,9 @@ the same gate.
 Version `0.13.6` (seat contract `"1"`, unchanged). The history of every release is in
 [CHANGELOG.md](CHANGELOG.md); the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the exit codes in
 [docs/EXIT_CODES.md](docs/EXIT_CODES.md). The seats (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by
-tag; each seat's `pyproject.toml` names the commit. The last tag is `v0.11.4`; `0.11.5`, `0.12.0`, `0.13.0`, `0.13.1`,
-`0.13.2`, `0.13.3`, `0.13.4`, `0.13.5` and `0.13.6` are not tagged, and tagging is the owner's decision.
+tag; each seat's `pyproject.toml` names the commit. Release tags exist up to `v0.12.0`; the `0.13.x` releases are not
+tagged. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). Tagging is
+the owner's decision.
 
 ## WHY IT EXISTS
 
@@ -363,8 +364,8 @@ and does not crash the run.
 full commit SHA, not on `main`. After a Warden change that seats must pick up (any change
 to `CONTRACT`, or to what a seat is checked for), the owner tags the merge commit `vX.Y.Z` (matching
 the version in `warden/__init__.py`, which `pyproject.toml` reads), then one pull request per seat moves its pin
-(see "Bumping the Warden pin" in each seat's README). Tagging is the owner's decision; this repository's newest tag is
-`v0.11.4`. Merge seats before the Warden change that
+(see "Bumping the Warden pin" in each seat's README). Tagging is the owner's decision; this repository's release tags
+run up to `v0.12.0` (see the top of this README). Merge seats before the Warden change that
 needs them: this release makes a seat without `requires_contract` refuse to load, so the seats
 must declare it first.
 
@@ -489,6 +490,10 @@ its markers is Warden's; every other section survives reruns untouched.
 - Logging goes to stderr only and never into the JSON. **VERIFIED** by `tests/test_logging.py`.
 - The version, the pins, the CI gates, the exit-code page and the module table agree with the code. **VERIFIED** by `tests/test_docs.py`.
 - The live circuit: the real command line against ASSAY, ghost_tools and SWIZZLE at pinned commits, in CI as the `circuit` job (`tools/circuit_smoke.py`), and by hand with `python tools/circuit_smoke.py --ghost-tools DIR --swizzle DIR --assay DIR`.
+- ASSAY's answer key needs numpy and matplotlib installed normally, with matplotlib's own dependencies (Pillow,
+  `packaging` and the rest): `pip install numpy matplotlib`, pinned as in the CI `circuit` job. Installed with
+  `--no-deps`, only 56 of the key's 60 claims are proven (one fails with `No module named 'packaging'`), ASSAY says the
+  key is NOT PROVEN, and Ghost is not graded.
 
 Count the tests with `pytest --collect-only -q`; this README states no count, because a number written here goes stale. Run with `ASSAY_ROOT` set to an ASSAY checkout, the real Judge installed (`pip install --no-deps` of the pinned JUDGE commit in STACK.md) and `cargo` on the path, the suite skips nothing; a test skips when something it exercises is absent: the live ASSAY registry (`ASSAY_ROOT`), the real Judge seat (`judge.seat`) and `cargo`. `WARDEN_FAIL_ON_SKIP=1 pytest` turns any skip into a failure, as CI does.
 

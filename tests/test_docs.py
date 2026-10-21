@@ -188,9 +188,41 @@ def test_the_cns_pin_is_the_v1_9_0_tag_and_is_stated_in_stack():
     assert re.search(rf"^\| CNS \| v1\.9\.0 \| `{peeled}` \|", stack, re.MULTILINE)
 
 
-def test_the_last_tag_is_stated_and_nothing_claims_a_release_that_is_not_tagged():
+def test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged():
+    """Asserts the text only: it never needs the repository's tags to be present (a shallow CI checkout has none)."""
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     changelog = " ".join((ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split())
+    # The docs say "0.13.x is not tagged"; a new minor series makes that stale, so this fails then and points at
+    # the sentence to update.
+    assert warden.__version__.startswith("0.13."), "update the tag sentence in README.md and CHANGELOG.md"
     for text in (readme, changelog):
-        assert "last tag is `v0.11.4`" in text and f"`{warden.__version__}`" in text
-        assert "not tagged" in text and "owner's decision" in text
+        assert "Release tags exist up to `v0.12.0`" in text
+        assert "`0.13.x` releases are not tagged" in text
+        assert "last tag is `v0.11.4`" not in text and "newest tag is `v0.11.4`" not in text
+        assert "`v0.10.0` tag does not match its tree" in text and "`__version__` is `0.9.0`" in text
+        assert "owner's decision" in text
+
+
+def test_the_markdown_code_fences_are_balanced_and_a_fence_ends_where_its_commands_end():
+    """STACK.md once left the `bash` fence open through the paragraph that follows the command."""
+    for name in ("README.md", "STACK.md"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        fences = [ln for ln in text.splitlines() if ln.startswith("```")]
+        assert len(fences) % 2 == 0, f"{name} has an unclosed code fence"
+    stack = (ROOT / "STACK.md").read_text(encoding="utf-8")
+    start = stack.index("```bash\nwarden tagteam PATH --stack FOLDER")
+    block = stack[start:stack.index("\n```\n", start + 3)]
+    assert "A target that imports a sibling" not in block
+
+
+def test_the_docs_say_assay_needs_matplotlibs_dependencies_installed():
+    for name in ("README.md", "STACK.md"):
+        text = " ".join((ROOT / name).read_text(encoding="utf-8").split())
+        assert "matplotlib's own dependencies (Pillow" in text and "56 of the" in text and "--no-deps" in text, name
+
+
+def test_the_workflow_token_is_read_only():
+    workflow = _workflow()
+    top = workflow[:workflow.index("\njobs:")]
+    assert re.search(r"^permissions:\n  contents: read$", top, re.MULTILINE)
+    assert not re.search(r"^\s*(permissions|[a-z-]+): write\b", workflow, re.MULTILINE)

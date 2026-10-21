@@ -3,6 +3,10 @@ on:
   push:
   pull_request:
 
+# The token can only read the repository: nothing here pushes, comments or publishes.
+permissions:
+  contents: read
+
 # Every action is pinned by full commit SHA (the tag is in the comment), and so is every sibling repository:
 # a push to a sibling, or a moved tag, cannot turn this repository red or green on its own.
 #

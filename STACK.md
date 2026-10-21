@@ -54,14 +54,14 @@ without regard to case):
 
 ```bash
 warden tagteam PATH --stack FOLDER --authorize "Your Name" --reason "why" --scope code
+```
 
 A target that imports a sibling (every repository in this circuit does) is, to Ghost, a scan with a
 gap, and the result is held as `ACCEPT_UNVERIFIED` rather than accepted. Join the siblings so the
 boundary is measured: `--join PATH` for each, or `--stack-manifest FILE` with a pinned list
 (`{"schema": "warden-stack/1", "contract": "1", "repos": {name: commit}}`, each commit the full
-40 characters); every named checkout is verified at exactly that commit, with no uncommitted changes, and joined, the target itself excepted. The manifest is the shape CNS is
-meant to hold for the circuit.
-```
+40 characters); every named checkout is verified at exactly that commit, with no uncommitted changes, and joined,
+the target itself excepted. The manifest is the shape CNS is meant to hold for the circuit.
 
 ## The tested set
 
@@ -80,6 +80,10 @@ place that states one of them disagrees with the others.
 | ASSAY | 0.11.2 | `54248beb5a36600f69de7c816cb2271dda20a879` |
 | JUDGE | 0.4.3 | `50f90f47660916d99deeb11370dd57bf85922dbe` |
 | CNS | v1.9.0 | `da18e411743d4e3b0e783105394d845fb1c16746` |
+
+ASSAY's answer key needs numpy and matplotlib installed normally, with matplotlib's own dependencies (Pillow,
+`packaging` and the rest). Installing them with `--no-deps` leaves 56 of the 60 claims proven, so the key is NOT PROVEN
+and Ghost is not graded: install them with `pip install numpy matplotlib` (the CI `circuit` job pins the versions).
 
 Exit 0 means `ACCEPT` and nothing else does. Recorded run: 2026-10-14, every seat live on a
 scratch repository, `ACCEPT` under both grants; see Warden's `docs/REGISTRY.json`.
