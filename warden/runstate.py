@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Mapping, Optional
 
 from . import gitstate
+from .textio import clip
 
 INTERRUPTED_NOTE = "A previous run was interrupted during the keep test; its trap code was removed."
 BUSY_NOTE = "another Warden run is using this target"
@@ -129,7 +130,7 @@ def state_dir(target: Path) -> Path:
         except OSError as exc:
             errors.append(f"{base}: {exc}")
     raise StateUnavailable("Warden could not make a safe place for its lock and journal ("
-                           + "; ".join(errors)[:300] + ")")
+                           + clip("; ".join(errors), 300) + ")")
 
 
 def lock_path(target: Path) -> Path:

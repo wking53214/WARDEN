@@ -50,8 +50,9 @@ exit codes (only 0 means the change was accepted):
      unsound (the JSON says INCONCLUSIVE; the exit is still 2). Nothing was written.
   3  ACCEPT_UNVERIFIED. A check did not run or the Judge could not decide. Changes were put back and
      held; keep them only with `warden keep`.
-  4  ERROR. A seat failed, timed out, or gave the wrong kind of answer (an unknown Judge label counts).
-     Nothing was approved and the tree was put back.
+  4  ERROR. A seat failed, timed out, or gave the wrong kind of answer (an unknown Judge label counts),
+     or the findings file given to --from-ghost could not be used. Nothing was approved and the tree was
+     put back.
   5  REFUSED. No human authorization, or the folder has uncommitted git changes (commit or stash
      them first). A proposal may have been shown; nothing was written.
   6  INCONCLUSIVE. A needed measurement could not be made (Ghost down, a red suite from the

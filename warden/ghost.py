@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
+from . import textio
 from .isolation import run_instrument
 from .models import Defect, defects_from_ghost
 
@@ -98,7 +99,7 @@ def _clean(text: Any, limit: int = 160) -> str:
     """One line of plain text, no control characters, capped. Ghost's words are data, not markup."""
     out = "".join(ch if ch.isprintable() else " " for ch in str(text))
     out = " ".join(out.split())
-    return out if len(out) <= limit else out[: limit - 3] + "..."
+    return textio.clip(out, limit)
 
 
 def _count(value: Any) -> int:
@@ -208,8 +209,12 @@ def scan(
     python: str = sys.executable,
     ghost_timeout: float = DEFAULT_TIMEOUT,
     joins: Sequence[Path] = (),
+    allow_uncommitted: bool = False,
 ) -> tuple[dict[str, Any], ...]:
     """Read-only Ghost Tools scan. Does not operate, does not write a ledger.
+
+    `allow_uncommitted` lets a root that is not a git checkout with a readable version run (see
+    `isolation.verify_root`); it is off by default.
 
     `joins` are sibling checkouts Ghost may read beside the target (its `--join`), so a boundary
     the target reaches across is looked at instead of reported as a gap. Without any, the scan
@@ -241,7 +246,7 @@ def scan(
         cmd += ["--join", str(Path(join).resolve())]
     try:
         proc = run_instrument(cmd, roots=[ghost_tools_root], timeout=ghost_timeout,
-                              packages={"ghost_buster": ghost_tools_root})
+                              packages={"ghost_buster": ghost_tools_root}, allow_uncommitted=allow_uncommitted)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"ghost_buster did not finish within {ghost_timeout:g} seconds") from exc
     # New Ghost: 0 clean, 1 findings, 2 did not start, 3 crashed. Old Ghost: 2 was usage.

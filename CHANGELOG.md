@@ -4,9 +4,42 @@ All notable changes to Warden. The format follows [Keep a Changelog](https://kee
 and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single source of truth.
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
-The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.12.0`, `0.13.0`, `0.13.1`, `0.13.2` and `0.13.3` are
+The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.12.0`, `0.13.0`, `0.13.1`, `0.13.2`, `0.13.3` and `0.13.4` are
 not tagged: tagging is the owner's decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit
 SHA, not by tag.
+
+## [0.13.4] - 2026-10-21
+
+### Fixed
+
+- **An installed copy could still be named as the root.** `--ghost-root $VENV/lib/python3.13/site-packages
+  --swizzle-root <the same> --assay-root <ASSAY>` with a rubber-stamp Judge ended in `ACCEPT`, exit 0, nothing unmeasured,
+  with `commit` and `version` null in the record and `module_in_root` true: the root held the package and the package
+  resolved under it. A root is now also refused when it is, or lies inside, a `site-packages` or `dist-packages` folder or
+  the interpreter's stdlib or site folders (links followed first), whatever it holds; and when Warden cannot name it: no
+  git commit of its own or no readable version (a plain copy of the package). The opt-in is
+  `--allow-uncommitted-instruments` (library: `TagTeam(allow_uncommitted_instruments=True)`, and `allow_uncommitted=` on
+  `ghost.scan`, `swizzle_contract_holds`, `swizzle_proofs_hold`, `governor_attacks`, `assay_score`, `verify_root`): the
+  run record says `allow_uncommitted_instruments: true`, `instrument_provenance` is added to `unmeasured`, and the run is
+  at best `ACCEPT_UNVERIFIED`. It never opens an installed location. A real git checkout, including one also installed
+  with `pip install -e`, is unchanged. Refusals are as before: Ghost `INCONCLUSIVE`, SWIZZLE `swizzle_sound` false (exit 2),
+  ASSAY ungraded.
+- `swizzle_sound` was null when Ghost failed after SWIZZLE's proofs had held (a bad `--ghost-root` beside a good
+  SWIZZLE) although the notes said "12 of 12 proofs hold". It is now the proofs' answer (true here); the Ghost failure is
+  recorded separately in `decision`, `reason` and `unmeasured`.
+- Reasons were cut mid-word ("... does n)"). Every message that shortened text now uses `warden.textio.clip`: cut at a
+  word, ` ...` marks the cut, text that fits is untouched.
+- The article before ASSAY is "an" (one place, a test's skip reason). A test now fails on it anywhere in the repository's text.
+- A garbage `--from-ghost` file gave `ERROR` with "Warden failed with JSONDecodeError". It still ends `ERROR`, exit 4 (now
+  listed in the exit-code text), but the reason names the file and what was wrong ("... is not valid JSON (Expecting
+  property name enclosed in double quotes, at line 1 column 2) ... Nothing was run."); an unreadable file, non-UTF-8 text and
+  a file that is not a findings list are named the same way.
+
+### Changed
+
+- README: what is true about installed copies is stated exactly (the three conditions above, what the flag does, and that a
+  Ghost chosen by SWIZZLE itself when `--ghost-root` is not given is not checked, which is why that run is at best
+  `ACCEPT_UNVERIFIED`). That behavior is unchanged.
 
 ## [0.13.3] - 2026-10-21
 

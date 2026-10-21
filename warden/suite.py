@@ -42,6 +42,7 @@ from typing import Optional
 from cns.suite import SuiteRun  # the shared row: cns 1.7.0
 
 from .isolation import suite_env
+from .textio import clip
 
 logger = logging.getLogger("warden.suite")
 
@@ -227,7 +228,7 @@ def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> 
     if report is None:
         last = (stderr.strip().splitlines() or stdout.strip().splitlines() or [f"exit {code}"])[-1]
         return SuiteRun(ran=False, exit_code=code,
-                        reason=f"pytest left no result file (exit {code}): {last[:160]}")
+                        reason=f"pytest left no result file (exit {code}): {clip(last, 160)}")
     reason = ""
     if report["exitstatus"] != code:
         reason = f"pytest's report said exit {report['exitstatus']} but the process exited {code}"
@@ -314,7 +315,8 @@ def _run_cargo(target: Path, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
         suites += 1
         passed, failed, ignored = passed + counts[0], failed + counts[1], ignored + counts[2]
     build_errors = stderr.count("error: could not compile")
-    last = (stderr.strip().splitlines() or [f"exit {code}"])[-1][:160]
+    last = (stderr.strip().splitlines() or [f"exit {code}"])[-1]
+    last = clip(last, 160)
     if suites == 0:
         return SuiteRun(ran=False, exit_code=code, reason=f"cargo reported no test results (exit {code}): {last}")
     if passed + failed == 0 and code == 0:

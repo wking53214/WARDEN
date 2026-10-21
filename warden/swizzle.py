@@ -20,6 +20,7 @@ from typing import Optional
 
 from cns.attack import AttackResult
 from .isolation import InstrumentRootError, absolute, run_instrument
+from .textio import clip
 
 
 #: The SWIZZLE contract number Warden was written against (SWIZZLE's docs/CONTRACT.md). A SWIZZLE that
@@ -31,6 +32,7 @@ def swizzle_contract_holds(
     *,
     swizzle_root: Optional[Path] = None,
     python: str = sys.executable,
+    allow_uncommitted: bool = False,
 ) -> tuple[bool, str]:
     """Whether this SWIZZLE speaks the contract Warden reads: `swizzle --contract` says name "swizzle" and
     contract 1. Fails closed: a SWIZZLE with no such flag (older than 0.8.0), a different contract number,
@@ -39,7 +41,7 @@ def swizzle_contract_holds(
     """
     try:
         proc = run_instrument([python, "-m", "swizzle.cli", "--contract"], roots=[swizzle_root], timeout=60,
-                              packages={"swizzle": swizzle_root})
+                              packages={"swizzle": swizzle_root}, allow_uncommitted=allow_uncommitted)
     except InstrumentRootError as exc:
         return False, f"SWIZZLE contract not confirmed: {exc}"
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -68,6 +70,7 @@ def swizzle_proofs_hold(
     swizzle_root: Optional[Path] = None,
     python: str = sys.executable,
     check_contract: bool = True,
+    allow_uncommitted: bool = False,
 ) -> tuple[bool, str]:
     """Whether SWIZZLE's own instrument is sound: every planted defect proven.
 
@@ -78,12 +81,14 @@ def swizzle_proofs_hold(
     is absent or different is (False, reason) without `prove` being run.
     """
     if check_contract:
-        confirmed, why = swizzle_contract_holds(swizzle_root=swizzle_root, python=python)
+        confirmed, why = swizzle_contract_holds(swizzle_root=swizzle_root, python=python,
+                                                allow_uncommitted=allow_uncommitted)
         if not confirmed:
             return False, why
     try:
         proc = run_instrument([python, "-m", "swizzle.cli", "prove"],
-                              roots=[swizzle_root], timeout=180, packages={"swizzle": swizzle_root})
+                              roots=[swizzle_root], timeout=180, packages={"swizzle": swizzle_root},
+                              allow_uncommitted=allow_uncommitted)
     except (OSError, subprocess.TimeoutExpired, InstrumentRootError) as exc:
         return False, f"SWIZZLE proofs could not run: {exc}"
     return _read_proofs(proc)
@@ -98,10 +103,10 @@ def _read_proofs(proc) -> tuple[bool, str]:
     counts = [(int(a), int(b)) for a, b in _PROOFS_LINE.findall(proc.stdout)]
     if proc.returncode != 0:
         why = (proc.stderr.strip().splitlines() or proc.stdout.strip().splitlines() or ["no output"])[-1]
-        return False, f"SWIZZLE proofs: not sound (exit {proc.returncode}): {why[:200]}"
+        return False, f"SWIZZLE proofs: not sound (exit {proc.returncode}): {clip(why, 200)}"
     if not counts:
         why = (proc.stderr.strip().splitlines() or ["no 'N of M proofs hold' line"])[-1]
-        return False, f"SWIZZLE proofs: not sound (no result line): {why[:200]}"
+        return False, f"SWIZZLE proofs: not sound (no result line): {clip(why, 200)}"
     held, total = counts[-1]
     if total < 1:
         return False, "SWIZZLE proofs: not sound (it ran 0 proofs, which proves nothing)"
@@ -124,6 +129,7 @@ def governor_attacks(
     warden_root: Path,
     python: str = sys.executable,
     note: Optional[list] = None,
+    allow_uncommitted: bool = False,
 ) -> Optional[tuple[dict, ...]]:
     """SWIZZLE's report on attacks against this governor, or None if they could not run.
 
@@ -144,7 +150,8 @@ def governor_attacks(
     try:
         proc = run_instrument(
             [python, "-m", "swizzle.cli", "governor", "--warden", str(absolute(warden_root)), "--json"],
-            roots=[swizzle_root], timeout=900, packages={"swizzle": swizzle_root})
+            roots=[swizzle_root], timeout=900, packages={"swizzle": swizzle_root},
+            allow_uncommitted=allow_uncommitted)
     except InstrumentRootError as exc:
         unmeasured(str(exc))
         return None
@@ -222,7 +229,7 @@ def _read_failure(proc) -> tuple[str, bool]:
         proof = card.get("proof")
         proof = proof if isinstance(proof, str) else ""
         if card.get("key_proven") is False or proof.startswith("NOT PROVEN"):
-            said = "the answer key was not proven: " + " ".join(proof.split())[:300]
+            said = "the answer key was not proven: " + clip(" ".join(proof.split()), 300)
             transient = bool(_TRANSIENT.search(proof))
         else:
             stuck = sorted({str(j.get("outcome")) for j in card.get("judgements", [])
@@ -231,7 +238,7 @@ def _read_failure(proc) -> tuple[str, bool]:
                 said = "specimens could not be scored (" + ", ".join(stuck) + ")"
     err = (proc.stderr.strip().splitlines() or [""])[-1].strip()
     if err:
-        said = f"{said}; SWIZZLE said: {err[:200]}" if said else err[:200]
+        said = f"{said}; SWIZZLE said: {clip(err, 200)}" if said else clip(err, 200)
     return said or "no reason given", transient
 
 
@@ -241,6 +248,7 @@ def assay_score(
     assay_root: Path,
     ghost_root: Optional[Path] = None,
     python: str = sys.executable,
+    allow_uncommitted: bool = False,
 ) -> tuple[Optional[bool], dict, str]:
     """Ghost graded against ASSAY's answer key, by SWIZZLE's `assay` command.
 
@@ -259,7 +267,8 @@ def assay_score(
         packages["ghost_buster"] = ghost_root
     while True:
         try:
-            proc = run_instrument(cmd, roots=[swizzle_root], timeout=600, packages=packages)
+            proc = run_instrument(cmd, roots=[swizzle_root], timeout=600, packages=packages,
+                                  allow_uncommitted=allow_uncommitted)
         except InstrumentRootError as exc:
             # The two answers SWIZZLE itself gives with nothing installed: a SWIZZLE that cannot start is "not
             # run" (exit 1), and a bad --assay or --ghost-tools path leaves the key unusable (exit 2). Never

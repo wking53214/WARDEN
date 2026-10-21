@@ -36,6 +36,7 @@ from . import gitstate, held, runstate, textio
 from .authorization import Authorization, Unauthorized, is_stack_actor
 from .deletion import commented_variant, is_deletion, keep_variant, stamp_now
 from .ghost import GhostCrashed, GhostRefused, _clean as _plain, defects_from_ghost, scan as ghost_scan
+from .textio import clip as _clip
 from .guard import (FORBIDDEN_DIRS, iter_tree, SeatBrokeCharter, Snapshot, _RESTORE_LIMIT, is_protected,
                     is_test_code, violation, watch)
 from .isolation import InstrumentRootError
@@ -188,7 +189,13 @@ class TagTeam:
         seat_timeout: Optional[float] = DEFAULT_SEAT_TIMEOUT,
         max_declined: int = DEFAULT_MAX_DECLINED,
         joins: Sequence[Path] = (),
+        allow_uncommitted_instruments: bool = False,
     ) -> None:
+        #: Let an instrument root that is not a git checkout with a readable version run (see
+        #: `isolation.verify_root`). Off: such a root is refused. On: it runs, the run record says so, and the run
+        #: is never a plain ACCEPT (`instrument_provenance` is unmeasured).
+        self.allow_uncommitted_instruments = allow_uncommitted_instruments
+        self._unproven: list[str] = []
         self.ghost_tools_root = ghost_tools_root
         #: Sibling checkouts Ghost reads beside the target (its --join), so a cross-repository
         #: boundary is measured rather than reported as a gap. Never on anyone's import path.
@@ -256,6 +263,7 @@ class TagTeam:
         self._baseline_last: Optional[dict] = None
         self._baseline_seen = False
         self._info: list[str] = []
+        self._unproven = self._unproven_instruments() if self.allow_uncommitted_instruments else []
         self._skipped: list[str] = []
         self._skipped_more = 0
         lock = runstate.TargetLock(target)
@@ -342,7 +350,7 @@ class TagTeam:
             cycles=tuple(self._trail), converged=False, decision=decision,
             notes=tuple(self._notes + [said]), unmeasured=self._unmeasured(self._sound, never_ran=True),
             reason=said, ghost_scan=self._ghost_info, drafter_skipped=self._skipped_lines(),
-            ghost_baseline=self._baseline_report(),
+            ghost_baseline=self._baseline_report(), swizzle_sound=self._sound,
             informational=tuple(self._info))
 
     def _settle(self, target: Path, result: TagTeamResult) -> TagTeamResult:
@@ -425,7 +433,7 @@ class TagTeam:
             import warden
             attacks = governor_attacks(swizzle_root=self.swizzle_root,
                                        warden_root=Path(warden.__file__).resolve().parents[1], python=python,
-                                       note=notes)
+                                       note=notes, allow_uncommitted=self.allow_uncommitted_instruments)
             self._attacks_missing = attacks is None
             self._attacks = None if attacks is None else tuple(attacks)
             logger.info("swizzle attacks on the governor: %s",
@@ -485,7 +493,7 @@ class TagTeam:
             extra = []
         if extra:
             notes.append("The Judge's verdict carried fields Warden does not know "
-                         f"({', '.join(map(str, extra))[:80]}); "
+                         f"({_clip(', '.join(map(str, extra)), 100)}); "
                          "they were ignored.")
 
     def _unmeasured(self, sound: Optional[bool], never_ran: bool = False,
@@ -509,9 +517,19 @@ class TagTeam:
             out.append("swizzle_attacks")
         if not self.run_tests or "suite" in self._down or (not self._suite_ran and not suite_pending):
             out.append("suite")
+        if self._unproven:
+            # An instrument root with no commit or version of its own was allowed on request: it cannot be told
+            # apart from a copy, so what it measured is not a verified measurement.
+            out.append("instrument_provenance")
         if self.judge is None:
             out.append("judge")
         return tuple(out)
+
+    def _unproven_instruments(self) -> list[str]:
+        """Names of the instrument roots given that have no git commit or no readable version of their own."""
+        from .isolation import provenance_gap
+        named = (("ghost_tools", self.ghost_tools_root), ("swizzle", self.swizzle_root), ("assay", self.assay_root))
+        return [name for name, root in named if root is not None and provenance_gap(Path(root).expanduser())]
 
     def _below_floor(self) -> str:
         """A plain sentence when the ASSAY score does not meet the floor, else "". Only a floor above 0 is
@@ -561,6 +579,10 @@ class TagTeam:
              findings: Optional[Sequence[dict]], python: str) -> TagTeamResult:
         notes = self._notes
         self._tell_scope(target, authorization, notes)
+        if self._unproven:
+            notes.append("Instrument roots with no git commit or readable version were allowed "
+                         f"(--allow-uncommitted-instruments): {', '.join(self._unproven)}. Their results are not "
+                         "verified measurements, so this run is never a plain ACCEPT.")
         sound = self._calibrate(python, notes)
         self._grade(python, notes)
         observed = self._observe(target, findings, python, notes)
@@ -598,7 +620,8 @@ class TagTeam:
                 if below:
                     decision = "REJECT"
                     why += f" {below}"
-            logger.info("verdict: %s (unmeasured: %s) %s", decision, ", ".join(missing) or "none", why.strip()[:200])
+            logger.info("verdict: %s (unmeasured: %s) %s", decision, ", ".join(missing) or "none",
+                        _clip(why.strip(), 200))
             return TagTeamResult(
                 target=str(target), baseline=base0, observed=first,
                 reobserved=reobserved, cycles=tuple(cycles),
@@ -862,11 +885,13 @@ class TagTeam:
         if self.swizzle_root is None:
             notes.append("SWIZZLE proofs NOT RUN: no swizzle_root. The adversary is uncalibrated.")
             return None
-        self._contract_ok, summary = swizzle_contract_holds(swizzle_root=self.swizzle_root, python=python)
+        self._contract_ok, summary = swizzle_contract_holds(
+            swizzle_root=self.swizzle_root, python=python, allow_uncommitted=self.allow_uncommitted_instruments)
         self._why_unsound = ""
         if self._contract_ok:
             sound, summary = swizzle_proofs_hold(swizzle_root=self.swizzle_root, python=python,
-                                                 check_contract=False)
+                                                 check_contract=False,
+                                                 allow_uncommitted=self.allow_uncommitted_instruments)
         else:
             sound = False  # an unidentified SWIZZLE is unmeasured: nothing it prints is believed
             self._why_unsound = summary
@@ -888,7 +913,8 @@ class TagTeam:
             return
         self._assay_state, self._assay, summary = assay_score(
             swizzle_root=self.swizzle_root, assay_root=self.assay_root,
-            ghost_root=self.ghost_tools_root, python=python)
+            ghost_root=self.ghost_tools_root, python=python,
+            allow_uncommitted=self.allow_uncommitted_instruments)
         logger.info("assay grading: %s (%s)", {True: "usable", False: "UNUSABLE", None: "not run"}[self._assay_state],
                     summary)
         notes.append(summary)
@@ -918,7 +944,8 @@ class TagTeam:
         try:
             with watch(target, "Ghost Tools"):
                 found = ghost_scan(target, ghost_tools_root=self.ghost_tools_root, python=python,
-                                   ghost_timeout=self.ghost_timeout, joins=self.joins)
+                                   ghost_timeout=self.ghost_timeout, joins=self.joins,
+                                   allow_uncommitted=self.allow_uncommitted_instruments)
             self._absorb_ghost(found)
             blind = getattr(found, "blind", None)
             logger.info("ghost scan: %d finding(s)%s", len(found), f", BLIND: {blind}" if blind else "")
@@ -939,7 +966,7 @@ class TagTeam:
         except Exception as err:  # noqa: BLE001 - any failure to see is UNKNOWN, not "no findings"
             logger.warning("ghost scan could not be run or read: %s", type(err).__name__)
             raise GhostUnavailable(
-                f"Ghost could not be run or read ({type(err).__name__}: {str(err)[:120]}). "
+                f"Ghost could not be run or read ({type(err).__name__}: {_clip(str(err), 160)}). "
                 "Observation is UNKNOWN; nothing further was attempted.") from err
 
     def _absorb_ghost(self, found) -> None:

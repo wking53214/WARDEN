@@ -72,7 +72,7 @@ def test_empty_specimen_handoff_is_unknown_not_ok(tmp_path: Path):
 
 
 @pytest.mark.skipif(not os.environ.get("ASSAY_ROOT"),
-                    reason="set ASSAY_ROOT to a ASSAY checkout to run the live link")
+                    reason="set ASSAY_ROOT to an ASSAY checkout to run the live link")
 def test_live_assay_registry():
     specs = AssayAdapter(os.environ["ASSAY_ROOT"]).load_registry()
     by_id = {s.specimen_id: s for s in specs}

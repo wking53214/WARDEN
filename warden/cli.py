@@ -56,8 +56,9 @@ exit codes (only 0 means the change was accepted):
      unsound (the JSON says INCONCLUSIVE; the exit is still 2). Nothing was written.
   3  ACCEPT_UNVERIFIED. A check did not run or the Judge could not decide. Changes were put back and
      held; keep them only with `warden keep`.
-  4  ERROR. A seat failed, timed out, or gave the wrong kind of answer (an unknown Judge label counts).
-     Nothing was approved and the tree was put back.
+  4  ERROR. A seat failed, timed out, or gave the wrong kind of answer (an unknown Judge label counts),
+     or the findings file given to --from-ghost could not be used. Nothing was approved and the tree was
+     put back.
   5  REFUSED. No human authorization, or the folder has uncommitted git changes (commit or stash
      them first). A proposal may have been shown; nothing was written.
   6  INCONCLUSIVE. A needed measurement could not be made (Ghost down, a red suite from the
@@ -336,6 +337,12 @@ def main(argv: list[str] | None = None) -> int:
                      help="SWIZZLE checkout; its proofs must hold before anything is ACCEPTed")
     p_t.add_argument("--assay-root", type=Path, default=None,
                      help="ASSAY checkout; with --swizzle-root, Ghost is graded against its answer key first")
+    p_t.add_argument("--allow-uncommitted-instruments", action="store_true",
+                     help="let an instrument root (--ghost-root, --swizzle-root, --assay-root) run although Warden "
+                          "cannot name it: no git commit of its own or no readable version, such as a plain copy of "
+                          "the package. Off by default, the root is refused. On, the run is recorded as having used "
+                          "one and is never better than ACCEPT_UNVERIFIED. A root inside site-packages or the "
+                          "Python installation is always refused")
     p_t.add_argument("--assay-floor", type=_assay_floor, default=CLI_ASSAY_FLOOR,
                      help="the fewest known failure modes Ghost must catch for the Judge to accept "
                           f"(default {CLI_ASSAY_FLOOR}). 0 is the one explicit way to skip: the score "
@@ -470,7 +477,10 @@ def _tagteam(args) -> int:
         seat_paths, problem = _resolve_stack(args)
         if problem:
             return _stop("USAGE_ERROR", f"usage error: {problem}. Nothing was run.")
-    findings = load_report(args.from_ghost) if args.from_ghost else None
+    try:
+        findings = load_report(args.from_ghost) if args.from_ghost else None
+    except Exception as e:  # noqa: BLE001 - a bad findings file is named, never a raw exception type
+        return _stop("ERROR", _findings_problem(args.from_ghost, e))
     auth = None
     if args.authorize:
         if not args.reason.strip():
@@ -530,7 +540,8 @@ def _tagteam(args) -> int:
         except runstate.SeatTimedOut as e:
             return _stop("SEAT_NOT_LOADED", f"{e} while it was being loaded. Nothing was run.")
         except Exception as e:  # noqa: BLE001 - a seat that will not load is named, never a traceback
-            return _stop("SEAT_NOT_LOADED", f"A seat could not be loaded ({type(e).__name__}: {str(e)[:120]}).")
+            return _stop("SEAT_NOT_LOADED",
+                         f"A seat could not be loaded ({type(e).__name__}: {textio.clip(str(e), 160)}).")
         for w in warnings:
             print(f"warden: warning: {w}", file=sys.stderr)
         return _run_team(args, auth, findings, drafter, finisher, judge, warnings)
@@ -539,12 +550,29 @@ def _tagteam(args) -> int:
         sys.path[:] = saved_path
 
 
+def _findings_problem(path, err: Exception) -> str:
+    """One plain sentence for a --from-ghost file that could not be used: which file and what was wrong."""
+    named = f"The findings file {str(path)!r} given to --from-ghost"
+    if isinstance(err, json.JSONDecodeError):
+        what = f"is not valid JSON ({err.msg}, at line {err.lineno} column {err.colno})"
+    elif isinstance(err, UnicodeDecodeError):
+        what = "is not valid UTF-8 text"
+    elif isinstance(err, OSError):
+        what = f"could not be read ({err.strerror or type(err).__name__})"
+    elif isinstance(err, ValueError):
+        what = "is not a Ghost Tools findings file: " + textio.clip(str(err).split(": ", 1)[-1], 200)
+    else:
+        what = f"could not be used ({type(err).__name__})"
+    return f"{named} {what}. Nothing was run."
+
+
 def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> int:
     team = TagTeam(ghost_tools_root=args.ghost_root, swizzle_root=args.swizzle_root,
                    assay_root=args.assay_root, assay_floor=args.assay_floor,
                    drafter=drafter, finisher=finisher, judge=judge, max_cycles=args.max_cycles,
                    ghost_timeout=args.ghost_timeout, suite_timeout=args.suite_timeout, suite_runner=args.suite_runner,
-                   seat_timeout=args.seat_timeout, joins=getattr(args, "joins", ()))
+                   seat_timeout=args.seat_timeout, joins=getattr(args, "joins", ()),
+                   allow_uncommitted_instruments=getattr(args, "allow_uncommitted_instruments", False))
     # A seat that print()s, or writes straight to file descriptor 1, must not corrupt the JSON on stdout.
     with runstate.stdout_to_stderr():
         result = team.run(args.path, authorization=auth, findings=findings)
@@ -564,6 +592,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "contract": CONTRACT,
         "versions": _versions(args, drafter, finisher, judge),
         "swizzle_sound": result.swizzle_sound,
+        "allow_uncommitted_instruments": bool(getattr(args, "allow_uncommitted_instruments", False)),
         "unmeasured": list(result.unmeasured),
         "ghost_scan": result.ghost_scan,
         "ghost_baseline": result.ghost_baseline,
@@ -597,8 +626,8 @@ def _write_receipt(args, auth, result) -> None:
         tmp.write_text(json.dumps(receipt.to_dict(), indent=2) + "\n", encoding="utf-8")
         os.replace(tmp, out)
     except Exception as e:  # noqa: BLE001 - a receipt that cannot be written is said, never a traceback
-        logger.error("receipt not written: %s: %s", type(e).__name__, str(e)[:200])
-        print(f"warden: the receipt was not written ({type(e).__name__}: {str(e)[:120]}).", file=sys.stderr)
+        logger.error("receipt not written: %s: %s", type(e).__name__, textio.clip(str(e), 200))
+        print(f"warden: the receipt was not written ({type(e).__name__}: {textio.clip(str(e), 160)}).", file=sys.stderr)
         return
     print(f"warden: receipt written to {out}", file=sys.stderr)
 
@@ -658,7 +687,7 @@ def _audit(args) -> int:
         else:
             findings = None
     except Exception as e:  # noqa: BLE001 - an audit that could not read its findings must not look clean
-        print(f"warden: the findings could not be read ({type(e).__name__}: {str(e)[:120]}). "
+        print(f"warden: the findings could not be read ({type(e).__name__}: {textio.clip(str(e), 160)}). "
               "Nothing was printed or written.", file=sys.stderr)
         return 2
     blind = getattr(findings, "blind", None)

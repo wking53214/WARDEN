@@ -15,10 +15,17 @@ target would be run and believed. So every instrument runs with:
     to be an existing directory that holds the instrument's package, and asks the interpreter, started
     the way the instrument is, where that package really resolves. A package that resolves anywhere
     but under the named root is refused (`InstrumentRootError`) and nothing is run.
+  - a root that is not an installed copy. A root that is, or lies inside, a site-packages or dist-packages
+    folder, or the interpreter's own stdlib or site folders (symbolic links followed first), is refused: the
+    installed copy would stand in for a checkout. And a root must be a checkout Warden can name: a git commit
+    of its own and a version in its pyproject.toml. A plain copy of the package in an ordinary folder has
+    neither and is refused too, unless the caller opts in (`allow_uncommitted`), in which case the run is
+    recorded as such and is never a plain ACCEPT.
 
 What remains: the check names where the package is found, not what it does once it runs, and an
 instrument that SWIZZLE itself starts (Ghost and ASSAY, graded by `swizzle assay`) is checked here for its
-root and package but loaded by SWIZZLE's own path rules.
+root and package but loaded by SWIZZLE's own path rules. A checkout that is also installed in editable mode
+(its folder on the path through a `.pth` file) is allowed: it is a checkout, with a commit and a version.
 
 The target's own test suite is the one thing that still runs inside the
 target. That cannot be avoided: running those tests is the point.
@@ -26,6 +33,7 @@ target. That cannot be avoided: running those tests is the point.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -112,6 +120,87 @@ _PROBE = (
 )
 
 
+#: Prints the interpreter's own stdlib and site folders as a JSON list, with PYTHONPATH already removed.
+_LOCATIONS = (
+    "import json, site, sysconfig\n"
+    "found = [sysconfig.get_paths().get(k) for k in ('stdlib', 'platstdlib', 'purelib', 'platlib')]\n"
+    "try:\n"
+    "    found += list(site.getsitepackages())\n"
+    "except Exception:\n"
+    "    pass\n"
+    "try:\n"
+    "    found.append(site.getusersitepackages())\n"
+    "except Exception:\n"
+    "    pass\n"
+    "print(json.dumps([p for p in found if isinstance(p, str) and p]))\n"
+)
+_INSTALLED_NAMES = frozenset({"site-packages", "dist-packages"})
+
+
+_LOCATIONS_CACHE: dict[str, list[Path]] = {}
+
+
+def interpreter_locations(python: Optional[str] = None, timeout: float = 60) -> list[Path]:
+    """The stdlib and site folders of the interpreter an instrument is started with (and of this one), resolved.
+    Asked of the interpreter itself (`sysconfig`, `site.getsitepackages()`), with PYTHONPATH removed so the
+    instrument's own root is not mistaken for one of them."""
+    import site
+    import sysconfig
+    paths = sysconfig.get_paths()
+    found: list[str] = [p for p in (paths.get(k) for k in ("stdlib", "platstdlib", "purelib", "platlib")) if p]
+    try:
+        found += list(site.getsitepackages()) + [site.getusersitepackages()]
+    except Exception:  # noqa: BLE001 - a site module that cannot answer adds nothing
+        pass
+    exe = python or sys.executable
+    if exe in _LOCATIONS_CACHE:
+        return list(_LOCATIONS_CACHE[exe])
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    with tempfile.TemporaryDirectory(prefix="warden-instrument-") as empty:
+        try:
+            proc = subprocess.run([exe, "-P", "-c", _LOCATIONS], capture_output=True, text=True, env=env, cwd=empty,
+                                  timeout=timeout)
+            if proc.returncode == 0:
+                answer = json.loads(proc.stdout.strip().splitlines()[-1])
+                found += [p for p in answer if isinstance(p, str)]
+        except (OSError, subprocess.TimeoutExpired, ValueError, IndexError):
+            pass
+    out: list[Path] = []
+    for item in found:
+        try:
+            out.append(Path(item).resolve())
+        except OSError:
+            continue
+    _LOCATIONS_CACHE[exe] = out
+    return list(out)
+
+
+def installed_location(root: Path, python: Optional[str] = None) -> str:
+    """Why `root` is an installed location, or an empty string when it is not. `root` is resolved first, so a link
+    to site-packages is site-packages. A folder named site-packages or dist-packages anywhere on its path counts,
+    and so does any folder equal to or inside the interpreter's stdlib or site folders."""
+    real = Path(root).expanduser().resolve()
+    named = _INSTALLED_NAMES.intersection(real.parts)
+    if named:
+        return f"it is, or lies inside, a {sorted(named)[0]} folder"
+    for place in interpreter_locations(python):
+        if real == place or real.is_relative_to(place):
+            return f"it is, or lies inside, {str(place)!r}, which belongs to the Python installation"
+    return ""
+
+
+def provenance_gap(root: Path) -> list[str]:
+    """What Warden cannot establish about a checkout: a git commit of its own, a version in its pyproject.toml."""
+    from . import versions
+    gap = []
+    if versions.own_commit(root) is None:
+        gap.append("git commit (it is not a git checkout of its own)")
+    if versions.project_version(root) is None:
+        gap.append("version (its pyproject.toml gives none Warden can read)")
+    return gap
+
+
 def locate_module(package: str, root: Optional[Path], *, python: Optional[str] = None,
                   timeout: float = 60) -> Optional[Path]:
     """Where `package` resolves when `root` is the instrument's path and the interpreter is started the way an
@@ -127,12 +216,15 @@ def locate_module(package: str, root: Optional[Path], *, python: Optional[str] =
     return Path(lines[-1]).resolve() if lines and lines[-1].strip() else None
 
 
-def verify_root(package: str, root: Optional[Path], *, python: Optional[str] = None) -> Path:
+def verify_root(package: str, root: Optional[Path], *, python: Optional[str] = None,
+                allow_uncommitted: bool = False) -> Path:
     """The module file `package` resolves to, once `root` is shown to be what the instrument will load from.
 
     Raises `InstrumentRootError` unless `root` is an existing directory that holds `package` and the
     interpreter resolves `package` under it. A root that does not hold the package fails here exactly as it
-    does with nothing installed, instead of being satisfied by a copy in site-packages."""
+    does with nothing installed, instead of being satisfied by a copy in site-packages. A root that is an installed
+    location is refused whatever it holds. A root without a git commit and a version of its own is refused unless
+    `allow_uncommitted` (the run is then recorded as having used one, and is never a plain ACCEPT)."""
     who = INSTRUMENT_PACKAGES.get(package, package)
     if root is None:
         raise InstrumentRootError(f"{who} was run with no root. Warden will not use an installed copy of "
@@ -141,6 +233,10 @@ def verify_root(package: str, root: Optional[Path], *, python: Optional[str] = N
     if not real.is_dir():
         raise InstrumentRootError(f"The {who} root {str(root)!r} does not exist or is not a directory. "
                                   "Nothing was run.", package)
+    where = installed_location(real, python)
+    if where:
+        raise InstrumentRootError(f"The {who} root {str(root)!r} is an installed copy, not a checkout: {where}. "
+                                  "An installed copy never stands in for a named checkout. Nothing was run.", package)
     if not (real / package / "__init__.py").is_file():
         raise InstrumentRootError(f"The {who} root {str(root)!r} has no {package} package, so it is not a "
                                   f"{who} checkout. An installed copy would not be used in its place. "
@@ -152,18 +248,26 @@ def verify_root(package: str, root: Optional[Path], *, python: Optional[str] = N
     if not found.is_relative_to(real):
         raise InstrumentRootError(f"The {package} package the interpreter would load is {str(found)!r}, which "
                                   f"is not under the {who} root {str(root)!r}. Nothing was run.", package)
+    if not allow_uncommitted:
+        gap = provenance_gap(real)
+        if gap:
+            raise InstrumentRootError(
+                f"The {who} root {str(root)!r} is not a checkout Warden can name: it has no {' and no '.join(gap)}. "
+                "A plain copy of the package is refused; pass --allow-uncommitted-instruments to run it anyway "
+                "(recorded, and never better than ACCEPT_UNVERIFIED). Nothing was run.", package)
     return found
 
 
 def run_instrument(cmd: Sequence[str], *, roots: Sequence[Optional[Path]], timeout: float,
                    extra_env: Optional[Mapping[str, str]] = None,
-                   packages: Optional[Mapping[str, Optional[Path]]] = None) -> subprocess.CompletedProcess:
+                   packages: Optional[Mapping[str, Optional[Path]]] = None,
+                   allow_uncommitted: bool = False) -> subprocess.CompletedProcess:
     """Run `cmd` (python, then arguments) in an empty directory with `-P` added.
 
     `packages` maps each instrument package the run depends on to the root it must come from; every one is
     checked with `verify_root` first, and a failure raises `InstrumentRootError` before anything is run."""
     for package, package_root in (packages or {}).items():
-        verify_root(package, package_root, python=cmd[0])
+        verify_root(package, package_root, python=cmd[0], allow_uncommitted=allow_uncommitted)
     full = [cmd[0], "-P", *cmd[1:]]
     env = instrument_env(*roots)
     if extra_env:

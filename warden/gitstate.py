@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from .textio import clip
+
 _TIMEOUT = 60
 
 
@@ -80,7 +82,7 @@ def tree_state(path: Path, allow: tuple = ()) -> TreeState:
         if "not a git repository" in said:
             return TreeState("not_git")
         return TreeState("unknown", "git would not say whether this folder has uncommitted work "
-                                    f"({(inside.stderr.strip().splitlines() or ['no reason given'])[-1][:120]})")
+                                    f"({clip((inside.stderr.strip().splitlines() or ['no reason given'])[-1], 160)})")
     if inside.stdout.strip() != "true":
         return TreeState("unknown", "this folder is inside a git folder (.git), not a work tree, so whether it has "
                                     "uncommitted work cannot be checked")
@@ -90,7 +92,8 @@ def tree_state(path: Path, allow: tuple = ()) -> TreeState:
                                     "remove it if nothing is running, then run again", git_dir=gdir)
     status = _git(path, "status", "--porcelain")
     if status is None or status.returncode != 0:
-        why = "git status failed" if status is None else (status.stderr.strip().splitlines() or ["no reason"])[-1][:120]
+        last = "" if status is None else (status.stderr.strip().splitlines() or ["no reason"])[-1]
+        why = "git status failed" if status is None else clip(last, 160)
         return TreeState("unknown", f"git status could not be read ({why}), so uncommitted work cannot be ruled out",
                          git_dir=gdir)
     lines = [ln for ln in status.stdout.splitlines() if ln.strip() and ln[3:].strip().strip('"') not in allow]

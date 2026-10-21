@@ -12,6 +12,26 @@ from __future__ import annotations
 from pathlib import Path
 
 
+ELLIPSIS = " ..."
+
+
+def clip(text: str, limit: int) -> str:
+    """`text` shortened to at most `limit` characters for a message, never mid-word without saying so.
+
+    Text that fits is returned as it is. Longer text is cut at the last space that leaves at least a third of the
+    allowance, trailing punctuation is dropped, and an explicit ` ...` marks the cut. Text with no space to cut at
+    (one long path, say) is cut at the limit and marked the same way, so a reader always knows it was shortened."""
+    text = str(text)
+    if len(text) <= limit:
+        return text
+    room = max(limit - len(ELLIPSIS), 1)
+    cut = text[:room]
+    space = cut.rfind(" ")
+    if space >= room // 3 and text[room] != " ":
+        cut = cut[:space]
+    return cut.rstrip(" ,;:(-") + ELLIPSIS
+
+
 class Undecodable(ValueError):
     """A file is not valid UTF-8, so Warden will not edit it."""
 
