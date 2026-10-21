@@ -72,6 +72,8 @@ def test_dependencies_and_ci_siblings_are_pinned_to_full_commits():
     git_deps = re.findall(r"git\+https://[^\"'\s]+", pyproject)
     assert len(git_deps) == 2
     for dep in git_deps:
+        if "/CNS.git@" in dep:      # CNS is pinned by tag, see test_the_cns_pin_is_the_v1_9_0_tag_and_is_stated_in_stack
+            continue
         assert SHA.fullmatch(dep.rsplit("@", 1)[1]), dep
     workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
     refs = re.findall(r"^\s+ref: (\S+)", workflow, re.MULTILINE)
@@ -174,15 +176,16 @@ def test_the_tested_set_is_the_same_everywhere_it_is_stated():
         assert re.search(rf"^#\s+{repo}\s+{re.escape(version)}\s", workflow, re.MULTILINE), (repo, version)
 
 
-def test_the_cns_pin_is_a_full_sha_with_its_tag_and_is_stated_in_stack():
-    """CNS is pinned by commit, never by tag: pip treats a tag URL and a SHA URL as two sources and will not resolve
-    them together."""
+def test_the_cns_pin_is_the_v1_9_0_tag_and_is_stated_in_stack():
+    """CNS is pinned by tag, spelled the same way in every repository of the circuit (CNS's seat_pins check compares
+    the text, and pip treats a tag URL and a commit URL as two sources). STACK.md names the tag and the commit it
+    peels to."""
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     stack = (ROOT / "STACK.md").read_text(encoding="utf-8")
-    found = re.findall(r'"cns @ git\+https://github\.com/wking53214/CNS\.git@(\w+)"\]\s*#\s*(v\d+\.\d+\.\d+)', pyproject)
-    assert len(found) == 1 and SHA.fullmatch(found[0][0]), found
-    sha, tag = found[0]
-    assert re.search(rf"^\| CNS \| {re.escape(tag[1:])} \| `{sha}` \|", stack, re.MULTILINE), (sha, tag)
+    assert pyproject.count("cns @ git+https://github.com/wking53214/CNS.git@v1.9.0") == 1
+    assert 'dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v1.9.0"]' in pyproject
+    peeled = "da18e411743d4e3b0e783105394d845fb1c16746"
+    assert re.search(rf"^\| CNS \| v1\.9\.0 \| `{peeled}` \|", stack, re.MULTILINE)
 
 
 def test_the_last_tag_is_stated_and_nothing_claims_a_release_that_is_not_tagged():

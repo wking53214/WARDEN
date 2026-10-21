@@ -67,6 +67,8 @@ meant to hold for the circuit.
 
 Warden's CI runs against these sibling commits, each a full SHA (ghost_tools, SWIZZLE and JUDGE are on their
 branch `claude/horsemen-production-status-5wsndb` and are not tagged; a sibling's branch head may be ahead of its pin).
+CNS is the exception: `pyproject.toml` pins it by the tag `v1.9.0`, spelled the same way in every repository of the
+circuit, and its row gives the commit the tag peels to.
 The ASSAY commit is the head of ASSAY's `main` (`01c713a`, which moved ASSAY's cns extra to CNS v1.9.0); its parent
 `b6b1ccf` is the squash-merge commit of the ASSAY work, whose tree is identical to the branch head (`023589f`) it
 replaced. `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
@@ -78,7 +80,7 @@ place that states one of them disagrees with the others.
 | SWIZZLE | 0.8.1 | `8166c47f321ecfb66b8efa72c1deac5d954e8e48` |
 | ASSAY | 0.11.2 | `01c713a316dc0513d30e566fffe4d94536888e81` |
 | JUDGE | 0.4.3 | `50f90f47660916d99deeb11370dd57bf85922dbe` |
-| CNS | 1.9.0 | `da18e411743d4e3b0e783105394d845fb1c16746` |
+| CNS | v1.9.0 | `da18e411743d4e3b0e783105394d845fb1c16746` |
 
 Exit 0 means `ACCEPT` and nothing else does. Recorded run: 2026-10-14, every seat live on a
 scratch repository, `ACCEPT` under both grants; see Warden's `docs/REGISTRY.json`.

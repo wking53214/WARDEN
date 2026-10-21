@@ -17,7 +17,7 @@ on:
 #   JUDGE       0.4.3   50f90f47660916d99deeb11370dd57bf85922dbe
 # The ASSAY commit is the head of ASSAY's `main` (0.11.2, the cns extra moved to CNS v1.9.0). Its parent b6b1ccf is the
 # squash-merge commit of the ASSAY work, whose tree is identical to the branch head 023589f it replaced.
-# CNS is a full-SHA pin in `pyproject.toml` (da18e41, v1.9.0), and the ASSAY pin above agrees with it.
+# CNS is pinned by the tag `v1.9.0` in `pyproject.toml` (it peels to da18e41), and the ASSAY pin above agrees with it.
 # The `assay-latest` job is the one place a sibling is taken at its newest commit, on purpose, and it cannot
 # fail the build.
 #
