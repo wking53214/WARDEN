@@ -174,6 +174,17 @@ def test_the_tested_set_is_the_same_everywhere_it_is_stated():
         assert re.search(rf"^#\s+{repo}\s+{re.escape(version)}\s", workflow, re.MULTILINE), (repo, version)
 
 
+def test_the_cns_pin_is_a_full_sha_with_its_tag_and_is_stated_in_stack():
+    """CNS is pinned by commit, never by tag: pip treats a tag URL and a SHA URL as two sources and will not resolve
+    them together."""
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    stack = (ROOT / "STACK.md").read_text(encoding="utf-8")
+    found = re.findall(r'"cns @ git\+https://github\.com/wking53214/CNS\.git@(\w+)"\]\s*#\s*(v\d+\.\d+\.\d+)', pyproject)
+    assert len(found) == 1 and SHA.fullmatch(found[0][0]), found
+    sha, tag = found[0]
+    assert re.search(rf"^\| CNS \| {re.escape(tag[1:])} \| `{sha}` \|", stack, re.MULTILINE), (sha, tag)
+
+
 def test_the_last_tag_is_stated_and_nothing_claims_a_release_that_is_not_tagged():
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     changelog = " ".join((ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split())

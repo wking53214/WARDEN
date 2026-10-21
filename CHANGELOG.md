@@ -4,25 +4,28 @@ All notable changes to Warden. The format follows [Keep a Changelog](https://kee
 and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single source of truth.
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
-The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.12.0`, `0.13.0`, `0.13.1`, `0.13.2`, `0.13.3` and `0.13.4` are
+The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.12.0`, `0.13.0`, `0.13.1`, `0.13.2`, `0.13.3`, `0.13.4` and `0.13.5` are
 not tagged: tagging is the owner's decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit
 SHA, not by tag.
 
-## [Unreleased]
+## [0.13.5] - 2026-10-21
 
-No version bump and no change to the `warden` package's behaviour; `CONTRACT` is still `"1"`. The commit that carries this
-entry sits on top of the 0.13.4 commit `36e98433f4928b7d12905f02b56e55ee1943b56e`, which the satellites pin.
+No change to the behaviour of the `warden` package; `CONTRACT` is still `"1"`. This release sits on top of the 0.13.4
+commit `36e98433f4928b7d12905f02b56e55ee1943b56e`, which the satellites pinned, and merges `main`.
 
 ### Changed
 
-- The tested set's ASSAY pin moved from `4c415567d1c1cb2c1a9e8f343a7a11a5064258c8` to
-  `b6b1ccf1feb39993e50d38b875cd52ff0bd38039` (ASSAY 0.11.2). ASSAY's work was squash-merged into its `main` as that
-  commit, and its tree is byte-identical to the branch head (`023589f`) it replaced, so the old commit no longer lies on
-  `main`. CI (both checkouts and the `--expect` value), the CI header comments, STACK.md and `tests/test_docs.py` say so.
-  ASSAY's `main` has since moved past it, to a CNS v1.9.0 pin; Warden stays on the squash-merge commit, which keeps the
-  CNS v1.8.0 pin. ghost_tools, SWIZZLE and JUDGE are unchanged.
-- Four comments in `warden/` (`roles.py`, `models.py`, `suite.py`, `epistemic.py`) said "cns 1.7.0"; the pinned CNS is
-  v1.8.0. Comment text only.
+- Merged `origin/main` (`72e5745`), which pins CNS at v1.9.0. The pin stays a full commit SHA, not the tag:
+  `cns @ git+https://github.com/wking53214/CNS.git@da18e411743d4e3b0e783105394d845fb1c16746  # v1.9.0` (pip treats a tag
+  URL and a SHA URL as two sources and will not resolve them together). STACK.md states the CNS pin in the tested set,
+  and `tests/test_docs.py` fails if the `pyproject.toml` pin is not a full SHA with its tag, or STACK.md disagrees.
+- The tested set's ASSAY pin moved from `4c415567d1c1cb2c1a9e8f343a7a11a5064258c8` to the head of ASSAY's `main`,
+  `01c713a316dc0513d30e566fffe4d94536888e81` (ASSAY 0.11.2, cns extra at CNS v1.9.0). ASSAY's work was squash-merged into
+  `main` as its parent `b6b1ccf1feb39993e50d38b875cd52ff0bd38039`, whose tree is identical to the ASSAY branch head
+  (`023589f`); the old pin was a commit of that branch, so it no longer lay on `main`. CI (both checkouts and the `--expect`
+  value), the CI header comments, STACK.md and `tests/test_docs.py` say so. ghost_tools, SWIZZLE and JUDGE are unchanged.
+- Four comments in `warden/` (`roles.py`, `models.py`, `suite.py`, `epistemic.py`) said "cns 1.7.0"; they now name the
+  pinned CNS, v1.9.0. Comment text only.
 
 ## [0.13.4] - 2026-10-21
 

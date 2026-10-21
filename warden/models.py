@@ -19,7 +19,7 @@ from typing import Any, Mapping, Optional, Sequence
 from . import textio
 from .authorization import Authorization, Unauthorized, canonical, is_stack_actor
 from .epistemic import EpistemicState
-from cns.defect import Defect, DefectLifecycle, DefectSeverity  # the shared rows: cns 1.8.0
+from cns.defect import Defect, DefectLifecycle, DefectSeverity  # the shared rows: cns 1.9.0
 from cns.seat import FileEdit
 
 _UNSAFE_ID = re.compile(r"[^A-Za-z0-9_.:-]")

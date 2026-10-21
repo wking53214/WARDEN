@@ -11,7 +11,7 @@ kind of evidence exists.
 
 from __future__ import annotations
 
-from cns.epistemic import EpistemicState as EpistemicState  # shared with CNS 1.8.0; re-exported here
+from cns.epistemic import EpistemicState as EpistemicState  # shared with CNS 1.9.0; re-exported here
 
 
 
