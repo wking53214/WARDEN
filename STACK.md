@@ -63,6 +63,20 @@ is verified at its commit and joined, the target itself excepted. The manifest i
 meant to hold for the circuit.
 ```
 
+## The tested set
+
+Warden's CI runs against these sibling commits, each a full SHA (they are on the siblings' branch
+`claude/horsemen-production-status-5wsndb` and are not tagged; a sibling's branch head may be ahead of its pin).
+`pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any place
+that states one of them disagrees with the others.
+
+| Repository | Version | Commit |
+|---|---|---|
+| ghost_tools | 1.10.1 | `5d7a38638b12a75b25c84ab3652e4774acb9aa10` |
+| SWIZZLE | 0.8.1 | `123d7aba5d91896b6c9b381c8b0de4c89365ab81` |
+| ASSAY | 0.11.1 | `7b781cf9cb2bbc3748aaff4343d778c64dc20d8c` |
+| JUDGE | 0.4.2 | `51a58c01e55686c1c16a634dddd1a569cf1a98df` |
+
 Exit 0 means `ACCEPT` and nothing else does. Recorded run: 2026-10-14, every seat live on a
 scratch repository, `ACCEPT` under both grants; see Warden's `docs/REGISTRY.json`.
 

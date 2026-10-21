@@ -4,8 +4,64 @@ All notable changes to Warden. The format follows [Keep a Changelog](https://kee
 and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single source of truth.
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
-Tags exist for v0.8.0 to v0.11.4 only. `0.11.5`, `0.12.0`, `0.13.0` and `0.13.1` are not tagged: tagging is the owner's
-decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
+The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.12.0`, `0.13.0`, `0.13.1` and `0.13.2` are
+not tagged: tagging is the owner's decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit
+SHA, not by tag.
+
+## [0.13.2] - 2026-10-17
+
+### Fixed
+
+- **An installed copy of an instrument can no longer stand in for a root that is not there.** Dropping `PYTHONPATH`
+  was not enough: the interpreter's site-packages stays importable, so with Ghost Tools installed
+  `--ghost-root /nonexistent` (or `/etc`) still scanned ("Ghost Tools observed 0 finding(s)"), and with SWIZZLE
+  installed `--swizzle-root /nonexistent/swz` reported "12 of 12 proofs hold" and `swizzle_sound` true, while the record
+  named the missing path with a null commit. Now each instrument root (`--ghost-root`, `--swizzle-root`,
+  `--assay-root`, and the folders `--stack` fills them from) must be an existing directory that holds the
+  instrument's package (`ghost_buster`, `swizzle`, `assay_production`), and the interpreter, started the way the
+  instrument is started, must resolve that package under the root. The module file is located, never imported. Otherwise
+  nothing is run and the run fails closed exactly as it does with nothing installed: Ghost is `INCONCLUSIVE` with `ghost`
+  unmeasured, SWIZZLE's contract and proofs are unconfirmed (`swizzle_sound` false, exit 2), a SWIZZLE that cannot start
+  leaves ASSAY ungraded, and a bad ASSAY or Ghost root handed to `swizzle assay` leaves the key unusable. New:
+  `warden.isolation.verify_root`, `locate_module`, `InstrumentRootError`, and a `packages` argument to `run_instrument`.
+  A library call with no root at all (`ghost.scan(target)`) is now refused instead of using an installed Ghost.
+- **`versions.assay.version` was null.** `project_version` read only a static `[project] version`; ASSAY's is dynamic.
+  It now follows `[tool.setuptools.dynamic] version = {attr = "pkg.module.__version__"}` by reading the module's source
+  with `ast` (a plain string literal assigned once at the top level, nothing else), without importing or running anything.
+  Anything it cannot follow is still `None`, never a guess. The Watcher prints the real version.
+
+### Changed
+
+- The run record's `versions.ghost_tools`, `versions.swizzle` and `versions.assay` carry two new keys:
+  `module` (the file the instrument's package resolved to) and `module_in_root`. They are added to what was there.
+- The two ASSAY floor defaults are named and documented, and asserted by a test; **no behavior changed**. The command
+  line's `--assay-floor` defaults to 3 (`warden.cli.CLI_ASSAY_FLOOR`) and the library's `TagTeam(assay_floor=...)`
+  defaults to 0, floor not enforced (`warden.tagteam.LIBRARY_ASSAY_FLOOR`). README and the generated
+  `docs/EXIT_CODES.md` say so.
+- The `ghost` extra is pinned to ghost_tools 1.10.1 (`5d7a38638b12a75b25c84ab3652e4774acb9aa10`). `pip install -e
+  ".[ghost,dev]"` resolves and `pip check` is clean (and is now a CI job).
+- CI: every action is pinned by full commit SHA (checkout v4.2.2, setup-python v5.6.0). The sibling pins moved to the
+  tested set: ghost_tools 1.10.1 (`5d7a38638b12a75b25c84ab3652e4774acb9aa10`), SWIZZLE 0.8.1
+  (`123d7aba5d91896b6c9b381c8b0de4c89365ab81`), ASSAY 0.11.1 (`7b781cf9cb2bbc3748aaff4343d778c64dc20d8c`) and JUDGE 0.4.2
+  (`51a58c01e55686c1c16a634dddd1a569cf1a98df`). The `pytest` and `circuit` jobs install the pinned Judge, so the Judge-seat
+  tests run instead of skipping, and a skipped test now fails the job (`WARDEN_FAIL_ON_SKIP=1`, `tests/conftest.py`).
+  The circuit job installs numpy and matplotlib (ASSAY 0.11.1 exits 1 on a skipped claim, so the answer key is not
+  proven without them) and also runs the governed change under the real Judge (`tools/circuit_smoke.py --real-judge`).
+  The non-blocking `assay-latest` job is kept.
+
+### Tests
+
+- `tests/test_instrument_roots.py`: for each of Ghost Tools, SWIZZLE and ASSAY, an installed copy in the interpreter's
+  site-packages and a root that is missing, a file, a folder without the package, a package without `__init__.py`, or a
+  link out to the installed copy must be refused; a good checkout still wins over the installed copy; on the command
+  line, with `--stack`, and for `audit`.
+- `tests/test_real_judge_loop.py`: the real Judge (JUDGE 0.4.2, which rejects internally contradictory evidence) reads
+  the evidence of the real Warden loop in nine shapes (nothing to propose, one or two applied cycles, two edits in a
+  cycle, a finisher only, a declined proposal, a commented-out removal) and ACCEPTs each; it does reject the same
+  evidence when it is made to contradict itself on the way.
+- `tests/test_versions.py`: static, dynamic-attr and unparsable versions, and the live ASSAY checkout.
+- `tests/test_docs.py`: the two ASSAY floor defaults, and that the tested set agrees everywhere it is stated.
+- `tests/test_skip_policy.py`: `WARDEN_FAIL_ON_SKIP=1` fails the run on a skip.
 
 ## [0.13.1] - 2026-10-17
 

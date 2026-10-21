@@ -132,3 +132,51 @@ def test_the_two_assay_floor_defaults_are_the_documented_ones(tmp_path, monkeypa
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     assert "The default is 3 **on the command line only**" in readme
     assert "`TagTeam(assay_floor=...)` in the library defaults to `0`" in readme
+
+
+def _workflow() -> str:
+    return (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+
+
+def test_every_action_is_pinned_by_full_sha_with_its_tag_in_a_comment():
+    uses = re.findall(r"^\s*- uses: (\S+)(.*)$", _workflow(), re.MULTILINE)
+    assert uses
+    for action, rest in uses:
+        name, _, ref = action.partition("@")
+        assert SHA.fullmatch(ref), f"{action} is not pinned by a full commit SHA"
+        assert re.search(r"#\s*v\d+\.\d+\.\d+", rest), f"{action} has no tag comment"
+    assert {a.partition("@")[0] for a, _ in uses} == {"actions/checkout", "actions/setup-python"}
+
+
+def test_the_tested_set_is_the_same_everywhere_it_is_stated():
+    """ghost_tools, SWIZZLE, ASSAY and JUDGE: the CI checkouts, the smoke test's --expect, the pip install of the
+    Judge, the `ghost` extra, the header comment and STACK.md name one commit each."""
+    workflow, stack = _workflow(), (ROOT / "STACK.md").read_text(encoding="utf-8")
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    pins: dict[str, set[str]] = {"ghost_tools": set(), "SWIZZLE": set(), "ASSAY": set(), "JUDGE": set()}
+    for repo, ref in re.findall(r"repository: wking53214/(\w+)\n\s+ref: (\w{40})", workflow):
+        pins[repo].add(ref)
+    for name, repo in (("ghost_tools", "ghost_tools"), ("swizzle", "SWIZZLE"), ("assay", "ASSAY")):
+        pins[repo].update(re.findall(rf"--expect {name}=(\w{{40}})", workflow))
+    pins["JUDGE"].update(re.findall(r"wking53214/JUDGE@(\w{40})", workflow))
+    pins["ghost_tools"].update(re.findall(r"wking53214/ghost_tools@(\w{40})", pyproject))
+    for repo, found in pins.items():
+        assert len(found) == 1 and SHA.fullmatch(next(iter(found))), (repo, found)
+        sha = next(iter(found))
+        assert f"`{sha}`" in stack, f"STACK.md does not state {repo} {sha}"
+        assert re.search(rf"^#\s+{repo}\s+\S+\s+{sha}$", workflow, re.MULTILINE), f"workflow header lacks {repo}"
+    # Each pin is stated in the jobs that need it: the Judge in the pytest and circuit jobs, the rest in circuit.
+    assert len(re.findall(r"wking53214/JUDGE@", workflow)) == 2
+    assert workflow.count("repository: wking53214/ASSAY\n          ref:") == 2
+    # The version written next to each pin is the version the repository declares at that commit (kept by hand).
+    for repo, version in (("ghost_tools", "1.10.1"), ("SWIZZLE", "0.8.1"), ("ASSAY", "0.11.1"), ("JUDGE", "0.4.2")):
+        assert re.search(rf"^\| {repo} \| {re.escape(version)} \|", stack, re.MULTILINE), (repo, version)
+        assert re.search(rf"^#\s+{repo}\s+{re.escape(version)}\s", workflow, re.MULTILINE), (repo, version)
+
+
+def test_the_last_tag_is_stated_and_nothing_claims_a_release_that_is_not_tagged():
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    changelog = " ".join((ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split())
+    for text in (readme, changelog):
+        assert "last tag is `v0.11.4`" in text and f"`{warden.__version__}`" in text
+        assert "not tagged" in text and "owner's decision" in text
