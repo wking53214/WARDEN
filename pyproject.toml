@@ -23,9 +23,9 @@ classifiers = [
     "Topic :: Software Development :: Quality Assurance",
     ]
 # The shared rows (seat contract, defects, run record) come from the hub.
-# Pinned to a full commit SHA (the v1.8.0 release); to bump it, change the SHA and the tag in the comment
+# Pinned to a full commit SHA (the v1.9.0 release); to bump it, change the SHA and the tag in the comment
 # together and run the full suite.
-dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@5252ceebe98185f7be81212d988055ccf9884568"]  # v1.8.0
+dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@da18e411743d4e3b0e783105394d845fb1c16746"]  # v1.9.0
 
 [project.urls]
 Homepage = "https://github.com/wking53214/Warden"
