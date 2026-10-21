@@ -8,6 +8,22 @@ The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.
 not tagged: tagging is the owner's decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit
 SHA, not by tag.
 
+## [Unreleased]
+
+No version bump and no change to the `warden` package's behaviour; `CONTRACT` is still `"1"`. The commit that carries this
+entry sits on top of the 0.13.4 commit `36e98433f4928b7d12905f02b56e55ee1943b56e`, which the satellites pin.
+
+### Changed
+
+- The tested set's ASSAY pin moved from `4c415567d1c1cb2c1a9e8f343a7a11a5064258c8` to
+  `b6b1ccf1feb39993e50d38b875cd52ff0bd38039` (ASSAY 0.11.2). ASSAY's work was squash-merged into its `main` as that
+  commit, and its tree is byte-identical to the branch head (`023589f`) it replaced, so the old commit no longer lies on
+  `main`. CI (both checkouts and the `--expect` value), the CI header comments, STACK.md and `tests/test_docs.py` say so.
+  ASSAY's `main` has since moved past it, to a CNS v1.9.0 pin; Warden stays on the squash-merge commit, which keeps the
+  CNS v1.8.0 pin. ghost_tools, SWIZZLE and JUDGE are unchanged.
+- Four comments in `warden/` (`roles.py`, `models.py`, `suite.py`, `epistemic.py`) said "cns 1.7.0"; the pinned CNS is
+  v1.8.0. Comment text only.
+
 ## [0.13.4] - 2026-10-21
 
 ### Fixed

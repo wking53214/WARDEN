@@ -65,8 +65,11 @@ meant to hold for the circuit.
 
 ## The tested set
 
-Warden's CI runs against these sibling commits, each a full SHA (they are on the siblings' branch
-`claude/horsemen-production-status-5wsndb` and are not tagged; a sibling's branch head may be ahead of its pin).
+Warden's CI runs against these sibling commits, each a full SHA (ghost_tools, SWIZZLE and JUDGE are on their
+branch `claude/horsemen-production-status-5wsndb` and are not tagged; a sibling's branch head may be ahead of its
+pin). The ASSAY commit is on ASSAY's `main`: the squash-merge commit of the ASSAY work, whose tree is identical to
+the branch head (`023589f`) it replaced. ASSAY's `main` has since moved past it, to a CNS v1.9.0 pin; Warden is
+tested against the squash-merge commit, which keeps the CNS v1.8.0 pin.
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any place
 that states one of them disagrees with the others.
 
@@ -74,7 +77,7 @@ that states one of them disagrees with the others.
 |---|---|---|
 | ghost_tools | 1.10.1 | `5d7a38638b12a75b25c84ab3652e4774acb9aa10` |
 | SWIZZLE | 0.8.1 | `8166c47f321ecfb66b8efa72c1deac5d954e8e48` |
-| ASSAY | 0.11.1 | `4c415567d1c1cb2c1a9e8f343a7a11a5064258c8` |
+| ASSAY | 0.11.2 | `b6b1ccf1feb39993e50d38b875cd52ff0bd38039` |
 | JUDGE | 0.4.3 | `50f90f47660916d99deeb11370dd57bf85922dbe` |
 
 Exit 0 means `ACCEPT` and nothing else does. Recorded run: 2026-10-14, every seat live on a

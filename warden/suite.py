@@ -39,7 +39,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from cns.suite import SuiteRun  # the shared row: cns 1.7.0
+from cns.suite import SuiteRun  # the shared row: cns 1.8.0
 
 from .isolation import suite_env
 from .textio import clip
