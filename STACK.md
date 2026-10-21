@@ -69,16 +69,15 @@ Warden's CI runs against these sibling commits, each a full SHA (ghost_tools, SW
 branch `claude/horsemen-production-status-5wsndb` and are not tagged; a sibling's branch head may be ahead of its pin).
 CNS is the exception: `pyproject.toml` pins it by the tag `v1.9.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag peels to.
-The ASSAY commit is the head of ASSAY's `main` (`01c713a`, which moved ASSAY's cns extra to CNS v1.9.0); its parent
-`b6b1ccf` is the squash-merge commit of the ASSAY work, whose tree is identical to the branch head (`023589f`) it
-replaced. `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
+The ASSAY commit is the head of ASSAY's `main` (`54248be`, PR #23, whose cns extra is at the CNS v1.9.0 tag).
+`pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
 place that states one of them disagrees with the others.
 
 | Repository | Version | Commit |
 |---|---|---|
 | ghost_tools | 1.10.1 | `5d7a38638b12a75b25c84ab3652e4774acb9aa10` |
 | SWIZZLE | 0.8.1 | `8166c47f321ecfb66b8efa72c1deac5d954e8e48` |
-| ASSAY | 0.11.2 | `01c713a316dc0513d30e566fffe4d94536888e81` |
+| ASSAY | 0.11.2 | `54248beb5a36600f69de7c816cb2271dda20a879` |
 | JUDGE | 0.4.3 | `50f90f47660916d99deeb11370dd57bf85922dbe` |
 | CNS | v1.9.0 | `da18e411743d4e3b0e783105394d845fb1c16746` |
 
