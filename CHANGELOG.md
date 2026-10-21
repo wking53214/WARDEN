@@ -4,11 +4,29 @@ All notable changes to Warden. The format follows [Keep a Changelog](https://kee
 and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single source of truth.
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
-The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.12.0`, `0.13.0`, `0.13.1` and `0.13.2` are
+The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.12.0`, `0.13.0`, `0.13.1`, `0.13.2` and `0.13.3` are
 not tagged: tagging is the owner's decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit
 SHA, not by tag.
 
-## [Unreleased]
+## [0.13.3] - 2026-10-21
+
+### Changed
+
+- **Merged the owner's authorization hardening** (`origin/main` d237acf, "Harden WARDEN authorization boundaries",
+  2026-10-19) into this branch with a merge commit; neither history was rewritten.
+  - `warden.models.Transformation.authorize` and `.apply` now refuse a reserved stack actor (`warden`, `self`, ...) or an
+    actor that is empty once canonicalised (blank, zero-width), at the model boundary, in addition to `grant`.
+  - `warden.horsemen.ScopedGrant.permits` and `validate_scoped` now take the repository and require it to match the scope's.
+    The base grant and the scope must each permit the operation and subject (an empty allowlist denies), and the change
+    class must be a `ChangeClass` matching the grant's. `validate_scoped(..., repository=...)` is a required argument now.
+    Warden's own receipt path (`HorsemenWorkflow.transform`) passes it.
+  - Warden's `tagteam`, instrument-root checks, `--authorize`, receipts and the Judge floor are unaffected: the run's
+    grant already came from `grant`, which refused those actors, and the receipt's scope is built from the same repository
+    it is checked against. No public import the satellites use changed (`warden.models`, `tagteam`, `authorization`, `held`,
+    `roles`, `suite`, `cli._load_seat`), and `CONTRACT` is still `"1"`.
+- The tested set moved: SWIZZLE 0.8.1 at `8166c47f321ecfb66b8efa72c1deac5d954e8e48`, ASSAY 0.11.1 at
+  `4c415567d1c1cb2c1a9e8f343a7a11a5064258c8` and JUDGE 0.4.3 at `50f90f47660916d99deeb11370dd57bf85922dbe` (ghost_tools is
+  unchanged at 1.10.1). CI, STACK.md and the pin tests say so.
 
 ### Fixed
 
