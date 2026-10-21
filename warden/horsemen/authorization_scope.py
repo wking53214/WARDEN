@@ -50,7 +50,8 @@ class ScopedGrant:
     authority_source: str = "human_operator"
     authority_provenance: str = ""
 
-    def permits(self, operation, subject, baseline_id, change_class=None, now=None):
+    def permits(self, operation, subject, baseline_id, change_class=None,
+                now=None, repository=None):
         if not self.base.granted:
             return False
         now = now or datetime.now(timezone.utc)
@@ -60,13 +61,25 @@ class ScopedGrant:
                 return False
         if baseline_id != self.scope.baseline_id:
             return False
-        if operation != self.base.operation and operation not in self.scope.operations:
+        if repository is None or repository != self.scope.repository:
             return False
-        if self.scope.subjects and subject not in self.scope.subjects and subject != self.base.subject:
+        # The base grant and the scope must independently permit access.
+        # Empty allowlists deny access rather than widening the grant.
+        if operation != self.base.operation:
             return False
-        if change_class is not None:
-            if self.scope.change_classes and change_class.value not in self.scope.change_classes:
-                return False
+        if operation not in self.scope.operations:
+            return False
+        if subject != self.base.subject:
+            return False
+        if subject not in self.scope.subjects:
+            return False
+        # Reject strings and other unexpected types before accessing .value.
+        if not isinstance(change_class, ChangeClass):
+            return False
+        if change_class != self.change_class:
+            return False
+        if change_class.value not in self.scope.change_classes:
+            return False
         return True
 
 def grant_scoped(*, actor, operation, subject, scope, change_class, proposal_id, reason,
@@ -91,9 +104,13 @@ def grant_scoped(*, actor, operation, subject, scope, change_class, proposal_id,
         authority_source=authority_source, authority_provenance=authority_provenance,
     )
 
-def validate_scoped(grant, *, operation, subject, baseline_id, change_class):
-    if not grant.permits(operation, subject, baseline_id, change_class):
+def validate_scoped(grant, *, operation, subject, baseline_id, change_class,
+                    repository):
+    if not grant.permits(
+        operation, subject, baseline_id, change_class, repository=repository
+    ):
         raise ScopeViolation(
             f"Authorization {grant.authorization_id} does not permit "
-            f"op={operation!r} subject={subject!r} baseline={baseline_id!r} class={change_class.value}"
+            f"op={operation!r} subject={subject!r} baseline={baseline_id!r} "
+            f"repository={repository!r} class={getattr(change_class, 'value', None)!r}"
         )

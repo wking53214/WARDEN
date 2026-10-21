@@ -17,7 +17,7 @@ import re
 from typing import Any, Mapping, Optional, Sequence
 
 from . import textio
-from .authorization import Authorization, Unauthorized
+from .authorization import Authorization, Unauthorized, canonical, is_stack_actor
 from .epistemic import EpistemicState
 from cns.defect import Defect, DefectLifecycle, DefectSeverity  # the shared rows: cns 1.7.0
 from cns.seat import FileEdit
@@ -107,6 +107,15 @@ def ghost_severity_to_warden(value: str) -> DefectSeverity:
 
 
 
+def _require_external_actor(auth: Authorization) -> None:
+    """Reject reserved or canonically empty actors at the model boundary."""
+    if is_stack_actor(auth.actor) or not canonical(auth.actor):
+        raise Unauthorized(
+            f"{auth.actor!r} cannot authorize a transformation; "
+            "a human or external governor must."
+        )
+
+
 @dataclass
 class Transformation:
     """One intentional change, with a reason, a baseline, and a preservation expectation.
@@ -131,6 +140,7 @@ class Transformation:
     result: Optional[str] = None
 
     def authorize(self, auth: Authorization) -> "Transformation":
+        _require_external_actor(auth)
         if not auth.permits("transform", self.target):
             raise Unauthorized(
                 f"authorization does not permit transform on {self.target!r} "
@@ -150,6 +160,7 @@ class Transformation:
                 "refusing to apply: no granted authorization. "
                 "Warden proposes; a human authorizes."
             )
+        _require_external_actor(self.authorization)
         if self.status not in {TransformationStatus.AUTHORIZED, TransformationStatus.APPLIED}:
             raise Unauthorized(f"refusing to apply in status {self.status.value}")
         written = []
