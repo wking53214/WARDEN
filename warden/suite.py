@@ -19,15 +19,23 @@ record says what was measured, not only the verdict.
 
 WHAT IT RUNS
 
-`python -m pytest -q -p no:cacheprovider` in the target's own directory, with
-the target's own configuration. It only runs after a human has authorized a
-write, because running a repository's tests runs that repository's code.
+A Python target: `python -m pytest -q -p no:cacheprovider` in the target's own
+directory, with the target's own configuration.
+
+A Rust target (a Cargo.toml and no Python test setup): `cargo test --workspace
+--no-fail-fast` in the target's directory. Green needs cargo's exit status 0,
+at least one passing test, and no failing test, the same rule as pytest.
+Rust's own summary lines ("test result: ok. N passed; ...") supply the counts.
+
+It only runs after a human has authorized a write, because running a
+repository's tests runs that repository's code.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import signal
 import subprocess
@@ -40,6 +48,15 @@ from typing import Optional
 _NO_TESTS = 5
 
 DEFAULT_TIMEOUT = 900.0
+
+#: Files whose presence says a target's tests are pytest's. Checked before Cargo.toml, so a
+#: repository with Python tests keeps the pytest path it always had.
+_PYTEST_MARKERS = ("pytest.ini", "conftest.py", "tox.ini", "setup.cfg")
+
+#: One libtest summary line per test binary (and per doc-test run): "test result: ok. 3 passed;
+#: 0 failed; 1 ignored; ...". Cargo prints it after the tests run, so a test cannot print it
+#: after the fact, but a test can print a line like it while it runs; see the note on run_cargo.
+_CARGO_RESULT = re.compile(r"^test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored", re.MULTILINE)
 
 #: The pytest plugin Warden loads into the target's run. It counts every test outcome as pytest
 #: reports it and writes them, with pytest's own exit status, to a file only Warden reads. Text
@@ -106,8 +123,10 @@ class SuiteRun:
     #: Tests marked as expected to fail that did fail, and ones that passed anyway.
     xfailed: int = 0
     xpassed: int = 0
-    #: pytest's own exit status. None only for a SuiteRun made by hand. Green needs 0.
+    #: The runner's own exit status. None only for a SuiteRun made by hand. Green needs 0.
     exit_code: Optional[int] = None
+    #: Which runner produced the result: "pytest" or "cargo".
+    runner: str = "pytest"
 
     @property
     def green(self) -> bool:
@@ -120,7 +139,7 @@ class SuiteRun:
         text = (f"{self.passed} passed, {self.failed} failed, {self.errors} errors, "
                 f"{self.skipped} skipped, {self.xfailed} xfailed, {self.xpassed} xpassed")
         if self.exit_code not in (None, 0):
-            text += f"; pytest exited {self.exit_code}" + (f" ({self.reason})" if self.reason else "")
+            text += f"; {self.runner} exited {self.exit_code}" + (f" ({self.reason})" if self.reason else "")
         return text
 
 
@@ -150,7 +169,84 @@ def _read_report(path: Path, nonce: str) -> Optional[dict]:
     return data
 
 
-def run_suite(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
+def runner_for(target: Path) -> str:
+    """"pytest" or "cargo": Python test setup wins; a Rust-only target gets cargo."""
+    if any((target / marker).is_file() for marker in _PYTEST_MARKERS):
+        return "pytest"
+    pyproject = target / "pyproject.toml"
+    if pyproject.is_file() and "pytest" in pyproject.read_text(encoding="utf-8", errors="replace"):
+        return "pytest"
+    if any(target.glob("test_*.py")) or any((target / "tests").glob("test_*.py")):
+        return "pytest"
+    if (target / "Cargo.toml").is_file():
+        return "cargo"
+    return "pytest"
+
+
+def _capture(argv: list, cwd: Path, env: dict, timeout: float):
+    """Run one command in its own process group. Returns (exit code, stdout, stderr, "") or,
+    when it could not run or ran past the timeout, (None, "", "", why). Anything it left running
+    is killed."""
+    try:
+        proc = subprocess.Popen(argv, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                stdin=subprocess.DEVNULL, text=True, errors="replace", env=env,
+                                start_new_session=True)
+    except OSError as exc:
+        return None, "", "", f"could not start: {exc}"
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_group(proc)
+        proc.communicate()
+        return None, "", "", f"timed out after {timeout:g} seconds"
+    except BaseException:
+        _kill_group(proc)
+        raise
+    finally:
+        _kill_group(proc)
+    return proc.returncode, stdout, stderr, ""
+
+
+def run_cargo(target: Path, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
+    """Run a Rust target's tests with `cargo test --workspace --no-fail-fast`.
+
+    Counts come from libtest's summary lines on stdout. Ignored tests are reported as skipped.
+    There is no separate "errors" count in Rust: a test that cannot build stops the run with a
+    nonzero exit, which is never green. Limit, stated plainly: a summary-shaped line printed by
+    the target's own code could inflate the counts. It cannot turn a red run green, because green
+    still needs cargo's exit status 0.
+    """
+    code, stdout, stderr, why = _capture(["cargo", "test", "--workspace", "--no-fail-fast"],
+                                         target, dict(os.environ, CARGO_TERM_COLOR="never"), timeout)
+    if code is None:
+        return SuiteRun(ran=False, runner="cargo", reason=f"cargo could not run: {why}")
+    totals = [tuple(int(n) for n in found) for found in _CARGO_RESULT.findall(stdout)]
+    passed = sum(t[0] for t in totals)
+    failed = sum(t[1] for t in totals)
+    ignored = sum(t[2] for t in totals)
+    if not totals:
+        last = (stderr.strip().splitlines() or [f"exit {code}"])[-1]
+        return SuiteRun(ran=False, runner="cargo", exit_code=code,
+                        reason=f"cargo printed no test results (exit {code}): {last[:160]}")
+    if passed + failed + ignored == 0:
+        return SuiteRun(ran=False, runner="cargo", exit_code=code, reason="cargo collected no tests")
+    reason = ""
+    if code != 0 and not failed:
+        reason = f"cargo exited {code} but no test is reported as failing"
+    if "could not compile" in stderr:
+        reason = (reason + "; " if reason else "") + "some tests did not build"
+    return SuiteRun(ran=True, runner="cargo", passed=passed, failed=failed, skipped=ignored,
+                    exit_code=code, reason=reason)
+
+
+def run_suite(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT, runner: Optional[str] = None) -> SuiteRun:
+    """Run the target's tests with the runner its files call for (see `runner_for`)."""
+    if (runner or runner_for(target)) == "cargo":
+        return run_cargo(target, timeout)
+    return run_pytest(target, python, timeout)
+
+
+def run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
     """Run the target's tests and read pytest's own result, never its printed text.
 
     The result is pytest's exit status plus a count file written by a plugin Warden loads (see

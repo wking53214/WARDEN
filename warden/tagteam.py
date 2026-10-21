@@ -25,6 +25,7 @@ This module refuses three self-certifying loops:
 from __future__ import annotations
 
 import hashlib
+import os
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -1016,12 +1017,27 @@ def _defects(findings) -> tuple[Defect, ...]:
                                "Observation is UNKNOWN; nothing further was attempted.") from err
 
 
+#: Source a suite could rewrite: Python, Rust, C and C++ code and TOML manifests. Cargo.lock is
+#: left out on purpose, because `cargo test` may create it on the first run.
+_SOURCE_SUFFIXES = {".py", ".rs", ".toml", ".h", ".hh", ".hpp", ".c", ".cc", ".cpp", ".cxx"}
+
+
 def _source_hash(target: Path) -> str:
-    """A hash of the target's non-test Python files, to notice a suite that rewrites source."""
+    """A hash of the target's non-test source files, to notice a suite that rewrites source.
+
+    Build output under a top-level `target/` folder (Cargo's) is skipped: it changes on every build.
+    """
+    root = Path(target)
     digest = hashlib.sha256()
-    for path in sorted(Path(target).rglob("*.py")):
-        rel = path.relative_to(target)
-        if FORBIDDEN_DIRS.intersection(p.lower() for p in rel.parts) or is_test_code(rel.as_posix()):
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        here = Path(dirpath)
+        dirnames[:] = sorted(d for d in dirnames
+                             if d.lower() not in FORBIDDEN_DIRS and not (here == root and d == "target"))
+        found.extend(here / name for name in filenames if (here / name).suffix in _SOURCE_SUFFIXES)
+    for path in sorted(found):
+        rel = path.relative_to(root)
+        if is_test_code(rel.as_posix()):
             continue
         if path.is_file():
             digest.update(rel.as_posix().encode("utf-8", "replace"))

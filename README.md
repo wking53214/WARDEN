@@ -301,6 +301,13 @@ counts. Text the suite prints (at the end, at exit, or anywhere) is never read, 
 turn a green one red. A suite that forces exit 1 with every test green is not green, and the
 description says `pytest exited 1`.
 
+**Rust targets.** A target with a `Cargo.toml` and no Python test setup is measured with
+`cargo test --workspace --no-fail-fast`. Warden reads the counts from Rust's own `test result:`
+summary lines (ignored tests count as skipped), and the same green rule applies: cargo must exit 0,
+at least one test must pass, and none may fail. A target with Python test files, a `pytest.ini`,
+`conftest.py` or `tox.ini` keeps the pytest path. Limit: a test that prints a summary-shaped line
+can inflate the counts; it cannot turn a failing run green.
+
 **What a proposal may touch.** Never: anything outside the target, version control and
 environments, and the files that judge or build the work: test files and folders (`tests`,
 `test`, `testing`, `tests.py`), `conftest.py`, every pytest/tox/setup/nox/make/pyproject
