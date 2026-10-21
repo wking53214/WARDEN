@@ -13,6 +13,7 @@ import argparse
 import importlib
 import json
 import os
+import re
 import sys
 from typing import Any, Optional, Sequence
 from pathlib import Path
@@ -155,6 +156,8 @@ def _clean_import_path(target: Path) -> None:
 
 
 STACK_MANIFEST_SCHEMA = "warden-stack/1"
+#: A manifest pin: the whole commit, spelled the way git prints it (the same form `versions` records).
+_FULL_COMMIT = re.compile(r"[0-9a-f]{40}")
 #: Where CNS, the hub, keeps the circuit's stack manifest (relative to a CNS checkout).
 CNS_MANIFEST = Path("contracts") / "warden-stack.json"
 
@@ -193,13 +196,17 @@ def _joins_from_manifest(manifest_path: Path, stack: Optional[Path], target: Pat
     target = target.resolve()
     target_commit = own_commit(target)
     for name, pinned in repos.items():
+        if not _FULL_COMMIT.fullmatch(pinned):
+            return [], (f"the stack manifest pins {name!r} to {pinned[:12]!r}, which is not a full "
+                        "40-character commit (lowercase hex, as git prints it). A full 40-character commit is "
+                        "required: a short prefix or another spelling of a commit is refused")
         folder = folders.get(name.lower())
         if folder is None:
             return [], f"the stack manifest names {name!r}, which is not in the --stack folder"
         actual = own_commit(folder)
         if actual is None:
             return [], f"the stack manifest pins {name!r} to {pinned[:12]}, but {str(folder)!r} is not a git checkout"
-        if not (actual == pinned or (len(pinned) >= 7 and actual.startswith(pinned))):
+        if actual != pinned:
             return [], (f"the stack manifest pins {name!r} to {pinned[:12]}, but the checkout at "
                         f"{str(folder)!r} is at {actual[:12]}")
         real = folder.resolve()
@@ -361,7 +368,8 @@ def main(argv: list[str] | None = None) -> int:
     p_t.add_argument("--stack-manifest", type=Path, default=None, metavar="FILE",
                      help="with --stack: a JSON file naming the circuit's checkouts and the commit each must be "
                           "at ({\"schema\": \"warden-stack/1\", \"contract\": \"1\", \"repos\": {name: commit}}). "
-                          "Every named checkout is verified against the folder and joined for Ghost, the target "
+                          "Each commit must be the full 40 characters (lowercase hex), not a prefix. Every named "
+                          "checkout is verified against the folder and joined for Ghost, the target "
                           "itself excepted; a missing or mismatched one is a usage error and nothing is run")
     p_t.add_argument("--cns", type=Path, default=None, metavar="DIR",
                      help="with --stack: a checkout of CNS, the hub that holds the circuit's stack manifest at "

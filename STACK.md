@@ -58,8 +58,8 @@ warden tagteam PATH --stack FOLDER --authorize "Your Name" --reason "why" --scop
 A target that imports a sibling (every repository in this circuit does) is, to Ghost, a scan with a
 gap, and the result is held as `ACCEPT_UNVERIFIED` rather than accepted. Join the siblings so the
 boundary is measured: `--join PATH` for each, or `--stack-manifest FILE` with a pinned list
-(`{"schema": "warden-stack/1", "contract": "1", "repos": {name: commit}}`); every named checkout
-is verified at its commit and joined, the target itself excepted. The manifest is the shape CNS is
+(`{"schema": "warden-stack/1", "contract": "1", "repos": {name: commit}}`, each commit the full
+40 characters); every named checkout is verified at exactly that commit and joined, the target itself excepted. The manifest is the shape CNS is
 meant to hold for the circuit.
 ```
 

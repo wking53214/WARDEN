@@ -360,6 +360,41 @@ def test_a_stack_manifest_at_the_wrong_commit_or_wrong_shape_runs_nothing(tmp_pa
     assert code == 2 and "needs --stack" in payload["reason"]
 
 
+@pytest.mark.parametrize("spelling, label", [
+    (lambda sha: sha[:7], "a 7-character prefix"),
+    (lambda sha: sha[:39], "a 39-character prefix"),
+    (lambda sha: sha + "0", "41 characters"),
+    (lambda sha: "z" * 40, "40 characters that are not hex"),
+    (lambda sha: sha.upper(), "uppercase hex (git prints lowercase, and commits are compared as printed)"),
+    (lambda sha: " " + sha[:39], "a padded pin"),
+])
+def test_a_manifest_pin_must_be_the_whole_commit_exactly(tmp_path, capsys, measured, spelling, label):
+    target = _repo(tmp_path / "proj")
+    stack = _stack(tmp_path / "stack")
+    commits = _git_stack(stack)
+    first = sorted(commits)[0]
+    pins = dict(commits)
+    pins[first] = spelling(commits[first])
+    code, payload, _ = _run(capsys, target, "--stack", stack, "--stack-manifest", _manifest(tmp_path, pins),
+                            "--authorize", "w", "--reason", "r")
+    assert code == 2 and payload["decision"] == "USAGE_ERROR", label
+    assert first in payload["reason"] and "full 40-character commit is required" in payload["reason"], label
+    assert payload["reason"].endswith("Nothing was run."), label
+    assert (target / "NOTE.md").read_text() == "old\n", label
+
+
+def test_a_full_lowercase_pin_equal_to_the_checkout_is_accepted(tmp_path, capsys, measured, monkeypatch):
+    target = _repo(tmp_path / "proj")
+    stack = _stack(tmp_path / "stack")
+    commits = _git_stack(stack)
+    assert all(len(sha) == 40 for sha in commits.values())
+    monkeypatch.setattr(tagteam, "ghost_scan", lambda t, **kw: ())
+    code, payload, _ = _run(capsys, target, "--stack", stack, "--stack-manifest", _manifest(tmp_path, commits),
+                            "--authorize", "w", "--reason", "r")
+    assert code in (0, 3), payload["reason"]
+    assert len(payload["versions"]["joins"]) == len(commits)
+
+
 def test_cns_is_the_manifest_from_the_hub(tmp_path, capsys, measured, monkeypatch):
     target = _repo(tmp_path / "proj")
     stack = _stack(tmp_path / "stack")
