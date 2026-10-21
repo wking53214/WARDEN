@@ -8,6 +8,16 @@ The last tag is `v0.11.4` (tags exist for v0.8.0 to v0.11.4 only). `0.11.5`, `0.
 not tagged: tagging is the owner's decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit
 SHA, not by tag.
 
+## [Unreleased]
+
+### Fixed
+
+- `tools/circuit_smoke.py` resolves `--ghost-tools`, `--swizzle` and `--assay` to absolute paths when the arguments are
+  parsed. It runs Warden from a temporary folder, so the relative roots the CI `circuit` job passes
+  (`_circuit/ghost_tools` and the like) pointed nowhere there and the job failed ("SWIZZLE's own proofs hold") while it
+  passed locally with absolute paths. A root that is not a folder is now a usage error. Tooling, CI and tests only: the
+  `warden` package, the version and the seat contract are unchanged. `tests/test_circuit_smoke_args.py` covers it.
+
 ## [0.13.2] - 2026-10-17
 
 ### Fixed

@@ -117,21 +117,38 @@ def run_warden(args: list[str], base: Path, seats: Path) -> tuple[int, dict, str
     return done.returncode, payload, done.stderr
 
 
-def main(argv: list[str]) -> int:
+def _absolute(text: str) -> Path:
+    """A root given on the command line, made absolute against the caller's working directory at once. Warden is
+    run from a temporary folder, so a relative root (CI passes `_circuit/ghost_tools`) would otherwise point
+    nowhere by the time an instrument is started."""
+    return Path(text).expanduser().resolve()
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--ghost-tools", type=Path, required=True)
-    parser.add_argument("--swizzle", type=Path, required=True)
-    parser.add_argument("--assay", type=Path, required=True)
+    parser.add_argument("--ghost-tools", type=_absolute, required=True)
+    parser.add_argument("--swizzle", type=_absolute, required=True)
+    parser.add_argument("--assay", type=_absolute, required=True)
     parser.add_argument("--real-judge", action="store_true",
                         help="also run the governed change under the real Judge (judge.seat:Judge, installed)")
     parser.add_argument("--expect", action="append", default=[], metavar="NAME=SHA",
                         help="the full commit each checkout must be at (ghost_tools, swizzle, assay)")
     args = parser.parse_args(argv)
+    for flag, root in (("--ghost-tools", args.ghost_tools), ("--swizzle", args.swizzle), ("--assay", args.assay)):
+        if not root.is_dir():
+            parser.error(f"{flag} {str(root)!r} is not a directory")
+    for item in args.expect:
+        name, _, sha = item.partition("=")
+        if name not in ("ghost_tools", "swizzle", "assay") or len(sha) != 40:
+            parser.error(f"--expect wants NAME=<40 hex>, got {item!r}")
+    return args
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
     roots = {"ghost_tools": args.ghost_tools, "swizzle": args.swizzle, "assay": args.assay}
     for item in args.expect:
         name, _, sha = item.partition("=")
-        if name not in roots or len(sha) != 40:
-            parser.error(f"--expect wants NAME=<40 hex>, got {item!r}")
         head = git(roots[name], "rev-parse", "HEAD")
         check(head == sha, f"{name} checkout is at the pinned commit {sha[:10]}")
 
