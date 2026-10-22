@@ -67,19 +67,19 @@ changes. The manifest is the shape CNS is meant to hold for the circuit.
 
 ## The tested set
 
-Warden's CI runs against these sibling commits, each a full SHA (ghost_tools, SWIZZLE and JUDGE are the heads of their
-`main` branches and are not tagged; a sibling's head may be ahead of its pin).
+Warden's CI runs against these sibling commits, each a full SHA (ghost_tools, SWIZZLE and ASSAY are the heads of their
+circuit branches, JUDGE is the head of its `main`; none is tagged; a sibling's head may be ahead of its pin).
 CNS is the exception: `pyproject.toml` pins it by the tag `v2.0.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag peels to.
-The ASSAY commit is the head of ASSAY's `main` (`a1732f2`, 0.11.3, whose cns extra is at the CNS v1.9.0 tag).
+The ASSAY commit is the head of ASSAY's circuit branch (`184679c`, 0.11.5), whose cns extra is at the CNS v2.0.0 tag.
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
 place that states one of them disagrees with the others.
 
 | Repository | Version | Commit |
 |---|---|---|
-| ghost_tools | 1.10.6 | `2d03d8e19dc5937a6f45379c429d1a3afce4ab29` |
-| SWIZZLE | 0.8.5 | `522658415b026ac3211d3fc130ba7da7c77cc400` |
-| ASSAY | 0.11.3 | `a1732f2bf3748235661f65b96e590a6d44ace71c` |
+| ghost_tools | 1.10.8 | `5a9154d3c76670f5bf1f46d845acadfed46d7bc8` |
+| SWIZZLE | 0.8.7 | `3f35dad5568b590c2ee36e60533d50a35db94aa2` |
+| ASSAY | 0.11.5 | `184679c06e0a636a9a08a8403efa410b375c9429` |
 | JUDGE | 0.4.8 | `e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074` |
 | CNS | v2.0.0 | `b13e5d2f9e0e4291725f82794b89117c3d840ac1` |
 
