@@ -8,6 +8,55 @@ Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); t
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
 
+## [0.13.9] - 2026-10-22
+
+`CONTRACT` is still `"1"`. This release sits on top of the 0.13.8 commit `380894f0304ef40587dd29efd41b4ceccf94a5d3`. No exit
+code and no decision changed. The patch number follows this file's convention: 0.13.2 added record keys in a patch too.
+
+### Changed
+
+- The CNS pin is the tag `v2.0.0`: `cns @ git+https://github.com/wking53214/CNS.git@v2.0.0`, comment
+  `v2.0.0 = b13e5d2f9e0e4291725f82794b89117c3d840ac1`, in `pyproject.toml`, the CI header, README and STACK.md. The suite
+  passes against the installed `cns` 2.0.0 (its `direct_url.json` names the tag and that commit). Warden imports none of
+  the one breaking item (`cns.stack.StackPin`). (Step 1.)
+- The tested set moved to the stage-1 heads of three siblings: ghost_tools 1.10.8 `5a9154d3c76670f5bf1f46d845acadfed46d7bc8`,
+  SWIZZLE 0.8.7 `3f35dad5568b590c2ee36e60533d50a35db94aa2`, ASSAY 0.11.5 `184679c06e0a636a9a08a8403efa410b375c9429` (CI
+  checkouts, the `--expect` values, the `ghost` extra, comments and the STACK.md table). The JUDGE pin is unchanged
+  (0.4.8, `e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074`). `pip install -e ".[ghost,dev]"` resolves with no conflict and
+  `pip check` is clean. (Step 2.)
+- Version 0.13.9. (Step 5.)
+
+### Added
+
+- `Evidence.finisher_ran` (new in CNS 2.0.0) is filled. It is True when the Finisher's `finish` was called after the loop
+  converged (even if it had nothing to finish) and False when no Finisher was seated. Warden never sends None: Evidence is
+  built only on those two paths, and a run that ends before the finishing step builds none. Before, the Judge always
+  received None. (Step 3.)
+
+### Fixed
+
+- `warden[ghost]` was written as an install line in the README and in a `pyproject.toml` comment, but `warden` on PyPI is
+  another project. Both now say `pip install -e '.[ghost]'` from a checkout. (Step 4.)
+
+### Documentation
+
+- README rewritten: WHAT THIS IS, HOW TO INSTALL AND RUN, WHAT WORKS, WHAT DOES NOT WORK / NOT PROVEN, KNOWN DEFECTS,
+  WHAT BROKE AND HOW IT WAS FIXED, SELF-HOSTING, CEILINGS CODE CANNOT FIX, then the behaviour description under REFERENCE.
+  New open defects recorded with how each was reproduced: `.git/info/exclude` can hide an untracked file from the dirty
+  check; the neutral git configuration refuses a folder owned by another user; the Ghost scan summary is cut at 10 gaps
+  and 20 declined checks; the printed record does not say whether the Finisher was called. Two statements nothing records
+  were dropped (a hand check dated 2026-10-09, and "live on CNS"). (Step 4.)
+
+### Tests
+
+- New: `tests/test_finisher_ran.py` (Step 3); `tests/test_readme_ledger.py` and
+  `tests/test_docs.py::test_no_document_tells_a_reader_to_install_a_bare_name_from_pypi` (Step 4).
+- Edited because the behaviour they assert is what a step changed (the step that caused it):
+  `tests/test_docs.py::test_the_cns_pin_is_the_v1_9_0_tag_and_is_stated_in_stack` is renamed `..._v2_0_0_...` and asserts the
+  `v2.0.0` pin text and its row in STACK.md (Step 1); `test_the_tested_set_is_the_same_everywhere_it_is_stated` reads the
+  new versions of the three pins (Step 2); a comment in `test_dependencies_and_ci_siblings_are_pinned_to_full_commits` that
+  named the renamed test now names the new name, no assertion changed (Step 1, committed with Step 4).
+
 ## [0.13.8] - 2026-10-22
 
 `CONTRACT` is still `"1"`. This release sits on top of the 0.13.7 commit `1636e1a21f124eedbf6e158db95dc75344f4308d`.
