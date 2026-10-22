@@ -72,7 +72,7 @@ def test_dependencies_and_ci_siblings_are_pinned_to_full_commits():
     git_deps = re.findall(r"git\+https://[^\"'\s]+", pyproject)
     assert len(git_deps) == 2
     for dep in git_deps:
-        if "/CNS.git@" in dep:      # CNS is pinned by tag, see test_the_cns_pin_is_the_v1_9_0_tag_and_is_stated_in_stack
+        if "/CNS.git@" in dep:      # CNS is pinned by tag, see test_the_cns_pin_is_the_v2_0_0_tag_and_is_stated_in_stack
             continue
         assert SHA.fullmatch(dep.rsplit("@", 1)[1]), dep
     workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
@@ -226,3 +226,15 @@ def test_the_workflow_token_is_read_only():
     top = workflow[:workflow.index("\njobs:")]
     assert re.search(r"^permissions:\n  contents: read$", top, re.MULTILINE)
     assert not re.search(r"^\s*(permissions|[a-z-]+): write\b", workflow, re.MULTILINE)
+
+
+def test_no_document_tells_a_reader_to_install_a_bare_name_from_pypi():
+    """`warden` and `cns` on PyPI are other projects, and so are the other names in this stack. A document may say
+    not to install one (a line with "Do not"); it may not tell a reader to."""
+    bare = re.compile(r"pip install\s+(?:-\S+\s+)*[\"']?(warden|cns|ghost[-_]tools|swizzle|assay|judge|drafter|burnish)"
+                      r"\b(?!\s*@)")
+    paths = [ROOT / "README.md", ROOT / "STACK.md", ROOT / "pyproject.toml", *sorted((ROOT / "docs").glob("*.md")),
+             *sorted((ROOT / "warden").rglob("*.py")), *sorted((ROOT / "tools").glob("*.py"))]
+    found = [f"{path.name}: {line.strip()[:80]}" for path in paths for line in path.read_text(encoding="utf-8").splitlines()
+             if bare.search(line) and "Do not" not in line]
+    assert not found, found
