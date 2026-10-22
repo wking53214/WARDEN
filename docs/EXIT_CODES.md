@@ -37,6 +37,13 @@ fills in; one whose option was given explicitly is not used from the stack. The 
   counts). A clone of the target at the same commit as a stack member is still checked; only the join for
   Ghost is skipped. The governed target itself is excluded.
 
+"No uncommitted changes" is decided the same way for every asker. Warden runs git with no user or system
+configuration, lists every untracked file, does not ignore submodules and always compares the executable
+bit, so no setting of your own can hide a change. A tracked file whose index entry says
+`assume-unchanged` or `skip-worktree` counts as uncommitted work, because git would not show its next edit.
+Only the repository's own `.gitignore` can still hide a file. The same check decides the target's own dirty
+policy (`REFUSED`, exit 5).
+
 ## The ASSAY floor has two defaults
 
 A graded ASSAY score below the floor is a `REJECT` (exit 1) that Warden decides itself, whatever the Judge

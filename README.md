@@ -190,11 +190,20 @@ uncalibrated, `swizzle` is in `unmeasured`, and the run ends `ACCEPT_UNVERIFIED`
 the Judge says (`tests/test_judge_independence.py`).
 
 **A dirty folder is refused.** If the target is inside a git work tree and
-`git status --porcelain` shows anything (modified, staged or untracked files; ignored files do
-not count), the run does not start: decision `REFUSED`, exit 5, a reason that tells you to commit
+`git status --porcelain` shows anything (modified, staged or untracked files; files ignored by the repository's own
+`.gitignore` do not count), the run does not start: decision `REFUSED`, exit 5, a reason that tells you to commit
 or stash first, and nothing is written. The same goes for a stray `.git/index.lock`. This is
 checked for every `tagteam` run, with or without `--authorize`, so Warden's changes can always be
-told apart from your own work. A folder that is not a git repository is allowed, with a note that
+told apart from your own work. **The question is asked the same way whoever asks.** Warden runs git with no user or
+system git configuration (an empty global file, no system file), lists every untracked file, does not ignore
+submodules, and always compares file mode bits, so a global `status.showUntrackedFiles=no`, a global
+`core.excludesFile` (or `$XDG_CONFIG_HOME/git/ignore`) and `core.fileMode=false` cannot hide anything. A tracked file
+whose index entry says `assume-unchanged` or `skip-worktree` (`git ls-files -v` shows a lowercase letter or `S`) counts
+as uncommitted work even when its content matches, because git would not show its next edit; clear the flag with
+`git update-index --no-assume-unchanged` or `--no-skip-worktree`. The same check backs the stack-folder rule above.
+Two consequences: git's ownership check (`safe.directory`) is no longer taken from your own git configuration, so a
+folder owned by another user is reported as unreadable (refused) rather than trusted; and a repository on a
+filesystem that cannot hold the executable bit shows as dirty. A folder that is not a git repository is allowed, with a note that
 the start snapshot is the only way back. `warden audit` prints and exits as before; only
 `warden audit --authorize`, which writes `WARDEN_AUDIT.md` into the target, follows the same rule
 (it exits 2 and writes nothing in a dirty folder), except that `WARDEN_AUDIT.md` itself being new

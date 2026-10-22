@@ -259,9 +259,11 @@ def _joined_checkout_problem(name: str, folder: Path, allow_not_git: bool = Fals
     if state.kind == "clean" or (allow_not_git and state.kind == "not_git"):
         return ""
     if state.kind == "dirty":
+        flagged = (f"; {state.hidden} of them hidden from git status by an index flag, which `git update-index "
+                   "--no-assume-unchanged` or `--no-skip-worktree` clears") if state.hidden else ""
         return (f"the stack folder {name!r} at {str(folder)!r} has uncommitted changes "
-                f"({state.changed} path(s) are dirty), so it is not the pinned commit. Commit, stash or remove "
-                "them, or restore the checkout, then run again")
+                f"({state.changed} path(s) are dirty{flagged}), so it is not the pinned commit. "
+                "Commit, stash or remove them, or restore the checkout, then run again")
     detail = state.detail or "git would not say whether this folder has uncommitted work"
     return (f"whether the stack folder {name!r} at {str(folder)!r} has uncommitted "
             f"changes cannot be ruled out: {detail}")
