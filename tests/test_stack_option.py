@@ -331,7 +331,11 @@ def test_a_stack_manifest_pins_every_checkout_and_joins_all_but_the_target(tmp_p
                          "--reason", "r")
     assert code in (0, 3), payload["reason"]
     assert "widget" not in {p.name for p in seen["joins"]} and len(seen["joins"]) == len(commits2) - 1
-    # a clone of the target at the same commit, governed from outside the stack, is the same repository
+    # a clone of the target at the same commit, governed from outside the stack, is the same repository.
+    # (The run above changed stack2/widget in place; a stack member is now vetted even when it is skipped as a join,
+    # so put it back first.)
+    git(target2, "reset", "--hard", "-q")
+    git(target2, "clean", "-fdq")
     clone = tmp_path / "clone"
     import subprocess
     subprocess.run(["git", "clone", "-q", str(target2), str(clone)], check=True)
@@ -486,3 +490,121 @@ def test_cns_is_the_manifest_from_the_hub(tmp_path, capsys, measured, monkeypatc
     code, payload, _ = _run(capsys, target, "--stack", stack, "--cns", cns, "--stack-manifest",
                             cns / "contracts" / "warden-stack.json", "--authorize", "w", "--reason", "r")
     assert code == 2 and "give one" in payload["reason"]
+
+
+# -- every stack folder the run uses is vetted, covered by the manifest or not -------------------------------
+
+def _stack_run(tmp_path, capsys, monkeypatch, repos, dirty=None, extra=(), manifest=True):
+    """A git stack run with a manifest naming only `repos` (a function of the full name->commit map); return
+    (code, payload, target). `dirty(stack)` may change a checkout first."""
+    target = _repo(tmp_path / "proj")
+    stack = _stack(tmp_path / "stack")
+    for child in stack.iterdir():
+        (child / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+    commits = _git_stack(stack)
+    if dirty is not None:
+        dirty(stack)
+    monkeypatch.setattr(tagteam, "ghost_scan", lambda t, **kw: ())
+    args = ["--stack", stack, "--authorize", "w", "--reason", "r", *extra]
+    if manifest:
+        args += ["--stack-manifest", _manifest(tmp_path, repos(commits))]
+    code, payload, _ = _run(capsys, target, *args)
+    return code, payload, target, stack
+
+
+def test_a_manifest_that_does_not_name_a_used_folder_runs_nothing(tmp_path, capsys, measured, monkeypatch):
+    """A manifest naming only the Drafter used to leave the Judge seat and the instruments unchecked."""
+    code, payload, target, stack = _stack_run(
+        tmp_path, capsys, monkeypatch, lambda commits: {"DRAFTER": commits["DRAFTER"]},
+        dirty=lambda stack: (stack / "Judge" / "judge" / "seat.py").write_text("# tampered\n", encoding="utf-8"))
+    assert code == 2 and payload["decision"] == "USAGE_ERROR"
+    assert "does not name" in payload["reason"] and "'judge' (the checkout at" in payload["reason"]
+    assert "'ghost_tools'" in payload["reason"] and "'drafter'" not in payload["reason"]
+    assert payload["reason"].endswith("Nothing was run.")
+    assert (target / "NOTE.md").read_text() == "old\n"
+
+
+def test_a_clean_but_uncovered_seat_is_refused_and_named(tmp_path, capsys, measured, monkeypatch):
+    code, payload, target, stack = _stack_run(
+        tmp_path, capsys, monkeypatch,
+        lambda commits: {k: v for k, v in commits.items() if k != "Judge"})
+    assert code == 2 and payload["decision"] == "USAGE_ERROR"
+    assert "does not name 'judge' (the checkout at" in payload["reason"] and repr(str(stack / "Judge")) in payload["reason"]
+    assert payload["reason"].endswith("Nothing was run.")
+    assert (target / "NOTE.md").read_text() == "old\n"
+
+
+def test_a_dirty_seat_is_refused_even_when_the_manifest_covers_it_and_the_commit_matches(tmp_path, capsys, measured,
+                                                                                           monkeypatch):
+    code, payload, target, stack = _stack_run(
+        tmp_path, capsys, monkeypatch, lambda commits: commits,
+        dirty=lambda stack: (stack / "Judge" / "judge" / "seat.py").write_text("# tampered\n", encoding="utf-8"))
+    assert code == 2 and payload["decision"] == "USAGE_ERROR"
+    assert repr(str(stack / "Judge")) in payload["reason"] and "1 path(s) are dirty" in payload["reason"]
+    assert (target / "NOTE.md").read_text() == "old\n"
+
+
+def test_a_folder_the_manifest_names_that_the_run_does_not_use_need_not_be_listed_for_it(tmp_path, capsys, measured,
+                                                                                         monkeypatch):
+    """An explicit option wins over the folder's copy, so the stack's own copy is not used and not required."""
+    other = tmp_path / "other_swizzle"
+    other.mkdir()
+    code, payload, target, stack = _stack_run(
+        tmp_path, capsys, monkeypatch, lambda commits: {k: v for k, v in commits.items() if k != "Swizzle"},
+        extra=("--swizzle-root", other))
+    assert code in (0, 3), payload["reason"]
+
+
+def test_a_stack_without_a_manifest_refuses_a_dirty_folder_it_uses(tmp_path, capsys, measured, monkeypatch):
+    code, payload, target, stack = _stack_run(
+        tmp_path, capsys, monkeypatch, None, manifest=False,
+        dirty=lambda stack: (stack / "burnish" / "burnish" / "finisher.py").write_text("# tampered\n",
+                                                                                          encoding="utf-8"))
+    assert code == 2 and payload["decision"] == "USAGE_ERROR"
+    assert repr(str(stack / "burnish")) in payload["reason"] and payload["reason"].endswith("Nothing was run.")
+    assert (target / "NOTE.md").read_text() == "old\n"
+
+
+def test_a_stack_without_a_manifest_does_not_ask_a_folder_it_does_not_use(tmp_path, capsys, measured, monkeypatch):
+    other = tmp_path / "other_swizzle"
+    other.mkdir()
+    code, payload, target, stack = _stack_run(
+        tmp_path, capsys, monkeypatch, None, manifest=False, extra=("--swizzle-root", other),
+        dirty=lambda stack: (stack / "Swizzle" / "stray.txt").write_text("x\n", encoding="utf-8"))
+    assert code in (0, 3), payload["reason"]
+
+
+def test_a_clean_git_stack_without_a_manifest_still_runs(tmp_path, capsys, measured, monkeypatch):
+    code, payload, target, stack = _stack_run(tmp_path, capsys, monkeypatch, None, manifest=False)
+    assert code in (0, 3), payload["reason"]
+
+
+def test_a_clone_of_the_target_at_the_same_commit_is_skipped_as_a_join_but_still_vetted(tmp_path, capsys, measured,
+                                                                                         monkeypatch):
+    """The same-commit exemption used to skip the dirty check too, so a modified stack member that happened to be at
+    the target's commit was never asked. Only the join is skipped."""
+    import subprocess
+    from gitutil import commit_all, git
+    stack = _stack(tmp_path / "stack")
+    commits = _git_stack(stack)
+    member = _repo(stack / "widget")
+    (member / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+    commit_all(member, "seed")
+    commits["widget"] = git(member, "rev-parse", "HEAD").strip()
+    clone = tmp_path / "widget_clone"
+    subprocess.run(["git", "clone", "-q", str(member), str(clone)], check=True)
+    manifest = _manifest(tmp_path, commits)
+    monkeypatch.setattr(tagteam, "ghost_scan", lambda t, **kw: ())
+    (member / "NOTE.md").write_text("tampered\n", encoding="utf-8")
+    code, payload, _ = _run(capsys, clone, "--stack", stack, "--stack-manifest", manifest, "--authorize", "w",
+                            "--reason", "r")
+    assert code == 2 and payload["decision"] == "USAGE_ERROR"
+    assert repr(str(member)) in payload["reason"] and "1 path(s) are dirty" in payload["reason"]
+    assert payload["reason"].endswith("Nothing was run.")
+    assert (clone / "NOTE.md").read_text() == "old\n"
+    # put it back: the clean member is still not joined, as before
+    git(member, "checkout", "--", ".")
+    code, payload, _ = _run(capsys, clone, "--stack", stack, "--stack-manifest", manifest, "--authorize", "w",
+                            "--reason", "r")
+    assert code in (0, 3), payload["reason"]
+    assert len(payload["versions"]["joins"]) == len(commits) - 1

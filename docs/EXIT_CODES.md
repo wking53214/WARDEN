@@ -23,6 +23,20 @@ with the reason in the record.
 `ACCEPT_UNVERIFIED` (3) is the distinct code for a run that could not be fully measured: the changes are
 put back and held, and nothing stands until a person approves the digest with `warden keep`.
 
+## A stack run that refuses before anything runs
+
+`warden tagteam --stack` exits 2 (`USAGE_ERROR`, "Nothing was run", the folder named) when a stack
+folder it will use is not what it should be. The folders it uses are the three instrument roots
+(`ghost_tools`, `swizzle`, `assay`) and the three seats (`drafter`, `judge`, `burnish`) that `--stack`
+fills in; one whose option was given explicitly is not used from the stack. The rule has three parts:
+
+- With a manifest (`--stack-manifest` or `--cns`), every used folder must be named by it. A folder the
+  manifest leaves out has no pinned commit to be checked against.
+- With a manifest, every folder it names must be at exactly the pinned commit.
+- With or without a manifest, every used folder must have no uncommitted changes (see the README for what
+  counts). A clone of the target at the same commit as a stack member is still checked; only the join for
+  Ghost is skipped. The governed target itself is excluded.
+
 ## The ASSAY floor has two defaults
 
 A graded ASSAY score below the floor is a `REJECT` (exit 1) that Warden decides itself, whatever the Judge

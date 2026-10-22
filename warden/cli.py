@@ -86,7 +86,9 @@ def _resolve_stack(args) -> tuple[list[Path], str]:
     missing is not the circuit, and a run that quietly went without it would read as one. An
     option given explicitly wins over the folder's copy. Folder names are matched without
     regard to case (`SWIZZLE` and `swizzle` are the same checkout); two folders that differ
-    only by case are refused rather than guessed between.
+    only by case are refused rather than guessed between. The folders actually filled in (not
+    overridden by an explicit option) are left in `args.stack_used`, name to path: those are the
+    checkouts the run executes or reads as instruments, and `_stack_use_problem` vets them.
     """
     stack = Path(args.stack)
     if not stack.is_dir():
@@ -108,14 +110,18 @@ def _resolve_stack(args) -> tuple[list[Path], str]:
     missing = [name for name in wanted if name not in found]
     if missing:
         return [], f"the --stack folder {str(stack)!r} has no {', '.join(missing)} checkout"
+    used: dict[str, Path] = {}
     for name, option in STACK_ROOTS.items():
         if getattr(args, option) is None:
             setattr(args, option, found[name].resolve())
+            used[name] = found[name].resolve()
     paths: list[Path] = []
     for name, (option, spec) in STACK_SEATS.items():
         if getattr(args, option) is None:
             setattr(args, option, spec)
             paths.append(found[name].resolve())
+            used[name] = found[name].resolve()
+    args.stack_used = used
     return paths, ""
 
 
@@ -171,9 +177,23 @@ def _stack_folders(stack: Path) -> dict[str, Path]:
     return out
 
 
-def _joins_from_manifest(manifest_path: Path, stack: Optional[Path], target: Path) -> tuple[list[Path], str]:
+def _is_target(folder: Path, target: Path) -> bool:
+    """The governed target itself, or a folder overlapping it: governed, not joined or vetted as a stack member."""
+    real = folder.resolve()
+    return real == target or real.is_relative_to(target) or target.is_relative_to(real)
+
+
+def _joins_from_manifest(manifest_path: Path, stack: Optional[Path], target: Path,
+                         used: Optional[dict] = None) -> tuple[list[Path], str]:
     """The checkouts a stack manifest names, each verified to be in the --stack folder at the pinned
-    commit, minus the target itself. Returns (joins, "") or ([], the reason nothing can be run)."""
+    commit and free of uncommitted changes, minus the target itself. Returns (joins, "") or ([], the reason
+    nothing can be run).
+
+    `used` is the stack folders the run will execute or read as instruments (`args.stack_used`): each must be
+    named by the manifest, because a folder the manifest does not cover has no pinned commit to be checked
+    against. A clone of the target at the same commit as a stack member is not joined (it is the same
+    repository), but it is still verified: it may be a seat or an instrument, and the pin says nothing about
+    uncommitted changes in it."""
     from .versions import own_commit
     if stack is None:
         return [], "--stack-manifest needs --stack: the manifest names checkouts inside that folder"
@@ -195,6 +215,14 @@ def _joins_from_manifest(manifest_path: Path, stack: Optional[Path], target: Pat
     joins: list[Path] = []
     target = target.resolve()
     target_commit = own_commit(target)
+    covered = {name.lower() for name in repos}
+    unnamed = [f"{name!r} (the checkout at {str(folder)!r})" for name, folder in (used or {}).items()
+               if name not in covered and not _is_target(folder, target)]
+    if unnamed:
+        return [], ("the stack manifest does not name " + ", ".join(unnamed) + ", yet this run uses "
+                    + ("it" if len(unnamed) == 1 else "them") + " as an instrument root or a seat, so nothing pins "
+                    + ("it" if len(unnamed) == 1 else "them") + " to a commit. Add "
+                    + ("it" if len(unnamed) == 1 else "them") + " to the manifest, or give that option explicitly")
     for name, pinned in repos.items():
         if not _FULL_COMMIT.fullmatch(pinned):
             return [], (f"the stack manifest pins {name!r} to {pinned[:12]!r}, which is not a full "
@@ -210,33 +238,48 @@ def _joins_from_manifest(manifest_path: Path, stack: Optional[Path], target: Pat
             return [], (f"the stack manifest pins {name!r} to {pinned[:12]}, but the checkout at "
                         f"{str(folder)!r} is at {actual[:12]}")
         real = folder.resolve()
-        if real == target or real.is_relative_to(target) or target.is_relative_to(real):
+        if _is_target(folder, target):
             continue  # the target itself: governed, not joined
-        if target_commit is not None and actual == target_commit:
-            continue  # a clone of the target at the same commit: the same repository, so not joined either
         problem = _joined_checkout_problem(name, folder)
         if problem:
             return [], problem
+        if target_commit is not None and actual == target_commit:
+            continue  # a clone of the target at the same commit: the same repository, so not joined (but vetted above)
         joins.append(real)
     return joins, ""
 
 
-def _joined_checkout_problem(name: str, folder: Path) -> str:
-    """The reason a checkout the manifest joins cannot be trusted to be its pinned commit, or empty.
+def _joined_checkout_problem(name: str, folder: Path, allow_not_git: bool = False) -> str:
+    """The reason a stack checkout cannot be trusted to be its pinned commit, or empty.
 
     The commit alone does not say what is in the folder: a modified file or an untracked one (what
     `git status --porcelain` reports; ignored files do not count) is code the pin does not describe, and a seat
     or an instrument from there would run it. The target is not asked: its own dirty policy applies to it."""
     state = gitstate.tree_state(folder)
-    if state.kind == "clean":
+    if state.kind == "clean" or (allow_not_git and state.kind == "not_git"):
         return ""
     if state.kind == "dirty":
-        return (f"the stack manifest joins {name!r}, but the checkout at {str(folder)!r} has uncommitted changes "
+        return (f"the stack folder {name!r} at {str(folder)!r} has uncommitted changes "
                 f"({state.changed} path(s) are dirty), so it is not the pinned commit. Commit, stash or remove "
                 "them, or restore the checkout, then run again")
     detail = state.detail or "git would not say whether this folder has uncommitted work"
-    return (f"the stack manifest joins {name!r}, but whether the checkout at {str(folder)!r} has uncommitted "
+    return (f"whether the stack folder {name!r} at {str(folder)!r} has uncommitted "
             f"changes cannot be ruled out: {detail}")
+
+
+def _stack_use_problem(used: dict, target: Path) -> str:
+    """The reason a --stack run without a manifest cannot use the folders it filled in, or empty.
+
+    Every stack folder the run executes or reads as an instrument must have no uncommitted changes, with or
+    without a manifest. A folder that is not a git checkout cannot be asked (without a manifest nothing says it
+    must be one), and the target itself is excluded as it is everywhere else."""
+    for name, folder in used.items():
+        if _is_target(folder, target):
+            continue
+        problem = _joined_checkout_problem(name, folder, allow_not_git=True)
+        if problem:
+            return problem
+    return ""
 
 
 def _join_problem(joins, target: Path) -> str:
@@ -392,7 +435,8 @@ def main(argv: list[str] | None = None) -> int:
                           "Each commit must be the full 40 characters (lowercase hex), not a prefix. Every named "
                           "checkout is verified against the folder and joined for Ghost, the target "
                           "itself excepted; a missing, mismatched or uncommitted-changes one (modified or "
-                          "untracked files; ignored ones do not count) is a usage error and nothing is run")
+                          "untracked files; ignored ones do not count) is a usage error and nothing is run. So is "
+                          "a stack folder the run uses (instrument root or seat) that the manifest does not name")
     p_t.add_argument("--cns", type=Path, default=None, metavar="DIR",
                      help="with --stack: a checkout of CNS, the hub that holds the circuit's stack manifest at "
                           "contracts/warden-stack.json. The same as --stack-manifest pointed at that file: every "
@@ -538,11 +582,17 @@ def _tagteam(args) -> int:
             return _stop("USAGE_ERROR", f"--cns {str(args.cns)!r} has no {CNS_MANIFEST}; is it a CNS checkout? "
                                         "Nothing was run.")
     if manifest is not None:
-        from_manifest, problem = _joins_from_manifest(manifest, args.stack, _governed)
+        from_manifest, problem = _joins_from_manifest(manifest, args.stack, _governed,
+                                                      getattr(args, "stack_used", None))
         if problem:
             _governed = None
             return _stop("USAGE_ERROR", f"{problem}. Nothing was run.")
         joins += [j for j in from_manifest if j not in joins]
+    elif args.stack is not None:
+        problem = _stack_use_problem(getattr(args, "stack_used", {}), _governed)
+        if problem:
+            _governed = None
+            return _stop("USAGE_ERROR", f"{problem}. Nothing was run.")
     problem = _join_problem(joins, _governed)
     if problem:
         _governed = None

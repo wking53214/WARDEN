@@ -159,7 +159,14 @@ checkouts and the commit each must be at, each a full 40-character lowercase com
 spelling is refused). Every named checkout is verified against the folder
 (wrong commit, missing folder, not a git checkout, uncommitted changes in it: usage error, nothing runs; ignored
 files do not count) and joined for Ghost,
-the target itself excepted (a clone of the target at the same commit counts as the target). `--cns DIR`, a checkout of CNS, reads the same manifest from the hub at `contracts/warden-stack.json`
+the target itself excepted (a clone of the target at the same commit is verified like the others but not joined,
+since it is the same repository). **Every stack folder the run uses is vetted.** The folders a run uses are the ones
+`--stack` fills in: the three instrument roots and the three seats, except any whose option you gave explicitly.
+With a manifest, each of them must be named by it (a folder the manifest does not cover has no pinned commit, so
+the run refuses and names it), at the pinned commit, and with no uncommitted changes. Without a manifest,
+each must have no uncommitted changes (a folder that is not a git checkout cannot be asked and is let through). A
+tampered `JUDGE` or `DRAFTER` seat therefore cannot ride along because the manifest listed only the others. The
+governed target is excluded, as before; its own dirty policy applies. `--cns DIR`, a checkout of CNS, reads the same manifest from the hub at `contracts/warden-stack.json`
 (CNS 1.5.0, `cns.stack` is its shape); CNS is read, never written. The manifest is what CNS holds for
 the circuit: which versions belong together, decided outside any repository under test. The output's `versions`
 object lists every join with its path, commit and version.

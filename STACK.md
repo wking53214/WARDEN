@@ -61,7 +61,9 @@ gap, and the result is held as `ACCEPT_UNVERIFIED` rather than accepted. Join th
 boundary is measured: `--join PATH` for each, or `--stack-manifest FILE` with a pinned list
 (`{"schema": "warden-stack/1", "contract": "1", "repos": {name: commit}}`, each commit the full
 40 characters); every named checkout is verified at exactly that commit, with no uncommitted changes, and joined,
-the target itself excepted. The manifest is the shape CNS is meant to hold for the circuit.
+the target itself excepted. The manifest must name every stack folder the run uses (the three instrument roots and
+the three seats): an unnamed one is refused. Without a manifest those folders still must have no uncommitted
+changes. The manifest is the shape CNS is meant to hold for the circuit.
 
 ## The tested set
 
