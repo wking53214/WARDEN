@@ -419,8 +419,12 @@ class TagTeam:
         self._seat = "Warden"  # not reached on an error, so the handler can still name the seat
 
     def _judge(self, target, authorization, cycles, first, current, finish, finished, sound,
-               declined, python, notes, start):
+               declined, python, notes, start, finisher_ran):
         """Hand the evidence to the Judge. Only the Judge can turn a run into ACCEPT.
+
+        `finisher_ran` is True when the Finisher's `finish` was called after the loop converged (it may have
+        had nothing to finish) and False when no Finisher was seated. This method is reached only on those
+        two paths, so the answer is always known here and `Evidence.finisher_ran` is never left at None.
 
         REJECT puts the whole tree back as it was found. INSUFFICIENT (the Judge cannot decide) leaves
         the changes held and unjudged. A Judge that fails or answers wrongly ends the run as ERROR.
@@ -454,7 +458,8 @@ class TagTeam:
             declined=tuple(sorted(declined)), swizzle_proofs=sound, attacks=attacks,
             unmeasured=self._unmeasured(sound), notes=tuple(notes),
             assay=({**self._assay, "floor": self.assay_floor} if self._assay_state else None),
-            ghost_baseline_before=self._baseline_first, ghost_baseline_after=self._baseline_last)
+            ghost_baseline_before=self._baseline_first, ghost_baseline_after=self._baseline_last,
+            finisher_ran=finisher_ran)
         # A Judge that raises, or answers with the wrong kind of thing or an unknown label, has approved
         # nothing: the error ends the run (ERROR) and the whole tree is put back like any other non-accept.
         assert self.judge is not None  # _judge is only reached when a Judge is seated
@@ -590,6 +595,8 @@ class TagTeam:
         base0 = _fingerprint(target)
         start = self._start
         declined: set[str] = set()
+        #: True once the Finisher's `finish` has been called in this run (see `_judge`).
+        finisher_called = False
 
         def stop(decision: str, why: str, cycles=(), converged=False, current=None,
                  finish=None, finished=False, unsound=False) -> TagTeamResult:
@@ -607,7 +614,7 @@ class TagTeam:
             if will_judge:
                 judged, verdict, extra = self._judge(
                     target, authorization, tuple(cycles), first, reobserved, finish, finished,
-                    sound, declined, python, notes, start)
+                    sound, declined, python, notes, start, finisher_called)
                 why += extra
                 # The Judge's run can itself reveal a gap (SWIZZLE's attacks not run), so look again.
                 missing = self._unmeasured(shown_sound)
@@ -771,6 +778,7 @@ class TagTeam:
         facts = Facts(suite=self._suite(target, python, notes, "converged"),
                       remaining=observed, cycles=len([c for c in cycles if c.applied]),
                       unmeasured=self._unmeasured(end_sound))
+        finisher_called = True
         with self._seated("The Finisher"), watch(target, "The Finisher"):
             finish = _expect(self.finisher.finish(target, _fingerprint(target), facts), "The Finisher")
         if finish is None or not finish.edits:

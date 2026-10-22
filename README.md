@@ -349,6 +349,12 @@ copied into `ghost_scan.baseline`. It is also handed to the Judge as the optiona
 `ghost_baseline: {before, after}`. A report Ghost did not give, or whose count is not a whole number, is
 passed as null so the Judge says "unknown" instead of being told zero. The seat contract stays "1".
 
+**The finisher.** The Judge's Evidence carries `finisher_ran`, a field CNS 2.0.0 added. It is True when the Finisher's
+`finish` was called after the loop converged, even if it had nothing to finish (the Evidence's `changed` list says what
+was written), and False when no Finisher was seated. Warden never sends None for it. A run that ends before the finishing
+step (refused, not converged, SWIZZLE failing after the loop, a finish that was rejected) hands the Judge no Evidence at
+all. Held by `tests/test_finisher_ran.py`.
+
 **Ids.** Warden compares Ghost ids only within one run, so the one-time id change in
 new Ghost does not disturb the loop unless `--from-ghost` findings from old Ghost are
 mixed with a live scan from new Ghost (do not). `warden audit` keeps its human ids
