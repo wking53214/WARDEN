@@ -297,6 +297,39 @@ def test_an_instrument_checkout_inside_the_target_is_refused_before_anything_run
     assert _note(rig) == "old note\n" and _status(rig) == ""
 
 
+def test_a_target_inside_an_instrument_checkout_is_refused_before_anything_runs(rig):
+    """The other direction: governing a subfolder of an instrument (its package folder, its tests) would let the run
+    edit the instrument that judges it. Nothing may run and nothing may be written."""
+    checkout = rig.tmp / "instrument_checkout"
+    (checkout / "pkg" / "inner").mkdir(parents=True)
+    (checkout / "NOTE.md").write_text("old note\n", encoding="utf-8")
+    commit_all(checkout, "an instrument checkout")
+    for flag in ("--swizzle-root", "--ghost-root", "--assay-root"):
+        for inside in (checkout / "pkg", checkout / "pkg" / "inner"):
+            code, payload, _ = rig.run(flag, str(checkout), path=inside)
+            assert code == 2 and payload["decision"] == "SEAT_NOT_LOADED", (flag, inside, payload["reason"])
+            assert "The folder being governed is inside the instrument" in payload["reason"], payload["reason"]
+            assert flag in payload["reason"] and str(checkout) in payload["reason"]
+    assert (checkout / "NOTE.md").read_text(encoding="utf-8") == "old note\n"
+    assert _note(rig) == "old note\n" and _status(rig) == ""
+
+
+def test_a_target_beside_an_instrument_checkout_is_not_mistaken_for_one_inside_it(rig):
+    from argparse import Namespace
+
+    from warden.cli import _instrument_inside
+    beside = rig.tmp / "instrument_checkout_beside"
+    beside.mkdir()
+    # a name that merely starts with the root's name is a sibling, not a child
+    near = rig.tmp / "instrument_checkout_beside_2"
+    near.mkdir()
+    args = Namespace(ghost_root=beside, swizzle_root=None, assay_root=None)
+    assert _instrument_inside(args, near.resolve()) == ""
+    assert _instrument_inside(args, rig.target.resolve()) == ""
+    assert "inside the instrument" in _instrument_inside(args, (beside / "sub").resolve())
+    assert _instrument_inside(args, beside.resolve()) != ""
+
+
 def test_writes_to_file_descriptor_1_by_a_seat_cannot_corrupt_the_json(rig):
     code, payload, err = rig.run(drafter="it_seats:Noisy")
     assert code == 3 and payload["decision"] == "ACCEPT_UNVERIFIED"

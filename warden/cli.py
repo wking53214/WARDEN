@@ -299,8 +299,10 @@ def _join_problem(joins, target: Path) -> str:
 
 def _instrument_inside(args, target: Path) -> str:
     """The reason to refuse, when an instrument checkout (Ghost, SWIZZLE, ASSAY) is the folder being
-    governed or lies inside it; empty when none is. Like a seat, an instrument the run could edit is
-    not independent of the run: its findings, proofs and answer key would be judging their own change."""
+    governed, lies inside it, or contains it; empty when none does. Like a seat, an instrument the run could
+    edit is not independent of the run: its findings, proofs and answer key would be judging their own change.
+    Both directions count: a target that is a subfolder of an instrument checkout (its package folder, its tests)
+    is the instrument's own code under governance, as much as an instrument vendored into the target."""
     for option, flag in (("ghost_root", "--ghost-root"), ("swizzle_root", "--swizzle-root"),
                          ("assay_root", "--assay-root")):
         root = getattr(args, option, None)
@@ -312,6 +314,9 @@ def _instrument_inside(args, target: Path) -> str:
             continue
         if real == target or real.is_relative_to(target):
             return (f"The instrument {flag} {root} is inside the folder being governed. Warden will not run "
+                    "an instrument the run could edit. Nothing was run.")
+        if target.is_relative_to(real):
+            return (f"The folder being governed is inside the instrument {flag} {root}. Warden will not run "
                     "an instrument the run could edit. Nothing was run.")
     return ""
 
