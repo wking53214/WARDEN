@@ -8,6 +8,61 @@ Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); t
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
 
+## [0.13.8] - 2026-10-22
+
+`CONTRACT` is still `"1"`. This release sits on top of the 0.13.7 commit `1636e1a21f124eedbf6e158db95dc75344f4308d`.
+
+### Fixed
+
+- **A manifest that named only some of the stack still let the rest run.** `_joins_from_manifest` checked only the
+  names the manifest listed, while `--stack` uses every one of its folders as an instrument root or a seat. A manifest
+  `{"DRAFTER": sha}` with a modified, unpinned JUDGE seat ended `ACCEPT` and the modified Judge ran. A stack run now
+  exits 2, "Nothing was run", naming the folder, when a stack folder it uses (the three instrument roots and the three
+  seats that `--stack` fills in, except those given by an explicit option) is not named by the manifest in force, is not
+  at the manifest's commit, or has uncommitted changes; without a manifest it must still have no uncommitted changes. The
+  governed target stays excluded. The same-commit exemption (a clone of the target at the same commit as a stack member)
+  also skipped the dirty check; now only the join is skipped and the member is still checked. (Step 1.)
+- **The dirty check depended on who asked.** `tree_state` ran plain `git status --porcelain`, which honours the user's
+  git configuration and index flags. `git update-index --assume-unchanged` and `--skip-worktree` on a modified seat file,
+  a global `status.showUntrackedFiles=no`, a global `core.excludesFile` hiding an untracked file, and
+  `core.fileMode=false` hiding a chmod each made a tampered seat look clean. Git now runs with no user or system
+  configuration, with `-c core.excludesFile=`, `--untracked-files=all` and `--ignore-submodules=none`, comparing the mode
+  bit; a tracked file that `git ls-files -v` flags lowercase or `S` is refused. Files ignored by the repository's own
+  `.gitignore` are still accepted; `index.lock`, a corrupt index and missing objects are still refused. The target's own
+  dirty policy uses the same check. (Step 2.)
+- **A target inside an instrument checkout was not refused.** `_instrument_inside` refused only an instrument root inside
+  the target. A target that is a subfolder of an instrument checkout (for example the SWIZZLE package folder) now
+  exits 2 (`SEAT_NOT_LOADED`) before anything runs, as the other direction does. (Step 3.)
+- **A file written by rename could replace a special file.** `--receipt` is written under a temporary name and renamed
+  into place, so a root caller naming a named pipe, a device node or a folder would have it replaced. An existing
+  target that is not a regular file is now refused before anything runs (exit 2, "Nothing was run"), checked again just
+  before the rename, and an existing regular file keeps its permission bits. `warden audit --authorize` refuses a
+  `WARDEN_AUDIT.md` that is not a regular file (a pipe used to block it). (Step 4.)
+
+### Changed
+
+- **Docs truth for a suite that is red from the start.** README and `docs/EXIT_CODES.md` said it is `INCONCLUSIVE`, exit
+  6. That holds when the Drafter proposes a change ("Cycle N: the suite is not green"). When the Drafter has nothing to
+  propose and the Finisher does, the run ends `FINISH_REJECTED` ("Finishing: SUITE_RED"), exit 1; when no one proposes
+  anything the Judge sees the red suite and the run ends `JUDGE_REJECTED`, exit 1. The documents and the exit-code help
+  text now say so. No code path and no exit code changed. (Step 5.)
+- The tested set moved to the wave D mains: ghost_tools 1.10.6 `2d03d8e19dc5937a6f45379c429d1a3afce4ab29`, SWIZZLE 0.8.5
+  `522658415b026ac3211d3fc130ba7da7c77cc400`, JUDGE 0.4.8 `e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074`, ASSAY 0.11.3
+  `a1732f2bf3748235661f65b96e590a6d44ace71c` (CI checkouts, the `--expect` values, the real-Judge install, the `ghost`
+  extra, comments and the STACK.md table). (Step 6.)
+- Version 0.13.8. (Step 7.)
+
+### Tests
+
+- Edited (the step that caused it): `test_a_stack_manifest_pins_every_checkout_and_joins_all_but_the_target` puts the
+  stack member back before its clone run, because the run before it changes that member and it is now checked even when
+  skipped as a join; its assertions are unchanged (Step 1). `test_the_tested_set_is_the_same_everywhere_it_is_stated`
+  reads the new versions of the four pins (Step 6).
+- New: manifests that leave out a used folder, dirty or covered seats, explicit options, the same-commit clone (Step 1);
+  `tests/test_gitstate_strict.py` for each bypass and the refusals that still hold (Step 2); a target inside an
+  instrument checkout (Step 3); a pipe, a folder and links to them as the receipt, the writer's own check, permission
+  bits, a pipe as the audit file (Step 4); `tests/test_red_suite_from_the_start.py` (Step 5).
+
 ## [0.13.7] - 2026-10-21
 
 `CONTRACT` is still `"1"`. This release sits on top of the 0.13.6 commit `0c1ea567f0b69586cfd735f82260774aec9552bb`.
