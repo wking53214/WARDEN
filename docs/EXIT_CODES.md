@@ -44,6 +44,14 @@ bit, so no setting of your own can hide a change. A tracked file whose index ent
 Only the repository's own `.gitignore` can still hide a file. The same check decides the target's own dirty
 policy (`REFUSED`, exit 5).
 
+## A file Warden is told to write
+
+`--receipt FILE` is written under a temporary name and renamed into place. If FILE already exists and is
+not a regular file (a named pipe, a device node, a folder, or a link to one), the run exits 2 (`USAGE_ERROR`,
+"Nothing was run") before it starts, because the rename would replace it with a plain file. An existing
+regular file keeps its permission bits. `warden audit --authorize` applies the same rule to
+`WARDEN_AUDIT.md` (exit 2, nothing written).
+
 ## The ASSAY floor has two defaults
 
 A graded ASSAY score below the floor is a `REJECT` (exit 1) that Warden decides itself, whatever the Judge

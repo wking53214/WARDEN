@@ -217,8 +217,13 @@ on a normal run. `--receipt FILE` writes the horsemen production receipt for an 
 read by `AssayAdapter`, the Ghost findings before and after, SWIZZLE's proofs and attacks as a verdict handoff, the
 proposal, the scoped human grant, the files changed and the final verdict. An answer key that cannot be read, a
 check that was not measured and changes that were put back are recorded as `UNKNOWN`, and a receipt never claims CNS
-readiness. The file must lie outside the target; a receipt that cannot be written is said on stderr and does not change
-the run's exit code. A run with no human grant has no receipt.
+readiness. The file must lie outside the target. It is written under a temporary name and renamed into place, so a file that
+already exists and is not a regular file (a named pipe, a device, a folder, or a link to one) is refused before
+anything runs (exit 2, "Nothing was run"): the rename would swap it for a plain file, and run as root that could
+replace a device node. An existing regular file keeps its permission bits when it is replaced. The same rule covers
+`warden audit --authorize`, which refuses a `WARDEN_AUDIT.md` that is not a regular file (exit 2, nothing written).
+A receipt that cannot be written for another reason (a folder that does not exist, say) is said on stderr and does
+not change the run's exit code. A run with no human grant has no receipt.
 
 **Time limits.** `--suite-timeout` (default 900 seconds) limits one run of the target's suite;
 `--seat-timeout` (default 3600) limits each seat call (Drafter, Finisher, Judge, and building a

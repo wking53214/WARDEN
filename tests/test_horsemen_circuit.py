@@ -5,6 +5,10 @@ These tests walk handoffs from a finished governed run through `AssayAdapter`, `
 """
 
 import json
+import os
+import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -212,3 +216,89 @@ def test_a_receipt_that_cannot_be_written_is_said_and_never_changes_the_exit_cod
     code, payload, err = cli("--receipt", str(cli.tmp / "missing-folder" / "receipt.json"))
     assert code == 0 and payload["decision"] == "ACCEPT"
     assert "the receipt was not written" in err
+
+
+# -- a file Warden is told to write is never swapped for a special file --------------------------------------
+#
+# Writing a receipt is write-to-a-temporary-name then os.replace. Run as root, that would replace a device node, a
+# FIFO or a directory the caller named with a regular file. Only things created inside the test's own tmp folder
+# are used here: a FIFO from os.mkfifo, a directory, and links to them. Never a device node.
+
+def _special(kind: str, tmp: Path) -> Path:
+    if kind == "fifo":
+        path = tmp / "pipe"
+        os.mkfifo(path)
+        return path
+    if kind == "dir":
+        path = tmp / "adir"
+        path.mkdir()
+        return path
+    target = _special("fifo" if kind == "link-to-fifo" else "dir", tmp)
+    link = tmp / kind
+    link.symlink_to(target)
+    return link
+
+
+def _untouched(kind: str, path: Path) -> None:
+    if kind == "fifo":
+        assert stat.S_ISFIFO(path.lstat().st_mode)
+    elif kind == "dir":
+        assert path.is_dir() and not path.is_symlink() and not any(path.iterdir())
+    else:
+        assert path.is_symlink() and not path.resolve().is_file()
+        assert stat.S_ISFIFO(path.resolve().stat().st_mode) or path.resolve().is_dir()
+
+
+@pytest.mark.parametrize("kind", ["fifo", "dir", "link-to-fifo", "link-to-dir"])
+def test_a_receipt_named_as_a_special_file_is_refused_before_anything_runs(cli, kind):
+    named = _special(kind, cli.tmp)
+    code, payload, err = cli("--receipt", str(named))
+    assert code == 2 and payload["decision"] == "USAGE_ERROR", payload["reason"]
+    assert "not a regular file" in payload["reason"] and str(named) in payload["reason"]
+    assert payload["reason"].endswith("Nothing was run.")
+    assert (cli.target / "NOTE.md").read_text(encoding="utf-8") == "old\n"
+    _untouched(kind, named)
+    assert not list(cli.tmp.glob(".*.part")), "no temporary file was left beside it"
+
+
+def test_the_receipt_writer_itself_refuses_a_special_file_it_is_handed(cli):
+    """The pre-run check can lose a race; the writer looks again, and says so on stderr without a traceback."""
+    from argparse import Namespace
+
+    from warden.cli import _write_receipt
+    fifo = _special("fifo", cli.tmp)
+    _write_receipt(Namespace(path=str(cli.target), receipt=fifo, assay_root=None), None, None)
+    assert stat.S_ISFIFO(fifo.lstat().st_mode)
+    assert not list(cli.tmp.glob(".*.part"))
+
+
+def test_an_existing_receipt_keeps_its_permission_bits_when_it_is_replaced(cli):
+    out = cli.tmp / "receipt.json"
+    out.write_text("{}", encoding="utf-8")
+    out.chmod(0o640)
+    code, payload, err = cli("--receipt", str(out))
+    assert code == 0 and "receipt written" in err
+    assert json.loads(out.read_text(encoding="utf-8"))["final_verdict"] == "APPROVED"
+    assert stat.S_IMODE(out.stat().st_mode) == 0o640
+
+
+def test_a_new_receipt_is_created_as_before(cli):
+    out = cli.tmp / "fresh.json"
+    code, payload, err = cli("--receipt", str(out))
+    assert code == 0 and out.is_file() and not out.is_symlink()
+
+
+def test_a_fifo_named_as_the_audit_file_is_refused_not_waited_on(tmp_path):
+    """`warden audit --authorize` writes WARDEN_AUDIT.md into the target; a FIFO there would block the write forever."""
+    target = _repo(tmp_path / "t")
+    commit_all(target)
+    fifo = target / "WARDEN_AUDIT.md"
+    os.mkfifo(fifo)
+    findings = tmp_path / "f.json"
+    findings.write_text("[]", encoding="utf-8")
+    done = subprocess.run(
+        [sys.executable, "-m", "warden.cli", "audit", str(target), "--from-ghost", str(findings),
+         "--authorize", "william", "--reason", "audit"],
+        capture_output=True, text=True, timeout=120, cwd=str(tmp_path), env=dict(os.environ, HOME=str(tmp_path)))
+    assert done.returncode == 2 and "not a regular file" in done.stderr and "Nothing was written" in done.stderr
+    assert stat.S_ISFIFO(fifo.lstat().st_mode)

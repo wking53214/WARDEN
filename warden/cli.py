@@ -10,10 +10,12 @@ default actor.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import json
 import os
 import re
+import stat
 import sys
 from typing import Any, Optional, Sequence
 from pathlib import Path
@@ -457,7 +459,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p_t.add_argument("--receipt", type=Path, default=None, metavar="FILE",
                      help="after an authorized run, write the horsemen production receipt (JSON) here. It must "
-                          "lie outside the target. The run's decision and exit code are unchanged")
+                          "lie outside the target and, if it exists, be a regular file (a pipe, device or folder "
+                          "is refused before anything runs). The run's decision and exit code are unchanged")
 
     p_k = sub.add_parser("keep", parents=[common],
                          help="apply one held unverified result, only with a human grant for its digest")
@@ -519,6 +522,28 @@ def _stop(decision: str, reason: str, notes: list[str] | None = None) -> int:
     return EXIT_CODES[decision]
 
 
+def _not_regular(path: Path) -> str:
+    """What `path` is when it exists and is not a regular file (a link is followed), else "".
+
+    Warden writes a file by writing a temporary name and renaming it into place. Run by a user who may replace
+    anything, that rename would swap a device node, a FIFO or a folder the caller named for a regular file. A path
+    that does not exist (yet) is fine; one that cannot be looked at is treated as not safe to write."""
+    try:
+        mode = os.stat(path).st_mode
+    except (FileNotFoundError, NotADirectoryError):
+        return ""
+    except OSError as err:
+        return f"something that cannot be examined ({err.strerror or type(err).__name__})"
+    if stat.S_ISREG(mode):
+        return ""
+    for check, name in ((stat.S_ISDIR, "a folder"), (stat.S_ISFIFO, "a named pipe (FIFO)"),
+                        (stat.S_ISCHR, "a character device"), (stat.S_ISBLK, "a block device"),
+                        (stat.S_ISSOCK, "a socket")):
+        if check(mode):
+            return name
+    return "not a regular file"
+
+
 def _keep(args) -> int:
     """Apply one held unverified result, and only with a human grant for that exact digest."""
     from .held import KEEP_OPERATION, HeldError, keep as keep_held
@@ -553,6 +578,11 @@ def _tagteam(args) -> int:
         if receipt_path.is_relative_to(path.resolve()):
             return _stop("USAGE_ERROR", "--receipt names a file inside the target, which would change the folder "
                                         "being governed. Name a file outside it. Nothing was run.")
+        kind = _not_regular(receipt_path)
+        if kind:
+            return _stop("USAGE_ERROR", f"--receipt {str(args.receipt)!r} is {kind}, not a regular file, and Warden "
+                                        "replaces the receipt file whole, so it would swap that for a plain file. "
+                                        "Name a regular file or a path that does not exist yet. Nothing was run.")
     seat_paths: list[Path] = []
     if args.stack is not None:
         seat_paths, problem = _resolve_stack(args)
@@ -702,17 +732,33 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
 
 def _write_receipt(args, auth, result) -> None:
     """Write the horsemen production receipt for a finished run. A failure is said on stderr and never
-    changes the run's decision or exit code: the run is over, and the JSON on stdout is the record."""
+    changes the run's decision or exit code: the run is over, and the JSON on stdout is the record.
+
+    The file is written under a temporary name and renamed into place, so a reader never sees half a receipt.
+    The rename must never swap a special file (checked again here, since the run took time), and an existing
+    regular file keeps its permission bits."""
     from .horsemen import receipt_for_run
     target = Path(args.path).resolve()
+    out = Path(args.receipt).expanduser()
+    tmp = out.with_name(f".{out.name}.{os.getpid()}.part")
     try:
+        kind = _not_regular(out)
+        if kind:
+            raise OSError(f"{str(out)!r} is {kind}, not a regular file, so it was not replaced")
         receipt = receipt_for_run(result=result, target=target, authorization=auth,
                                   baseline_sha=versions.own_commit(target) or "unknown", assay_root=args.assay_root)
-        out = Path(args.receipt).expanduser()
-        tmp = out.with_name(f".{out.name}.{os.getpid()}.part")
         tmp.write_text(json.dumps(receipt.to_dict(), indent=2) + "\n", encoding="utf-8")
+        try:
+            tmp.chmod(stat.S_IMODE(os.stat(out).st_mode))
+        except (FileNotFoundError, NotADirectoryError):
+            pass  # a new file: it keeps the mode it was created with
+        kind = _not_regular(out)
+        if kind:
+            raise OSError(f"{str(out)!r} became {kind}, not a regular file, so it was not replaced")
         os.replace(tmp, out)
     except Exception as e:  # noqa: BLE001 - a receipt that cannot be written is said, never a traceback
+        with contextlib.suppress(OSError):
+            tmp.unlink()
         logger.error("receipt not written: %s: %s", type(e).__name__, textio.clip(str(e), 200))
         print(f"warden: the receipt was not written ({type(e).__name__}: {textio.clip(str(e), 160)}).", file=sys.stderr)
         return
@@ -825,6 +871,11 @@ def _audit(args) -> int:
         why = ("the folder has uncommitted changes (" + state.detail + "). Commit or stash them first"
                if state.kind == "dirty" else state.detail)
         print(f"warden: {why}. Nothing was written.", file=sys.stderr)
+        return 2
+    kind = _not_regular(path)
+    if kind:
+        print(f"warden: {path} is {kind}, not a regular file, so the audit will not be written into it. "
+              "Nothing was written.", file=sys.stderr)
         return 2
     try:
         textio.write_text(path, updated)
