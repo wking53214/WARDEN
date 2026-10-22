@@ -71,16 +71,16 @@ Warden's CI runs against these sibling commits, each a full SHA (ghost_tools, SW
 `main` branches and are not tagged; a sibling's head may be ahead of its pin).
 CNS is the exception: `pyproject.toml` pins it by the tag `v1.9.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag peels to.
-The ASSAY commit is the head of ASSAY's `main` (`54248be`, PR #23, whose cns extra is at the CNS v1.9.0 tag).
+The ASSAY commit is the head of ASSAY's `main` (`a1732f2`, 0.11.3, whose cns extra is at the CNS v1.9.0 tag).
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
 place that states one of them disagrees with the others.
 
 | Repository | Version | Commit |
 |---|---|---|
-| ghost_tools | 1.10.5 | `c2ada82d2f6c0404074a668ba749c7872743aad9` |
-| SWIZZLE | 0.8.4 | `6bd88f3a6e9de1f83e64f401e13cbcb5233499fc` |
-| ASSAY | 0.11.2 | `54248beb5a36600f69de7c816cb2271dda20a879` |
-| JUDGE | 0.4.7 | `cf71fb468d483e868834c8c06b650a5d60726967` |
+| ghost_tools | 1.10.6 | `2d03d8e19dc5937a6f45379c429d1a3afce4ab29` |
+| SWIZZLE | 0.8.5 | `522658415b026ac3211d3fc130ba7da7c77cc400` |
+| ASSAY | 0.11.3 | `a1732f2bf3748235661f65b96e590a6d44ace71c` |
+| JUDGE | 0.4.8 | `e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074` |
 | CNS | v1.9.0 | `da18e411743d4e3b0e783105394d845fb1c16746` |
 
 ASSAY's answer key needs numpy and matplotlib installed normally, with matplotlib's own dependencies (Pillow,

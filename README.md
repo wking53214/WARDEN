@@ -109,7 +109,7 @@ ACCEPT / FINISH_REJECTED
 | `warden.textio` | byte-faithful reads and writes: line endings kept, non-UTF-8 files refused |
 | `warden.cli` | `tagteam`, `keep` and `audit`; the exit-code table, the seat handshake, and `--stack` |
 
-Ghost Tools is optional. Install it with Warden as `warden[ghost]`, which pins it to a commit (ghost_tools 1.10.5, `c2ada82d2f6c0404074a668ba749c7872743aad9`); without it, `warden.ghost` still reads Ghost JSON produced elsewhere, and treats a missing Ghost as unknown, never as clean.
+Ghost Tools is optional. Install it with Warden as `warden[ghost]`, which pins it to a commit (ghost_tools 1.10.6, `2d03d8e19dc5937a6f45379c429d1a3afce4ab29`); without it, `warden.ghost` still reads Ghost JSON produced elsewhere, and treats a missing Ghost as unknown, never as clean.
 
 ## KEY INTERNAL CONCEPTS
 
