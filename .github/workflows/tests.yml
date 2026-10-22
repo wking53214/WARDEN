@@ -20,7 +20,7 @@ permissions:
 #   ASSAY       0.11.3  a1732f2bf3748235661f65b96e590a6d44ace71c
 #   JUDGE       0.4.8   e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074
 # The ASSAY commit is the head of ASSAY's `main` (a1732f2; 0.11.3, the cns extra at the CNS v1.9.0 tag).
-# CNS is pinned by the tag `v1.9.0` in `pyproject.toml` (it peels to da18e41), and the ASSAY pin above agrees with it.
+# CNS is pinned by the tag `v2.0.0` in `pyproject.toml` (it peels to b13e5d2).
 # The `assay-latest` job is the one place a sibling is taken at its newest commit, on purpose, and it cannot
 # fail the build.
 #

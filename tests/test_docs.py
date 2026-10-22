@@ -176,16 +176,16 @@ def test_the_tested_set_is_the_same_everywhere_it_is_stated():
         assert re.search(rf"^#\s+{repo}\s+{re.escape(version)}\s", workflow, re.MULTILINE), (repo, version)
 
 
-def test_the_cns_pin_is_the_v1_9_0_tag_and_is_stated_in_stack():
+def test_the_cns_pin_is_the_v2_0_0_tag_and_is_stated_in_stack():
     """CNS is pinned by tag, spelled the same way in every repository of the circuit (CNS's seat_pins check compares
     the text, and pip treats a tag URL and a commit URL as two sources). STACK.md names the tag and the commit it
     peels to."""
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     stack = (ROOT / "STACK.md").read_text(encoding="utf-8")
-    assert pyproject.count("cns @ git+https://github.com/wking53214/CNS.git@v1.9.0") == 1
-    assert 'dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v1.9.0"]' in pyproject
-    peeled = "da18e411743d4e3b0e783105394d845fb1c16746"
-    assert re.search(rf"^\| CNS \| v1\.9\.0 \| `{peeled}` \|", stack, re.MULTILINE)
+    assert pyproject.count("cns @ git+https://github.com/wking53214/CNS.git@v2.0.0") == 1
+    assert 'dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v2.0.0"]' in pyproject
+    peeled = "b13e5d2f9e0e4291725f82794b89117c3d840ac1"
+    assert re.search(rf"^\| CNS \| v2\.0\.0 \| `{peeled}` \|", stack, re.MULTILINE)
 
 
 def test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged():

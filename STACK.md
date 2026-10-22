@@ -69,7 +69,7 @@ changes. The manifest is the shape CNS is meant to hold for the circuit.
 
 Warden's CI runs against these sibling commits, each a full SHA (ghost_tools, SWIZZLE and JUDGE are the heads of their
 `main` branches and are not tagged; a sibling's head may be ahead of its pin).
-CNS is the exception: `pyproject.toml` pins it by the tag `v1.9.0`, spelled the same way in every repository of the
+CNS is the exception: `pyproject.toml` pins it by the tag `v2.0.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag peels to.
 The ASSAY commit is the head of ASSAY's `main` (`a1732f2`, 0.11.3, whose cns extra is at the CNS v1.9.0 tag).
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
@@ -81,7 +81,7 @@ place that states one of them disagrees with the others.
 | SWIZZLE | 0.8.5 | `522658415b026ac3211d3fc130ba7da7c77cc400` |
 | ASSAY | 0.11.3 | `a1732f2bf3748235661f65b96e590a6d44ace71c` |
 | JUDGE | 0.4.8 | `e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074` |
-| CNS | v1.9.0 | `da18e411743d4e3b0e783105394d845fb1c16746` |
+| CNS | v2.0.0 | `b13e5d2f9e0e4291725f82794b89117c3d840ac1` |
 
 ASSAY's answer key needs numpy and matplotlib installed normally, with matplotlib's own dependencies (Pillow,
 `packaging` and the rest). Installing them with `--no-deps` leaves 56 of the 60 claims proven, so the key is NOT PROVEN
