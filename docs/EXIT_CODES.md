@@ -44,6 +44,20 @@ bit, so no setting of your own can hide a change. A tracked file whose index ent
 Only the repository's own `.gitignore` can still hide a file. The same check decides the target's own dirty
 policy (`REFUSED`, exit 5).
 
+## A suite that is red from the start
+
+Warden measures the target's own suite just before it writes anything, so a red suite ends differently
+depending on what was about to be written:
+
+| what was about to be written | decision | exit |
+|---|---|---|
+| a Drafter's proposal | `INCONCLUSIVE` ("Cycle N: the suite is not green; nothing was written") | 6 |
+| the Finisher's change (the Drafter had nothing) | `FINISH_REJECTED` ("Finishing: SUITE_RED") | 1 |
+| nothing: no one proposes anything | `JUDGE_REJECTED`, the Judge seeing the red suite at the end | 1 |
+
+Every row writes nothing and none exits 0. Only the first is the INCONCLUSIVE of exit 6: the other two are
+refusals of a change or of the whole run, not a measurement that could not be made.
+
 ## A file Warden is told to write
 
 `--receipt FILE` is written under a temporary name and renamed into place. If FILE already exists and is
@@ -84,9 +98,11 @@ exit codes (only 0 means the change was accepted):
      put back.
   5  REFUSED. No human authorization, or the folder has uncommitted git changes (commit or stash
      them first). A proposal may have been shown; nothing was written.
-  6  INCONCLUSIVE. A needed measurement could not be made (Ghost down, a red suite from the
-     start, an unusable ASSAY key), another run holds the target, or the folder is too big to put
-     back. Nothing was written.
+  6  INCONCLUSIVE. A needed measurement could not be made (Ghost down, the suite red when a
+     proposed change was about to be applied, an unusable ASSAY key), another run holds the target,
+     or the folder is too big to put back. Nothing was written. A suite that is red from the start
+     but never meets a Drafter proposal ends 1 instead: FINISH_REJECTED if the Finisher's change
+     was refused, JUDGE_REJECTED if the Judge saw the red suite.
   7  INTERRUPTED. SIGTERM, SIGHUP or SIGINT arrived. The tree was put back as it was found.
 The command always prints valid JSON on stdout; `reason` says why in one sentence.
 ```

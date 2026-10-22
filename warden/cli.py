@@ -64,9 +64,11 @@ exit codes (only 0 means the change was accepted):
      put back.
   5  REFUSED. No human authorization, or the folder has uncommitted git changes (commit or stash
      them first). A proposal may have been shown; nothing was written.
-  6  INCONCLUSIVE. A needed measurement could not be made (Ghost down, a red suite from the
-     start, an unusable ASSAY key), another run holds the target, or the folder is too big to put
-     back. Nothing was written.
+  6  INCONCLUSIVE. A needed measurement could not be made (Ghost down, the suite red when a
+     proposed change was about to be applied, an unusable ASSAY key), another run holds the target,
+     or the folder is too big to put back. Nothing was written. A suite that is red from the start
+     but never meets a Drafter proposal ends 1 instead: FINISH_REJECTED if the Finisher's change
+     was refused, JUDGE_REJECTED if the Judge saw the red suite.
   7  INTERRUPTED. SIGTERM, SIGHUP or SIGINT arrived. The tree was put back as it was found.
 The command always prints valid JSON on stdout; `reason` says why in one sentence."""
 

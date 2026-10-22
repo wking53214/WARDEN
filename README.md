@@ -263,8 +263,21 @@ the change was accepted, so a CI job can trust the exit code alone:
 | 3 | `ACCEPT_UNVERIFIED` | A check did not run or the Judge could not decide. The changes were put back and saved as a held result under a digest (`held_digest` in the JSON). Nothing stands until a person approves that exact digest with `warden keep`. |
 | 4 | `ERROR` | A seat failed, timed out, or gave the wrong kind of answer. A Judge that raises, returns a type that is not a verdict, or returns a label other than `ACCEPT`, `REJECT` or `INSUFFICIENT` is this. Nothing was approved and the tree was put back. |
 | 5 | `REFUSED` | No human authorization (or an empty reason, or a name Warden will not accept), or the folder has uncommitted git changes. A proposal may have been shown. Nothing was written. |
-| 6 | `INCONCLUSIVE` | A needed measurement could not be made: Ghost is down or timed out, the suite was red from the start, the ASSAY key could not be used, another run holds the target, or the folder is too big to put back. Nothing was written. |
+| 6 | `INCONCLUSIVE` | A needed measurement could not be made: Ghost is down or timed out, the suite was red when the loop was about to apply a proposed change (see below), the ASSAY key could not be used, another run holds the target, or the folder is too big to put back. Nothing was written. |
 | 7 | `INTERRUPTED` | SIGTERM, SIGHUP or SIGINT arrived. The tree was put back as it was found. |
+
+**A suite that is red from the start does not always end the same way.** Warden measures the target's own suite
+just before it writes anything, so what a red suite ends as depends on what was about to be written:
+
+- The Drafter proposes a change: the run ends `INCONCLUSIVE`, exit 6, "Cycle N: the suite is not green; nothing was
+  written".
+- The Drafter has nothing to propose and the Finisher proposes a change: the finishing change is refused at the same
+  measurement and the run ends `FINISH_REJECTED`, exit 1, "Finishing: SUITE_RED. The finishing change was put back".
+- Nobody proposes anything: no write is attempted, so the red suite is not measured before one. The Judge is shown
+  the suite's final state and rejects it (`JUDGE_REJECTED`, exit 1); without a Judge the run cannot be a plain
+  `ACCEPT` at all.
+
+Every one of these writes nothing and none exits 0. (`tests/test_red_suite_from_the_start.py`.)
 
 ### Held results and `warden keep`
 
