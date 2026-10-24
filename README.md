@@ -145,7 +145,8 @@ Each line names the test, the CI job or the recorded run that shows it. A test f
 
 Open ones only. Where a line says "Reproduced", it was run on 2026-10-22.
 
-- **`.git/info/exclude` can hide an untracked file from the dirty check.** The check turns off the user's and the system's git configuration, but `.git/info/exclude` lives in the repository and git reads it. Reproduced: a repository with `planted.py` listed in `.git/info/exclude` and an untracked `planted.py`: `warden.gitstate.is_dirty` returned `False`. No test, because the behaviour is not fixed.
+- **The dirty check sees what git reports for tracked and not-ignored files, and nothing else.** A file in a seat or instrument checkout that git ignores (a pattern in the repository's `.gitignore`) or that `.git/info/exclude` lists is not seen, so a checkout can be clean and at its pinned commit while it holds such a file. The check turns off the user's and the system's git configuration, but `.git/info/exclude` lives in the repository and git reads it. Reproduced: a repository with `planted.py` listed in `.git/info/exclude` and an untracked `planted.py`: `warden.gitstate.is_dirty` returned `False`. The class is any ignored or excluded file that Python imports or executes, or that a seat reads or starts: a `.py` the checkout does not track, a compiled extension, a data file, an executable. The easiest member, an unchecked-hash `.pyc` planted in an ignored `__pycache__`, is closed since 0.13.10 (see Bytecode under LIFECYCLE); the rest of the class is open. A `.pyc` with no `.py` beside it (a sourceless module) is also not covered by the bytecode fix. No test, because the behaviour is not fixed.
+- **Warden's own modules, and `cns`, are imported before the private bytecode cache exists.** `python -m warden.cli` loads `warden.*` and `cns.*` before `main` runs, so a planted `.pyc` in Warden's own checkout or in the environment's `cns` is read as before. The governor is the trusted part, and this is a description of the edge of the fix, not a case anyone reproduced.
 - **The neutral git configuration has two costs.** A folder owned by another user is reported unreadable (the run is refused) because `safe.directory` is no longer taken from the user's configuration (reproduced: `tree_state` returned `unknown` for a folder owned by `nobody`). A filesystem that cannot hold the executable bit shows as dirty (stated in the 0.13.8 change; not reproduced here). No test of either.
 - **`ghost_scan.gaps` is cut at 10 entries and `declined` at 20** (`warden/tagteam.py`). The count of the unlisted gaps is in `gaps_not_shown`, which `cns.run.RunRecord.gaps()` does not read, so a record with more than ten gaps lists ten.
 - **`versions.seats.*` has `commit` and `dirty` null for a seat that is not in a git checkout of its own** (a stand-in seat in a temporary folder, an installed copy). Null means unknown, and `RunRecord.dirty_parts()` does not count a null as dirty. No test.
@@ -647,6 +648,19 @@ live inside the target; a `judge/seat.py` planted in the target cannot stand in 
 seat. While seats run, file descriptor 1 itself, not only `sys.stdout`, is pointed at stderr, so a
 stray write cannot corrupt the JSON. A `.git/*.lock` file a seat leaves behind is removed and the
 seat is charged with writing.
+
+**Bytecode.** A `.pyc` in a source tree's `__pycache__` is read in place of the source, and an unchecked-hash one is never
+compared with it. Git ignores that folder, so a seat or instrument checkout could be clean, at its pinned commit, and still run
+planted bytecode (reproduced by the round-6 audit with a tampered JUDGE `.pyc`; the governed run ended `ACCEPT`). Since 0.13.10
+`main` runs inside a fresh private bytecode directory (`sys.pycache_prefix`, a new `warden-pyc-` folder under the temporary
+directory, removed afterwards), set before any seat is imported, and every instrument is started with the same directory in
+`PYTHONPYCACHEPREFIX`. With a prefix set Python reads and writes bytecode only there and never looks in a tree's `__pycache__`.
+What it costs: modules imported during a run (a seat's, `ghost_buster`, `swizzle`, and the libraries they import) are compiled
+from source the first time in each Warden run, because nothing is kept between runs. What it does not touch: modules already
+imported before `main` starts (Warden's own, `cns`), other Python processes, and the target's suite, which has run with its own
+private prefix since the code was Elegant. Held by `tests/test_stale_bytecode.py`, which plants a real unchecked-hash `.pyc` built with
+`py_compile` in an ignored `__pycache__` of a clean committed checkout and shows the tampered code runs under plain Python and not
+under Warden, in a seat and in an instrument.
 
 **Declined proposals.** A proposal declined without a write (out of scope, a judging file, a
 failed keep test) does not use up one of `--max-cycles`; only a proposal that reaches the applier

@@ -33,16 +33,19 @@ target. That cannot be avoided: running those tests is the point.
 
 from __future__ import annotations
 
+import atexit
+import contextlib
 import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Mapping, Optional, Sequence
+from typing import Iterator, Mapping, Optional, Sequence
 
 logger = logging.getLogger("warden.isolation")
 
@@ -86,6 +89,50 @@ def absolute(path: Optional[Path]) -> Optional[Path]:
     return None if path is None else Path(path).expanduser().resolve()
 
 
+#: The bytecode cache directory of the running `private_bytecode_cache()`, or None outside one.
+_ACTIVE_CACHE: Optional[str] = None
+#: A private directory made on first use when no `private_bytecode_cache()` is running (library callers).
+_FALLBACK_CACHE: Optional[str] = None
+
+
+@contextlib.contextmanager
+def private_bytecode_cache() -> Iterator[str]:
+    """Give this Python process a fresh, private, empty bytecode cache for as long as the block runs.
+
+    A .pyc in a source tree's `__pycache__` is read in place of the source. An UNCHECKED_HASH one is never compared with
+    the source at all, and `git status` does not show it (the folder is ignored), so a seat or instrument checkout
+    can be clean, at its pinned commit, and still run planted bytecode. With `sys.pycache_prefix` set Python reads and
+    writes bytecode only under the prefix, and never looks in a tree's `__pycache__`.
+
+    What it changes: every import made while the block runs, by Warden or a seat, compiles from source the first time
+    (the standard library's frozen modules aside); a module is cached for the rest of the run under the private
+    directory, which is removed afterwards. It does not touch anything already imported, nor a .pyc with no source file
+    beside it (a sourceless module), and the cache of other Python processes (third-party libraries in a virtual
+    environment, for example) is untouched; `instrument_env` hands the same directory to every instrument Warden starts.
+    """
+    global _ACTIVE_CACHE
+    path = tempfile.mkdtemp(prefix="warden-pyc-")  # mode 0700, a name nobody can plant a file in beforehand
+    previous_prefix, previous_active = sys.pycache_prefix, _ACTIVE_CACHE
+    sys.pycache_prefix, _ACTIVE_CACHE = path, path
+    try:
+        yield path
+    finally:
+        sys.pycache_prefix, _ACTIVE_CACHE = previous_prefix, previous_active
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def bytecode_cache_dir() -> str:
+    """The private bytecode directory instruments are started with: the running `private_bytecode_cache()`'s, else one
+    made on first use for this process (removed at exit)."""
+    global _FALLBACK_CACHE
+    if _ACTIVE_CACHE is not None:
+        return _ACTIVE_CACHE
+    if _FALLBACK_CACHE is None or not os.path.isdir(_FALLBACK_CACHE):
+        _FALLBACK_CACHE = tempfile.mkdtemp(prefix="warden-pyc-")
+        atexit.register(shutil.rmtree, _FALLBACK_CACHE, True)
+    return _FALLBACK_CACHE
+
+
 def instrument_env(*roots: Optional[Path]) -> dict:
     """The environment for an instrument: its named roots only.
 
@@ -95,6 +142,8 @@ def instrument_env(*roots: Optional[Path]) -> dict:
     """
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(str(absolute(r)) for r in roots if r is not None)
+    # Bytecode comes from a private empty directory, never from a `__pycache__` in an instrument's checkout.
+    env["PYTHONPYCACHEPREFIX"] = bytecode_cache_dir()
     return env
 
 
@@ -157,6 +206,7 @@ def interpreter_locations(python: Optional[str] = None, timeout: float = 60) -> 
         return list(_LOCATIONS_CACHE[exe])
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
+    env["PYTHONPYCACHEPREFIX"] = bytecode_cache_dir()
     with tempfile.TemporaryDirectory(prefix="warden-instrument-") as empty:
         try:
             proc = subprocess.run([exe, "-P", "-c", _LOCATIONS], capture_output=True, text=True, env=env, cwd=empty,

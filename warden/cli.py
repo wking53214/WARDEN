@@ -22,7 +22,7 @@ from pathlib import Path
 
 from . import CONTRACT, __version__
 from .authorization import Unauthorized, grant
-from . import audit as audit_file, gitstate, runstate, textio, versions
+from . import audit as audit_file, gitstate, isolation, runstate, textio, versions
 from . import log as warden_log
 from .ghost import load_report, scan as ghost_scan
 from .tagteam import TagTeam
@@ -426,7 +426,8 @@ def main(argv: list[str] | None = None) -> int:
     If stdout is closed or a write fails for any other reason (a full device), one line on stderr says so, no traceback
     is printed, and a run that earned 0 exits 1. A non-zero code is kept as it is."""
     _delivery["failure"] = None
-    code = _main(argv)
+    with isolation.private_bytecode_cache():  # before any seat module is imported
+        code = _main(argv)
     failure = _delivery["failure"]
     if failure is None or failure == _READER_LEFT:
         return code
