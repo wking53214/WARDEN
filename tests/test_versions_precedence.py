@@ -29,6 +29,8 @@ def _checkout(root, package, version):
     (root / package / "__init__.py").write_text("", encoding="utf-8")
     (root / package / "seat.py").write_text("class Seat:\n    requires_contract = '1'\n", encoding="utf-8")
     (root / "pyproject.toml").write_text(f'[project]\nname = "{package}"\nversion = "{version}"\n', encoding="utf-8")
+    # Importing the seat writes __pycache__ (CI does not set PYTHONDONTWRITEBYTECODE); a real checkout ignores it.
+    (root / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
     _git(root, "init", "-q", "-b", "main")
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "one")
