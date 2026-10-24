@@ -140,3 +140,34 @@ def test_the_ghost_scan_is_cut_at_ten_gaps_and_twenty_declined_checks_as_the_rea
 def test_the_readme_cns_migration_note_names_the_tag_and_its_commit():
     assert "from CNS `v1.9.0` to `v2.0.0`" in README
     assert "b13e5d2f9e0e4291725f82794b89117c3d840ac1" in README
+
+
+# -- the self-hosting record: copied from the CNS repository's docs/evidence/SELFHOSTING_2026-10-23.md (branch
+# claude/horsemen-production-status-5wsndb until merged), WARDEN row of the first table. Edit them only from that file.
+SELFHOST_WARDEN = {"decision": "ACCEPT", "seconds": 4165, "passed": 953, "skipped": 2, "findings": 93, "gaps": "seven",
+                   "burnish": "0.3.11", "readme_lines": 23}
+
+
+def test_the_self_hosting_paragraph_cites_the_cns_record_and_its_numbers():
+    text = " ".join(section("## SELF-HOSTING").split())
+    c = SELFHOST_WARDEN
+    assert "docs/evidence/SELFHOSTING_2026-10-23.md" in text and "until it is merged" in text
+    assert f"decision `{c['decision']}`" in text and f"{c['seconds']} seconds" in text
+    assert f"{c['passed']} passed and {c['skipped']} skipped" in text
+    assert f"{c['findings']} findings at the start and {c['findings']} at the end" in text
+    assert f"{c['gaps']} gaps" in text and f"Burnish {c['burnish']}" in text and f"({c['readme_lines']} lines)" in text
+    for check in ("mutate", "kernel", "structure", "tests", "project", "secrets", "correlate"):
+        assert f"`{check}`" in text
+    assert "does not mean there are no secrets, no weak tests" in text
+    assert "not known to exist" not in text and "No fresh run" not in text
+
+
+def test_no_document_calls_a_pin_the_head_of_a_main_or_a_branch():
+    for name in ("README.md", "STACK.md", "pyproject.toml", ".github/workflows/tests.yml"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        assert not re.search(r"head of [\w' ]{0,40}(main|branch)", text), name
+
+
+def test_the_readme_says_which_checkout_a_seats_record_names():
+    text = " ".join(README.split())
+    assert "come from that checkout, whatever older copy pip also installed" in text

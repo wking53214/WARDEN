@@ -19,8 +19,10 @@ permissions:
 #   SWIZZLE     0.8.7   3f35dad5568b590c2ee36e60533d50a35db94aa2
 #   ASSAY       0.11.5  184679c06e0a636a9a08a8403efa410b375c9429
 #   JUDGE       0.4.8   e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074
-# ghost_tools, SWIZZLE and ASSAY are the heads of the circuit branch (claude/horsemen-production-status-5wsndb) of
-# each repository, untagged; their cns extras are at the CNS v2.0.0 tag, like the pin here.
+# These four are the last set this repository's CI tested on its own. None of them is claimed to be the head of any
+# repository's `main`, and a sibling may have moved on. Whether the set that lands works together is checked by the
+# `stack` job in the CNS repository (github.com/wking53214/CNS), not here. Their cns extras are at the CNS v2.0.0 tag,
+# like the pin here.
 # CNS is pinned by the tag `v2.0.0` in `pyproject.toml` (it peels to b13e5d2).
 # The `assay-latest` job is the one place a sibling is taken at its newest commit, on purpose, and it cannot
 # fail the build.
@@ -59,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       # ASSAY is public; checking it out makes test_live_assay_registry run here instead of skipping, so a
-      # broken ASSAY link turns CI red. ASSAY 0.11.5, the head of ASSAY's circuit branch (184679c).
+      # broken ASSAY link turns CI red. ASSAY 0.11.5 (184679c).
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ASSAY
@@ -69,8 +71,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
-      # The real Judge seat, so the Judge-seat tests run here instead of skipping. JUDGE 0.4.8, the head of JUDGE's
-      # main (e5c3f98, untagged). Its only runtime dependency is cns, already installed.
+      # The real Judge seat, so the Judge-seat tests run here instead of skipping. JUDGE 0.4.8
+      # (e5c3f98). Its only runtime dependency is cns, already installed.
       - run: pip install --no-deps "git+https://github.com/wking53214/JUDGE@e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074"
       - run: pytest -q -rs
         env:
@@ -84,19 +86,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      # ASSAY 0.11.5, the head of ASSAY's circuit branch (184679c)
+      # ASSAY 0.11.5 (184679c)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ASSAY
           ref: 184679c06e0a636a9a08a8403efa410b375c9429
           path: _circuit/ASSAY
-      # ghost_tools 1.10.8, the head of ghost_tools' circuit branch (5a9154d, untagged)
+      # ghost_tools 1.10.8 (5a9154d)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ghost_tools
           ref: 5a9154d3c76670f5bf1f46d845acadfed46d7bc8
           path: _circuit/ghost_tools
-      # SWIZZLE 0.8.7, the head of SWIZZLE's circuit branch (3f35dad, untagged)
+      # SWIZZLE 0.8.7 (3f35dad)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/SWIZZLE
@@ -106,7 +108,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      # JUDGE 0.4.8, the head of JUDGE's main (e5c3f98, untagged): the real Judge decides the
+      # JUDGE 0.4.8 (e5c3f98): the real Judge decides the
       # smoke test's governed run (--real-judge).
       - run: pip install --no-deps "git+https://github.com/wking53214/JUDGE@e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074"
       # ASSAY's answer key needs numpy and matplotlib: without them its verifier skips those claims and exits 1

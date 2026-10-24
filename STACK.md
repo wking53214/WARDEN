@@ -67,11 +67,12 @@ changes. The manifest is the shape CNS is meant to hold for the circuit.
 
 ## The tested set
 
-Warden's CI runs against these sibling commits, each a full SHA (ghost_tools, SWIZZLE and ASSAY are the heads of their
-circuit branches, JUDGE is the head of its `main`; none is tagged; a sibling's head may be ahead of its pin).
+Warden's CI runs against these sibling commits, each a full SHA. They are the last set this repository's CI tested on its
+own; none is claimed to be the head of any repository's `main`, none is tagged, and a sibling may have moved on. Whether the
+set that lands works together is checked by the `stack` job in the CNS repository, not here.
 CNS is the exception: `pyproject.toml` pins it by the tag `v2.0.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag peels to.
-The ASSAY commit is the head of ASSAY's circuit branch (`184679c`, 0.11.5), whose cns extra is at the CNS v2.0.0 tag.
+The ASSAY commit (`184679c`, 0.11.5) has its cns extra at the CNS v2.0.0 tag.
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
 place that states one of them disagrees with the others.
 

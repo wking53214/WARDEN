@@ -80,7 +80,7 @@ Count the tests with `pytest --collect-only -q`; this README states no count, be
 
 ## WHAT WORKS
 
-Each line names the test, the CI job or the recorded run that shows it. A test file named here means the tests in it pass in CI. The CI jobs are in `.github/workflows/tests.yml`: `lint` (`ruff check .` and `mypy`), `extras` (the `ghost` extra installs and `pip check` is clean), `pytest` (one job each for Python 3.11, 3.12 and 3.13, with a skipped test counted as a failure), `circuit` (the smoke test against live siblings and the real Judge) and `assay-latest` (non-blocking: it takes ASSAY at its newest commit to show drift and gates nothing). The most recent run recorded for the previous release (0.13.8, commit `380894f0304ef40587dd29efd41b4ceccf94a5d3`) is GitHub Actions run 39805060087: all seven jobs concluded `success`.
+Each line names the test, the CI job or the recorded run that shows it. A test file named here means the tests in it pass in CI. The CI jobs are in `.github/workflows/tests.yml`: `lint` (`ruff check .` and `mypy`), `extras` (the `ghost` extra installs and `pip check` is clean), `pytest` (one job each for Python 3.11, 3.12 and 3.13, with a skipped test counted as a failure), `circuit` (the smoke test against live siblings and the real Judge) and `assay-latest` (non-blocking: it takes ASSAY at its newest commit to show drift and gates nothing). The most recent run recorded for the previous release (0.13.9, commit `b57b81e1c98333c43d422666c89a8fcf3ae6eaca`) is GitHub Actions run 39844663962: all seven jobs concluded `success`.
 
 - Transformation apply refuses without a grant. **VERIFIED** by `tests/test_authorization.py`.
 - Ghost IDs are preserved. **VERIFIED** by `tests/test_ghost_identity.py`.
@@ -206,7 +206,9 @@ Newest first, from `CHANGELOG.md`, `git log` and the tests. "Prevented by" names
 
 `docs/REGISTRY.json` rows 5 and 6 record the circuit governing fresh clones of its own repositories with `warden tagteam --stack`. Row 5 is dated 2026-10-14: a `ACCEPT` for JUDGE, BURNISH and DRAFTER, held `ACCEPT_UNVERIFIED` results for SWIZZLE and WARDEN, ASSAY `FINISH_REJECTED` and then held, and ghost_tools `INCONCLUSIVE` twice and then held. Row 6 follows the CHANGELOG's 2026-10-15 for Warden 0.11.2 (the row's own text says 2026-10-14): with every sibling joined for Ghost, WARDEN ended `ACCEPT` and SWIZZLE, ASSAY and ghost_tools were held. The clones' changes were not kept. Both runs were made by the people who wrote the code, both predate Warden 0.13.0, and the refusals added since (full-commit manifest pins, dirty stack folders, the strict dirty check, instrument roots that must be real checkouts) did not exist then. They do not describe the current rules.
 
-No fresh run on the current commits is recorded. The owner session will record one on the status page in the [CNS repository](https://github.com/wking53214/CNS); this README does not link that page because it is not known to exist yet, and it claims no result.
+A fresh run is recorded in the [CNS repository](https://github.com/wking53214/CNS), in `docs/evidence/SELFHOSTING_2026-10-23.md` (with the raw records beside it and the summary in `docs/STATUS.md`; both are on the CNS branch `claude/horsemen-production-status-5wsndb` until it is merged). It covers 2026-10-22 to 2026-10-23, the circuit over each of its own eight repositories at their final commits. For this repository (WARDEN 0.13.9, commit `b57b81e`) it is one run: decision `ACCEPT`, exit 0, 4165 seconds, a suite of 953 passed and 2 skipped before the change (the two skips are the live ASSAY checks, because `ASSAY_ROOT` was not set), Ghost reporting 93 findings at the start and 93 at the end with none new, and seven gaps, the same seven declined checks (`mutate`, `kernel`, `structure`, `tests`, `project`, `secrets`, `correlate`). It ran under Burnish 0.3.11 and was not re-run under 0.3.12; the README section Burnish wrote (23 lines) was kept in the throwaway clone and no person reviewed it.
+
+What that record does not mean: an `ACCEPT` here carries seven gaps. It does not mean there are no secrets, no weak tests, no mutation survivors and no structural problems, because those checks did not run, and it does not mean Ghost's 93 standing findings were looked at. It describes WARDEN 0.13.9, not this version. The same audit found one defect in this repository's record: in SWIZZLE's second run the record named the finisher from the pip install record (Burnish 0.3.11) although 0.3.12 was the code that ran. That is fixed in 0.13.10 (see the ledger).
 
 ## CEILINGS CODE CANNOT FIX
 
@@ -214,7 +216,7 @@ No fresh run on the current commits is recorded. The owner session will record o
 - **One human maintainer**, William King. A large share of the commits are authored by an AI assistant (`git shortlog -sn --all` shows the split). Nobody else is recorded as having reviewed the code.
 - **No outside users are known.** Nothing in this repository records anyone using it besides the owner.
 - **Releases are tagged by the owner**, not by CI and not by a change. Check the repository's tags and releases on GitHub for what exists.
-- **Every pin is a snapshot.** The sibling commits in [STACK.md](STACK.md) were the heads of their repositories' circuit branches when this version was cut, and CNS is pinned by the tag `v2.0.0`.
+- **Every pin is a snapshot.** The sibling commits in [STACK.md](STACK.md) are the last set this repository's CI tested on its own, not the heads of anything, and CNS is pinned by the tag `v2.0.0`. Whether the landing set works together is checked by the `stack` job in the CNS repository.
 - **The registry rows are self-reported** by the people who ran them (see SELF-HOSTING).
 
 ## REFERENCE
@@ -587,7 +589,7 @@ unchecked seat govern a run. The JSON names the contract Warden checked
 (`contract`) and the versions that took part (`versions`: Warden's version and
 contract; the commit and `pyproject.toml` version of each of `--ghost-root`,
 `--swizzle-root` and `--assay-root` that was given; and for each seat that was loaded
-its `spec`, declared `requires_contract`, installed `version` and `commit`). Every root also has
+its `spec`, declared `requires_contract`, and the `version`, `commit` and `dirty` flag of the code that was loaded: when the seat's module sits in a git checkout of its own (the `--stack` case) those come from that checkout, whatever older copy pip also installed (a checkout whose version cannot be read says `null`, not the installed copy's); only a seat installed in site-packages reports its install record). Every root also has
 a `dirty` flag (uncommitted work in that checkout; `null` when it is not a git checkout of its
 own). A commit is read only from the thing's own checkout or install record, never from a
 repository that merely contains it: a folder inside the target's repo, or a seat that lives
@@ -707,7 +709,7 @@ A refused root fails closed as it does with nothing installed: Ghost is `INCONCL
 
 ### Tests and CI
 
-Most tests start real `pytest` or `warden` processes, so the full run takes minutes (about 16 minutes on the 2026-10-12 run; `pytest -n 2` helps). CI runs the suite on Python 3.11, 3.12 and 3.13, plus `ruff check .`, `mypy`, an install check of the `ghost` extra (`pip check`) and the circuit smoke test, which also seats the real Judge. Every action and every sibling repository is pinned by full commit SHA, and CNS by the tag `v2.0.0` (the tested set is in [STACK.md](STACK.md); the ghost_tools, SWIZZLE and ASSAY pins are the heads of each repository's circuit branch); to bump a sibling, change its SHA in `.github/workflows/tests.yml` (every job that checks it out, and the `--expect` line), in `pyproject.toml` for ghost_tools, and in STACK.md, then run the whole job set. CI sets `WARDEN_FAIL_ON_SKIP=1`, so a skipped test fails the job (`tests/conftest.py`); it installs the pinned Judge and checks out the pinned ASSAY so nothing skips.
+Most tests start real `pytest` or `warden` processes, so the full run takes minutes (`pytest -n 2` helps). CI runs the suite on Python 3.11, 3.12 and 3.13, plus `ruff check .`, `mypy`, an install check of the `ghost` extra (`pip check`) and the circuit smoke test, which also seats the real Judge. Every action and every sibling repository is pinned by full commit SHA, and CNS by the tag `v2.0.0` (the tested set is in [STACK.md](STACK.md): the last set this repository's CI tested on its own, not the heads of anything); to bump a sibling, change its SHA in `.github/workflows/tests.yml` (every job that checks it out, and the `--expect` line), in `pyproject.toml` for ghost_tools, and in STACK.md, then run the whole job set. CI sets `WARDEN_FAIL_ON_SKIP=1`, so a skipped test fails the job (`tests/conftest.py`); it installs the pinned Judge and checks out the pinned ASSAY so nothing skips.
 
 ## ARCHITECTURAL DEBT
 
