@@ -381,7 +381,65 @@ class _JsonParser(argparse.ArgumentParser):
         raise SystemExit(EXIT_CODES["USAGE_ERROR"])
 
 
+#: What `_write_stdout` answers when the reader of stdout went away (a broken pipe).
+_READER_LEFT = "the reader of standard output left"
+#: The first stdout failure of the current `main` call, or None. Reset at the start of every call.
+_delivery: dict[str, Optional[str]] = {"failure": None}
+
+
+def _write_stdout(text: str) -> Optional[str]:
+    """Print `text` and flush. None when delivered, `_READER_LEFT` on a broken pipe, otherwise why it was not."""
+    out = sys.stdout
+    if out is None:
+        return "standard output is closed"
+    try:
+        print(text, file=out)
+        out.flush()
+        return None
+    except BrokenPipeError:
+        failure = _READER_LEFT
+    except (OSError, ValueError) as err:  # ValueError: the stream was closed under us
+        failure = f"{type(err).__name__}: {err}"
+    real = sys.__stdout__
+    if real is not None and out is real:
+        # The bytes that failed are still queued; the interpreter would flush them again at exit and end in status
+        # 120 with a message of its own. Closing the stream drops them (its close error is this same failure).
+        try:
+            real.close()
+        except (OSError, ValueError):
+            pass
+    return failure
+
+
+def _emit(text: str) -> None:
+    """Everything Warden prints on stdout goes through here. A failure is remembered, not raised: the run carries
+    on (a receipt is still written, the earned exit code is still worked out) and `main` settles the exit code."""
+    if _delivery["failure"] is None:
+        _delivery["failure"] = _write_stdout(text)
+
+
 def main(argv: list[str] | None = None) -> int:
+    """Run the command line and return its exit code.
+
+    Delivery. Standard output carries the result, so a result that was not delivered is not an approval. If the reader
+    of stdout left (a broken pipe, `warden tagteam DIR | head`) nothing more is printed and the earned exit code stands.
+    If stdout is closed or a write fails for any other reason (a full device), one line on stderr says so, no traceback
+    is printed, and a run that earned 0 exits 1. A non-zero code is kept as it is."""
+    _delivery["failure"] = None
+    code = _main(argv)
+    failure = _delivery["failure"]
+    if failure is None or failure == _READER_LEFT:
+        return code
+    try:
+        print(f"warden: the result could not be delivered on standard output ({failure})"
+              + ("; a run that was not delivered is not an ACCEPT, so the exit code is 1" if code == 0 else ""),
+              file=sys.stderr)
+    except (OSError, ValueError):
+        pass  # a closed or broken stderr loses this one line; the exit code is unchanged by it
+    return code or 1
+
+
+def _main(argv: list[str] | None) -> int:
     parser = _JsonParser(prog="warden")
     parser.add_argument("--version", action="version", version=f"warden {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -481,7 +539,12 @@ def main(argv: list[str] | None = None) -> int:
                      help="write the file; without it the result is printed and nothing is written")
     p_a.add_argument("--reason", default="")
 
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except BrokenPipeError:
+        # `--help` or `--version` printed to a reader that had left: nothing was decided, the answer is 0.
+        _delivery["failure"] = _READER_LEFT
+        return 0
     warden_log.configure(args.verbose)
     logger.debug("warden %s: %s", __version__, args.command)
     if args.command == "audit":
@@ -499,7 +562,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _print_json(payload) -> None:
-    print(json.dumps(payload, indent=2))
+    _emit(json.dumps(payload, indent=2))
 
 
 #: The contract every run record Warden prints is written against (cns.run in the CNS repository).
@@ -854,7 +917,7 @@ def _audit(args) -> int:
               file=sys.stderr)
         return 2
     if not args.authorize:
-        print(updated)
+        _emit(updated)
         return 0
     if current.strip() and not audit_file.has_markers(current):
         print(f"warden: {path} exists, has no Warden markers ({audit_file.BEGIN} and {audit_file.END}), "
@@ -884,7 +947,7 @@ def _audit(args) -> int:
     except OSError as e:
         print(f"warden: {path} could not be written ({type(e).__name__}).", file=sys.stderr)
         return 2
-    print(f"wrote {path} (authorized by {auth.actor})")
+    _emit(f"wrote {path} (authorized by {auth.actor})")
     return 0
 
 

@@ -94,7 +94,7 @@ Each line names the test, the CI job or the recorded run that shows it. A test f
 - The same gate runs `cargo test` for a Rust project, reads the harness's JSON, and needs Cargo's exit status to agree; Cargo's `target/` folder is never hashed or snapshotted, and Rust manifests, `build.rs` and test files are protected. **VERIFIED** by `tests/test_rule7_cargo_runner.py`.
 - Audit IDs survive reruns, are never reused, and a Fixed defect that returns is reopened under its own ID. **VERIFIED** by `tests/test_audit.py`.
 - No Warden module imports Burnish, Drafter or any other repository in the stack, and none of the beautification modules remain. **VERIFIED** by `tests/test_independence.py`.
-- A run that does not end accepted leaves the tree as found (rejected, not converged, suite red in a later cycle, a seat that raises or returns the wrong type). The CLI always prints valid JSON. **VERIFIED** by `tests/test_closing_false_accepts.py`.
+- A run that does not end accepted leaves the tree as found (rejected, not converged, suite red in a later cycle, a seat that raises or returns the wrong type). Whenever stdout takes it, the CLI prints one valid JSON document (when it cannot, see "Delivery" under LIFECYCLE). **VERIFIED** by `tests/test_closing_false_accepts.py`.
 - The target cannot pose as an instrument: SWIZZLE, Ghost and ASSAY grading run in an empty directory, with absolute roots and without the current directory on the import path. Stack names (judge, assay, drafter, burnish, ghost, swizzle, ghost_tools, the warden) cannot authorize changes to Warden's own tree. **VERIFIED** by `tests/test_closing_false_accepts.py`.
 - No edit, proposal or finish may touch `.git`, `.hg`, `.svn`, virtual environments, `node_modules`, `__pycache__`, `site-packages` or tool caches. A seat that changes `.git/hooks`, `.git/config` or `.git/info` is caught and the files are put back. **VERIFIED** by `tests/test_closing_false_accepts.py`.
 - A Ghost id with odd characters cannot put code in a file: ids are cut down to letters, digits and `_ . : -`, on one line, 64 characters at most. **VERIFIED** by `tests/test_closing_false_accepts.py`.
@@ -397,7 +397,7 @@ the start snapshot is the only way back. `warden audit` prints and exits as befo
 (it exits 2 and writes nothing in a dirty folder), except that `WARDEN_AUDIT.md` itself being new
 or modified does not count, so the audit can be rerun to update its table.
 
-**Logs and receipts.** Stdout is always one JSON document. Logs go to stderr only, through the standard
+**Logs and receipts.** Stdout is one JSON document, whenever it can be delivered (see Delivery below). Logs go to stderr only, through the standard
 library's `logging` (`warden.log`): `-v` logs one line per seam (each seat loaded, each instrument run and how it
 exited, the suite, the verdict and the exit code, the put-back), `-vv` adds commands and detail, and
 `WARDEN_LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, ...) sets the level by name. The default is `WARNING`, which is quiet
@@ -412,6 +412,13 @@ replace a device node. An existing regular file keeps its permission bits when i
 `warden audit --authorize`, which refuses a `WARDEN_AUDIT.md` that is not a regular file (exit 2, nothing written).
 A receipt that cannot be written for another reason (a folder that does not exist, say) is said on stderr and does
 not change the run's exit code. A run with no human grant has no receipt.
+
+**Delivery.** The result on stdout is the output, so a result that was not delivered is not an approval. If the reader of
+stdout leaves (a broken pipe, `warden tagteam DIR | head`), nothing more is printed and the exit code the run earned
+stands. If stdout is closed, or a write fails for another reason such as a full device, one line on stderr says so, no
+traceback is printed, and a run that earned 0 exits 1 (a non-zero code is kept). The same holds with and without
+`PYTHONUNBUFFERED=1`. A closed or broken stderr loses that one line only. Held by `tests/test_report_delivery.py`, which
+uses a pipe whose reader is gone, a closed descriptor and a stream that raises `ENOSPC`, and opens no device node.
 
 **Time limits.** `--suite-timeout` (default 900 seconds) limits one run of the target's suite;
 `--seat-timeout` (default 3600) limits each seat call (Drafter, Finisher, Judge, and building a
