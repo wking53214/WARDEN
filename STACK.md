@@ -72,15 +72,15 @@ own; none is claimed to be the head of any repository's `main`, none is tagged, 
 set that lands works together is checked by the `stack` job in the CNS repository, not here.
 CNS is the exception: `pyproject.toml` pins it by the tag `v2.0.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag peels to.
-The ASSAY commit (`184679c`, 0.11.5) has its cns extra at the CNS v2.0.0 tag.
+The ASSAY commit (`1de36ca`, 0.11.6) has its cns extra at the CNS v2.0.0 tag.
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
 place that states one of them disagrees with the others.
 
 | Repository | Version | Commit |
 |---|---|---|
-| ghost_tools | 1.10.8 | `5a9154d3c76670f5bf1f46d845acadfed46d7bc8` |
-| SWIZZLE | 0.8.7 | `3f35dad5568b590c2ee36e60533d50a35db94aa2` |
-| ASSAY | 0.11.5 | `184679c06e0a636a9a08a8403efa410b375c9429` |
+| ghost_tools | 1.10.9 | `3df51b374ed016b3f42def17c080700cd770e85a` |
+| SWIZZLE | 0.8.8 | `6853c92cf000c5b86c6b83090ec192b2974b70aa` |
+| ASSAY | 0.11.6 | `1de36ca9b56ba51b6b1f577bf046d7270b7e6c2a` |
 | JUDGE | 0.4.8 | `e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074` |
 | CNS | v2.0.0 | `b13e5d2f9e0e4291725f82794b89117c3d840ac1` |
 
