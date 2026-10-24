@@ -8,6 +8,54 @@ Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); t
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
 
+## [0.13.10] - 2026-10-24
+
+`CONTRACT` is still `"1"`. This release sits on top of the 0.13.9 commit `b57b81e1c98333c43d422666c89a8fcf3ae6eaca` and
+answers the round-6 audit. CNS stays at the tag `v2.0.0`. No decision changed; one exit code does: a result that could not
+be delivered (below).
+
+### Fixed
+
+- **A seat's record named the pip install record, not the checkout that ran.** In the `--stack` case the checkout's code
+  runs, but `versions.seats.<seat>` reported the version and commit of an older copy pip also installed (JUDGE 0.4.8
+  beside a 0.4.10 checkout; the finisher as Burnish 0.3.11 when 0.3.12 ran). When a module's file sits in a git checkout of
+  its own, version, commit and dirty flag now come from that checkout; a checkout whose version cannot be read says
+  `null`. A seat in site-packages still reports its install record. Instrument roots already read their own checkout.
+  (Step 1.)
+- **A result nobody received was not handled.** `warden tagteam DIR | head -c0` printed a `BrokenPipeError` traceback and
+  exited 1 where the run had earned 6 (120 when buffered). Everything on stdout now goes through one function that keeps
+  the first failure: a gone reader keeps the earned exit code; a closed stdout or any other failed write (a full device) says so
+  in one line on stderr, prints no traceback and turns an earned 0 into 1; a non-zero code is kept. A receipt is still
+  written after a failed print. (Step 2.)
+- **A planted or stale `.pyc` in a seat or instrument checkout could run.** An unchecked-hash `.pyc` in an ignored
+  `__pycache__` was loaded in place of the source, invisible to `git status`, and the governed run still ended `ACCEPT`.
+  `main` now runs inside a fresh private bytecode directory (`sys.pycache_prefix`, removed afterwards) and every
+  instrument is started with the same directory in `PYTHONPYCACHEPREFIX`, so Python never reads a tree's `__pycache__`.
+  Cost: modules imported during a run compile once per run. Not covered: modules imported before `main` (Warden's own, `cns`),
+  sourceless `.pyc` files, and the rest of the ignored-or-excluded-file class, which stays a known defect. (Step 3.)
+
+### Changed
+
+- Statements made true: no pin is called "the head of" a `main` or a branch (tests.yml, STACK.md, `pyproject.toml`, README);
+  the tested set is the last set this repository's CI tested on its own, and whether the landing set works together is the CNS
+  `stack` job; the cited CI run is the previous release's; the unmeasured run time is gone; the paragraph on a seat's
+  `version` and `commit` describes the new precedence. SELF-HOSTING cites the CNS record
+  `docs/evidence/SELFHOSTING_2026-10-23.md` for this repository (ACCEPT, 4165 s, 953 passed and 2 skipped, 93 Ghost findings,
+  seven gaps, under Burnish 0.3.11) and says what it does not mean. (Step 4.)
+- The install pins moved to the wave-F final commits: ghost_tools 1.10.9 `3df51b374ed016b3f42def17c080700cd770e85a`, SWIZZLE
+  0.8.8 `6853c92cf000c5b86c6b83090ec192b2974b70aa`, ASSAY 0.11.6 `1de36ca9b56ba51b6b1f577bf046d7270b7e6c2a` (the `ghost`
+  extra, CI checkouts, `--expect` values, comments, STACK.md). The JUDGE pin (0.4.8, `e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074`)
+  and the CNS tag are unchanged. (Step 5.)
+- Version 0.13.10. README ledger entries for the new defects. (Step 6.)
+
+### Tests
+
+- New: `tests/test_versions_precedence.py` (Step 1), `tests/test_report_delivery.py` (Step 2), `tests/test_stale_bytecode.py`
+  (Step 3), and in `tests/test_readme_ledger.py` the self-hosting numbers (copied from the CNS record), no "head of" claims and
+  the seat-record wording (Step 4).
+- Edited because the behaviour they assert is what a step changed: `test_the_tested_set_is_the_same_everywhere_it_is_stated`
+  expects the versions 1.10.9, 0.8.8 and 0.11.6 next to the three moved pins (Step 5). Nothing else was edited.
+
 ## [0.13.9] - 2026-10-22
 
 `CONTRACT` is still `"1"`. This release sits on top of the 0.13.8 commit `380894f0304ef40587dd29efd41b4ceccf94a5d3`. No exit
