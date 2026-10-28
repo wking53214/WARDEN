@@ -138,6 +138,9 @@ class Transformation:
     status: TransformationStatus = TransformationStatus.PROPOSED
     authorization: Optional[Authorization] = None
     result: Optional[str] = None
+    #: Set by the claim seat (`warden.claim`): the real change this proposal is, as facts (commit, parent,
+    #: tree, diff sha256 and size, each file's sha256 before and after). None for every other proposer.
+    claim: Optional[Mapping[str, Any]] = None
 
     def authorize(self, auth: Authorization) -> "Transformation":
         _require_external_actor(auth)

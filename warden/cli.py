@@ -23,6 +23,7 @@ from pathlib import Path
 from . import CONTRACT, __version__
 from .authorization import Unauthorized, grant
 from . import audit as audit_file, gitstate, isolation, runstate, textio, versions
+from . import claim as claimseat
 from . import log as warden_log
 from .ghost import load_report, scan as ghost_scan
 from .tagteam import TagTeam
@@ -456,6 +457,18 @@ def _main(argv: list[str] | None) -> int:
     p_t.add_argument("--ghost-root", type=Path, default=None)
     p_t.add_argument("--drafter", default=None, metavar="MODULE:FACTORY",
                      help="in the loop: proposes fixes, e.g. drafter.seat:Drafter")
+    p_t.add_argument("--claim-commit", default=None, metavar="SHA",
+                     help="take the Drafter seat with a real change: the diff of SHA against its first parent, read "
+                          "from the target's own git (or from --claim-repo), proposed once and then nothing. The "
+                          "target must stand at the parent. Cannot be combined with --drafter")
+    p_t.add_argument("--claim-repo", type=Path, default=None, metavar="PATH",
+                     help="with --claim-commit: the git repository that holds the commit, when the target does not")
+    p_t.add_argument("--claim-diff", type=Path, default=None, metavar="FILE",
+                     help="take the Drafter seat with a unified diff applied to the target as it stands, proposed "
+                          "once and then nothing; needs --claim-subject and --claim-author. Binary files, renames "
+                          "and mode changes are refused, not guessed. Cannot be combined with --drafter")
+    p_t.add_argument("--claim-subject", default=None, metavar="TEXT", help="with --claim-diff: what the change is")
+    p_t.add_argument("--claim-author", default=None, metavar="TEXT", help="with --claim-diff: who made the change")
     p_t.add_argument("--judge", default=None, metavar="MODULE:FACTORY",
                      help="at the end, once: reads the evidence and decides ACCEPT or REJECT. "
                           "Without one, a run cannot be ACCEPTed, only ACCEPT_UNVERIFIED")
@@ -649,6 +662,12 @@ def _tagteam(args) -> int:
             return _stop("USAGE_ERROR", f"--receipt {str(args.receipt)!r} is {kind}, not a regular file, and Warden "
                                         "replaces the receipt file whole, so it would swap that for a plain file. "
                                         "Name a regular file or a path that does not exist yet. Nothing was run.")
+    problem = _claim_problem(args)
+    if problem:
+        return _stop("USAGE_ERROR", f"usage error: {problem}. Nothing was run.")
+    claiming = args.claim_commit is not None or args.claim_diff is not None
+    if claiming:
+        args.drafter = claimseat.SEAT_SPEC  # the claim takes the Drafter seat, so --stack does not fill it
     seat_paths: list[Path] = []
     if args.stack is not None:
         seat_paths, problem = _resolve_stack(args)
@@ -673,6 +692,13 @@ def _tagteam(args) -> int:
     if shadowed:
         _governed = None
         return _stop("SEAT_NOT_LOADED", shadowed)
+    claim_drafter = None
+    if claiming:
+        try:
+            claim_drafter = claimseat.seat_from_args(args, _governed)
+        except (claimseat.ClaimError, OSError) as e:
+            _governed = None
+            return _stop("USAGE_ERROR", f"The claimed change cannot be governed: {e} Nothing was run.")
     joins = [Path(j).expanduser().resolve() for j in (args.join or [])]
     manifest = args.stack_manifest
     if args.cns is not None:
@@ -713,7 +739,7 @@ def _tagteam(args) -> int:
         try:
             with runstate.interrupts(), runstate.stdout_to_stderr(), \
                     runstate.seat_timer(args.seat_timeout, "A seat while it was being loaded"):
-                drafter = _load_seat(args.drafter, warnings)
+                drafter = claim_drafter if claiming else _load_seat(args.drafter, warnings)
                 finisher = _load_seat(args.finisher, warnings)
                 judge = _load_seat(args.judge, warnings)
         except ContractMismatch as e:
@@ -731,6 +757,31 @@ def _tagteam(args) -> int:
     finally:
         _governed = None
         sys.path[:] = saved_path
+
+
+def _claim_problem(args) -> str:
+    """The reason the --claim-* options cannot be used as given, or empty. The claim seat and --drafter both fill
+    the Drafter seat, so naming both is a usage error; so is naming the change twice or half."""
+    claiming = args.claim_commit is not None or args.claim_diff is not None
+    if not claiming:
+        if args.claim_repo is not None:
+            return "--claim-repo goes with --claim-commit"
+        if args.claim_subject is not None or args.claim_author is not None:
+            return "--claim-subject and --claim-author go with --claim-diff"
+        return ""
+    if args.drafter:
+        return "--claim-commit or --claim-diff takes the Drafter seat, so --drafter cannot be given as well; give one"
+    if args.claim_commit is not None and args.claim_diff is not None:
+        return "--claim-commit and --claim-diff both name the change; give one"
+    if args.claim_diff is not None:
+        if args.claim_repo is not None:
+            return "--claim-repo goes with --claim-commit, not with --claim-diff"
+        if not (args.claim_subject or "").strip() or not (args.claim_author or "").strip():
+            return "--claim-diff needs --claim-subject and --claim-author"
+    elif args.claim_subject is not None or args.claim_author is not None:
+        return ("--claim-commit reads the subject and author from git; --claim-subject and --claim-author go with "
+                "--claim-diff")
+    return ""
 
 
 def _findings_problem(path, err: Exception) -> str:
