@@ -219,7 +219,9 @@ def _findings(tmp_path: Path) -> Path:
 
 def test_0_is_accept_and_only_accept(rig):
     code, payload, _ = rig.run()
-    assert (code, payload["decision"], payload["reason"]) == (0, "ACCEPT", "")  # cns.run/1: the reason is text; ACCEPT carries an empty one
+    assert (code, payload["decision"]) == (0, "ACCEPT")
+    # Since 0.14.0 an ACCEPT's reason is never empty: it says what was measured (cns.run/1: the reason is text).
+    assert "Measured:" in payload["reason"] and "passed before" in payload["reason"] and "Judge: ACCEPT" in payload["reason"]
 
 
 @pytest.mark.parametrize("how,decision", [

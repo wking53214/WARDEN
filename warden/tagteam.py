@@ -146,7 +146,7 @@ class TagTeamResult:
     #: human can approve with a grant for `keep_unverified` on this folder (see held.py).
     held_digest: Optional[str] = None
     #: One plain sentence saying why the run ended as it did (the same sentence as the last note
-    #: before any put-back text). Empty for a plain ACCEPT.
+    #: before any put-back text). For a plain ACCEPT it says what converged and what the Judge said.
     reason: str = ""
     #: Information that is not a gap and changes no decision, such as `ghost_version_unverified`.
     informational: tuple[str, ...] = ()
@@ -779,7 +779,8 @@ class TagTeam:
                                 len(observed))
             cycles.append(cycle)
             if cycle.outcome == "SUITE_RED":
-                return stop("INCONCLUSIVE", f"Cycle {number}: the suite is not green; nothing was written.", cycles)
+                return stop("INCONCLUSIVE", f"Cycle {number}: the suite is not green ({_red(cycle)}); nothing was "
+                            "written.", cycles)
             if cycle.outcome != "APPLIED":
                 return stop("REJECT", f"Cycle {number}: {cycle.outcome}. The change was put back; "
                             "the loop stopped.", cycles)
@@ -827,8 +828,9 @@ class TagTeam:
                         cycles, converged=True, finish=finish)
         done = self._apply(target, finish, authorization, python, notes, 0, len(observed))
         if done.outcome != "APPLIED":
-            return stop("FINISH_REJECTED", f"Finishing: {done.outcome}. The finishing change was put back.",
-                        cycles, converged=True, finish=finish, finish_cycle=done)
+            red = _red(done)
+            return stop("FINISH_REJECTED", f"Finishing: {done.outcome}{f' ({red})' if red else ''}. The finishing "
+                        "change was put back.", cycles, converged=True, finish=finish, finish_cycle=done)
         after = self._reinspect(target, observed, python, notes)
         new = {d.ghost_id for d in after if d.ghost_id} - {d.ghost_id for d in observed if d.ghost_id}
         if new:
@@ -1174,6 +1176,15 @@ def _commented(target: Path, proposal: Transformation) -> Optional[Transformatio
                            for rel, text in files.items())
     proposal.intent = "comment out unused code (not deleted): " + proposal.intent
     return proposal
+
+
+def _red(cycle: Cycle) -> str:
+    """What the suite said when a cycle's change did not stand because of it, failing test ids included; empty
+    when the suite was green on both sides (the change failed for another reason)."""
+    for run in (cycle.suite_after, cycle.suite_before):
+        if run is not None and not run.green:
+            return run.describe()
+    return ""
 
 
 def _judging(target: Path, rel: str) -> bool:

@@ -832,7 +832,8 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "finished": result.finished,
         "put_back": result.put_back,
         "held_digest": result.held_digest,
-        "reason": "" if result.decision == "ACCEPT" else (result.reason or (result.notes[-1] if result.notes else "")),
+        "reason": _accept_reason(result) if result.decision == "ACCEPT"
+        else (result.reason or (result.notes[-1] if result.notes else "")),
         "notes": list(result.notes) + list(warnings),
         "observed": [d.identity for d in result.observed],
         "reobserved": [d.identity for d in result.reobserved],
@@ -867,6 +868,23 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
     if result.swizzle_sound is False:
         print("warden: SWIZZLE's own proofs do not hold; nothing was written.", file=sys.stderr)
     return code
+
+
+def _accept_reason(result) -> str:
+    """An ACCEPT's reason is never empty: it says what converged, what the Judge said, and what was measured."""
+    before = result.suite_before
+    after = result.evidence.suite_after if result.evidence is not None and result.evidence.suite_after else None
+    after = after or result.suite_after
+    measured = []
+    if before is not None and after is not None:
+        measured.append(f"the suite {before.passed} passed before and {after.passed} passed after ({after.describe()})")
+    else:
+        measured.append("the suite was not run")
+    if "ghost" in result.unmeasured:
+        measured.append("Ghost did not run")
+    else:
+        measured.append(f"Ghost {len(result.observed)} finding(s) before and {len(result.reobserved)} after")
+    return f"{result.reason} Measured: {'; '.join(measured)}.".strip()
 
 
 def _write_receipt(args, auth, result, extra: Optional[dict] = None) -> None:

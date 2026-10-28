@@ -72,7 +72,16 @@ def _plant(source_path: Path, tampered_source: str, work: Path) -> Path:
     """Compile `tampered_source` as an UNCHECKED_HASH pyc and put it where Python looks for `source_path`'s bytecode."""
     src = work / "tampered_src.py"
     src.write_text(tampered_source, encoding="utf-8")
-    cfile = Path(importlib.util.cache_from_source(str(source_path)))
+    # Where PLAIN Python looks: beside the source, in its __pycache__. `cache_from_source` honours this process's
+    # own cache prefix, and when this suite runs under Warden (`suite.py` sets PYTHONPYCACHEPREFIX for the target's
+    # tests) that prefix would send the planted file elsewhere and the control below would prove nothing. Found by
+    # self-hosting run 3. The subprocess env in `_env` drops the variable for the same reason.
+    saved = sys.pycache_prefix
+    sys.pycache_prefix = None
+    try:
+        cfile = Path(importlib.util.cache_from_source(str(source_path)))
+    finally:
+        sys.pycache_prefix = saved
     cfile.parent.mkdir(parents=True, exist_ok=True)
     py_compile.compile(str(src), cfile=str(cfile), dfile=str(source_path), doraise=True,
                        invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH)
@@ -120,6 +129,22 @@ def _env(attack, **extra):
 
 def test_the_planted_pyc_really_is_loaded_by_plain_python(attack):
     """The control: without Warden's protection the tampered bytecode runs. This is what makes the next test mean something."""
+    done = subprocess.run([sys.executable, "-c", "import zjudge.seat"], env=_env(attack), capture_output=True, text=True,
+                          cwd=attack["tmp"])
+    assert done.returncode == 0, done.stderr
+    assert attack["marker"].read_text() == "the tampered bytecode ran"
+
+
+def test_the_control_plants_where_plain_python_looks_even_under_a_cache_prefix(attack, tmp_path, monkeypatch):
+    """What self-hosting run 3 hit: this suite itself running with a bytecode prefix set (Warden's `suite.py` sets one
+    for the target's tests). The planted file must still land in the checkout's own __pycache__, and the control
+    subprocess must be given an environment without the prefix."""
+    monkeypatch.setattr(sys, "pycache_prefix", str(tmp_path / "elsewhere"))
+    monkeypatch.setenv("PYTHONPYCACHEPREFIX", str(tmp_path / "elsewhere"))
+    (attack["tmp"] / "work2").mkdir()
+    cfile = _plant(attack["checkout"] / "zjudge" / "seat.py", TAMPERED, attack["tmp"] / "work2")
+    assert cfile.parent == attack["checkout"] / "zjudge" / "__pycache__" and cfile.is_file()
+    assert "PYTHONPYCACHEPREFIX" not in _env(attack)
     done = subprocess.run([sys.executable, "-c", "import zjudge.seat"], env=_env(attack), capture_output=True, text=True,
                           cwd=attack["tmp"])
     assert done.returncode == 0, done.stderr

@@ -471,10 +471,11 @@ the change was accepted, so a CI job can trust the exit code alone:
 **A suite that is red from the start does not always end the same way.** Warden measures the target's own suite
 just before it writes anything, so what a red suite ends as depends on what was about to be written:
 
-- The Drafter proposes a change: the run ends `INCONCLUSIVE`, exit 6, "Cycle N: the suite is not green; nothing was
-  written".
+- The Drafter proposes a change: the run ends `INCONCLUSIVE`, exit 6, "Cycle N: the suite is not green (the counts
+  and the failing test ids, ten at most); nothing was written".
 - The Drafter has nothing to propose and the Finisher proposes a change: the finishing change is refused at the same
-  measurement and the run ends `FINISH_REJECTED`, exit 1, "Finishing: SUITE_RED. The finishing change was put back".
+  measurement and the run ends `FINISH_REJECTED`, exit 1, "Finishing: SUITE_RED (the counts and the failing test
+  ids). The finishing change was put back".
 - Nobody proposes anything: no write is attempted, so the red suite is not measured before one. The Judge is shown
   the suite's final state and rejects it (`JUDGE_REJECTED`, exit 1); without a Judge the run cannot be a plain
   `ACCEPT` at all.
@@ -508,8 +509,11 @@ score below `--assay-floor` is `REJECT`, with or without a Judge. A readable ver
 a verdict (a string, `None`), a label other than `ACCEPT`, `REJECT` or `INSUFFICIENT`, or a verdict whose reasons are
 empty or blank ends the run as `ERROR` and the tree is put back. Stub Judges that rubber-stamp each of these are in
 `tests/test_judge_independence.py`. The JSON always has `decision`,
-`notes`, `unmeasured`, and `reason`. `reason` is one plain sentence saying why a run
-that was not a plain `ACCEPT` ended as it did. `unmeasured` is true: it names `ghost`
+`notes`, `unmeasured`, and `reason`. `reason` is one plain sentence saying why the run
+ended as it did; for a plain `ACCEPT` it says what converged, what the Judge said and what was
+measured (the suite's counts before and after, Ghost's counts), and for a run the suite turned
+red (`INCONCLUSIVE` at a proposal, `FINISH_REJECTED` at the finishing change) it names the failing
+tests, ten at most. `unmeasured` is true: it names `ghost`
 when Ghost was down, timed out, scanned nothing or gave unreadable output, `suite`
 when the suite was never run, `swizzle` when its proofs failed or could not run, and
 `assay` when the answer key was unusable, `swizzle_attacks` when SWIZZLE's proofs held but its attacks on the governor could not be run or read, and `ghost_partial` when Ghost ran but

@@ -59,6 +59,12 @@ import json, os
 
 _COUNTS = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0, "xfailed": 0, "xpassed": 0}
 _STATE = {"collected": 0}
+_FAILED = []  # the ids of the first tests that failed or errored, so the record can name them
+
+
+def _note_failed(report):
+    if len(_FAILED) < 10:
+        _FAILED.append(str(report.nodeid))
 
 
 def pytest_collection_finish(session):
@@ -79,15 +85,18 @@ def pytest_runtest_logreport(report):
             _COUNTS["xpassed" if wasxfail else "passed"] += 1
         elif report.failed:
             _COUNTS["failed"] += 1
+            _note_failed(report)
         elif report.skipped:
             _COUNTS["xfailed" if wasxfail else "skipped"] += 1
     elif report.when == "setup":
         if report.failed:
             _COUNTS["errors"] += 1
+            _note_failed(report)
         elif report.skipped:
             _COUNTS["skipped"] += 1
     elif report.when == "teardown" and report.failed:
         _COUNTS["errors"] += 1
+        _note_failed(report)
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -95,7 +104,7 @@ def pytest_sessionfinish(session, exitstatus):
     if not path:
         return
     body = {"nonce": os.environ.get("WARDEN_SUITE_NONCE"), "exitstatus": int(exitstatus),
-            "collected": _STATE["collected"], **_COUNTS}
+            "collected": _STATE["collected"], "failed_ids": _FAILED, **_COUNTS}
     tmp = path + ".part"
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(body, handle)
@@ -128,7 +137,32 @@ def _read_report(path: Path, nonce: str) -> Optional[dict]:
     keys = ("exitstatus", "collected", "passed", "failed", "errors", "skipped", "xfailed", "xpassed")
     if not all(isinstance(data.get(k), int) and not isinstance(data.get(k), bool) and data[k] >= 0 for k in keys):
         return None
+    ids = data.get("failed_ids", [])
+    if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+        ids = []  # an older or garbled plugin file: the counts still stand, the names are simply not known
+    data["failed_ids"] = [_plain(i) for i in ids[:MAX_FAILED_IDS]]
     return data
+
+
+#: At most this many failing test ids are kept from one suite run.
+MAX_FAILED_IDS = 10
+
+
+def _plain(text: str, limit: int = 160) -> str:
+    """One line of printable text, capped: a test id is data from the target, never markup."""
+    return clip(" ".join("".join(ch if ch.isprintable() else " " for ch in text).split()), limit)
+
+
+@dataclass(frozen=True)
+class PytestSuiteRun(SuiteRun):
+    """A SuiteRun measured by pytest, with the ids of the tests that failed or errored (the first ten), so a
+    record that says the suite went red can say which tests."""
+
+    failed_ids: tuple[str, ...] = ()
+
+    def describe(self) -> str:
+        text = super().describe()
+        return text + (f"; failed: {', '.join(self.failed_ids)}" if self.failed_ids else "")
 
 
 RUNNERS = ("auto", "pytest", "cargo")
@@ -236,9 +270,9 @@ def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> 
         reason = "the exit status says the run failed but no test is reported as failing"
     elif code == 0 and (report["failed"] or report["errors"]):
         reason = "the exit status says the run passed but the report lists failures"
-    return SuiteRun(ran=True, passed=report["passed"], failed=report["failed"], errors=report["errors"],
-                    skipped=report["skipped"], xfailed=report["xfailed"], xpassed=report["xpassed"],
-                    exit_code=code, reason=reason)
+    return PytestSuiteRun(ran=True, passed=report["passed"], failed=report["failed"], errors=report["errors"],
+                          skipped=report["skipped"], xfailed=report["xfailed"], xpassed=report["xpassed"],
+                          exit_code=code, reason=reason, failed_ids=tuple(report["failed_ids"]))
 
 
 @dataclass(frozen=True)
