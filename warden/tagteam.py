@@ -24,6 +24,7 @@ This module refuses three self-certifying loops:
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import logging
 import sys
@@ -274,6 +275,9 @@ class TagTeam:
         self._skipped: list[str] = []
         self._skipped_more = 0
         self._evidence: Optional[Evidence] = None
+        #: Ghost's own severity word for every finding id seen in this run (critical, major, minor,
+        #: informational), as the scanner said it, apart from Warden's remapped `Defect.severity`.
+        self._ghost_words: dict[str, str] = {}
         lock = runstate.TargetLock(target)
         try:
             held = lock.acquire()
@@ -462,6 +466,12 @@ class TagTeam:
         suite_after = self._suite(target, python, notes, "final state, for the Judge")  # may stop the run
         first_suite = next((c.suite_before for c in cycles if c.suite_before is not None), None)
         ghost = self.ghost_tools_root is not None
+        extra: Dict[str, Any] = {}
+        if ghost and "ghost_severity" in {f.name for f in dataclasses.fields(Evidence)}:
+            # CNS 2.1.0 and later: the scanner's own severity word beside each id. Under CNS 2.0.0 the field is
+            # absent and nothing here changes; ghost_before and ghost_after stay bare ids either way.
+            ids = {d.identity for d in first} | {d.identity for d in current}
+            extra["ghost_severity"] = {i: self._ghost_words[i] for i in sorted(ids) if i in self._ghost_words}
         evidence = Evidence(
             target=str(target), scope=authorization.scope if authorization else "",
             cycles=tuple((c.number, c.outcome) for c in cycles), changed=tuple(edits),
@@ -473,7 +483,7 @@ class TagTeam:
             unmeasured=self._unmeasured(sound), notes=tuple(notes),
             assay=({**self._assay, "floor": self.assay_floor} if self._assay_state else None),
             ghost_baseline_before=self._baseline_first, ghost_baseline_after=self._baseline_last,
-            finisher_ran=finisher_ran)
+            finisher_ran=finisher_ran, **extra)
         self._evidence = evidence
         # A Judge that raises, or answers with the wrong kind of thing or an unknown label, has approved
         # nothing: the error ends the run (ERROR) and the whole tree is put back like any other non-accept.
@@ -953,6 +963,7 @@ class TagTeam:
                  notes: list[str]) -> tuple[Defect, ...]:
         if findings is not None:
             observed = _defects(findings)
+            self._note_words(findings)
             self._absorb_ghost(findings)
             notes.append(f"Ghost Tools findings loaded ({len(observed)}), not scanned in this process.")
             return observed
@@ -960,6 +971,7 @@ class TagTeam:
             notes.append("Ghost Tools scan SKIPPED: no ghost_tools_root. Observation is UNKNOWN.")
             return ()
         raw = self._scan(target, python)
+        self._note_words(raw)
         stale = [f for f in raw if isinstance(f, Mapping) and f.get("detector") == STALE_BASELINE_DETECTOR]
         self._stale_baseline = _inert_baseline_entries(stale)
         observed = _defects(raw)
@@ -1025,6 +1037,12 @@ class TagTeam:
         if self._ghost_gaps:
             self._notes.append("Ghost scan has gaps, so Ghost is counted as partly measured: "
                                + "; ".join(self._ghost_gaps[:5]) + ("; and more" if len(self._ghost_gaps) > 5 else ""))
+
+    def _note_words(self, findings) -> None:
+        """Keep Ghost's own severity word per finding id, for `Evidence.ghost_severity` (see `_judge`)."""
+        for f in findings:
+            if isinstance(f, Mapping) and isinstance(f.get("id"), str) and isinstance(f.get("severity"), str):
+                self._ghost_words[f["id"]] = _plain(f["severity"], 40)
 
     def _baseline_report(self) -> Optional[dict]:
         if self._baseline_first is None and self._baseline_last is None:
@@ -1093,7 +1111,9 @@ class TagTeam:
                    notes: list[str]) -> tuple[Defect, ...]:
         if self.ghost_tools_root is None:
             return observed
-        reobserved = _defects(self._scan(target, python))
+        raw = self._scan(target, python)
+        self._note_words(raw)
+        reobserved = _defects(raw)
         before_ids = {d.ghost_id for d in observed if d.ghost_id}
         after_ids = {d.ghost_id for d in reobserved if d.ghost_id}
         notes.append(f"Ghost re-inspected: {len(reobserved)} finding(s); "
