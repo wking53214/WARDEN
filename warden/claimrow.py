@@ -54,8 +54,13 @@ def _sha256(data: Optional[bytes]) -> Optional[str]:
     return None if data is None else hashlib.sha256(data).hexdigest()
 
 
-def _suite(run: Any) -> Optional[dict]:
-    return None if run is None else asdict(run)
+def _suite(run: Any, passes: tuple, last: bool = False) -> Optional[dict]:
+    """A suite result as a row, with the number of the pass it came from and the pass it reused, if any."""
+    if run is None:
+        return None
+    found = [p for p in passes if p.get("result") is run]
+    where = (found[-1] if last else found[0]) if found else {}
+    return {**asdict(run), "pass": where.get("pass"), "reused_from": where.get("reused_from")}
 
 
 def _main_proposal(result: Any):
@@ -190,7 +195,11 @@ def claim_row(result: Any, authorization: Any, versions_report: Optional[Mapping
         applied = [c for c in result.cycles if c.applied]
         claimed_tree = getattr(applied[-1], "tree_after", None) if applied else None
     evidence = getattr(result, "evidence", None)
+    # The last suite measured: the Judge's final pass, else the Finisher's after-pass, else the loop's last one.
     suite_after = result.suite_after
+    finish_cycle = getattr(result, "finish_cycle", None)
+    if result.finished and finish_cycle is not None and finish_cycle.suite_after is not None:
+        suite_after = finish_cycle.suite_after
     if evidence is not None and evidence.suite_after is not None:
         suite_after = evidence.suite_after
     new, closed = _findings(result)
@@ -211,8 +220,8 @@ def claim_row(result: Any, authorization: Any, versions_report: Optional[Mapping
         "authorization_id": _authorization_id(authorization),
         "scope": None if authorization is None else authorization.scope,
         "transformation_id": _transformation_id(proposal),
-        "suite_before": _suite(result.suite_before),
-        "suite_after": _suite(suite_after),
+        "suite_before": _suite(result.suite_before, getattr(result, "suite_passes", ())),
+        "suite_after": _suite(suite_after, getattr(result, "suite_passes", ()), last=True),
         "ghost_before_count": len(result.observed),
         "ghost_after_count": len(result.reobserved),
         "new_findings": new,

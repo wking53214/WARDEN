@@ -162,6 +162,9 @@ class TagTeamResult:
     evidence: Optional[Evidence] = None
     #: The Finisher's applied change as a cycle (its files before and after), when one stands.
     finish_cycle: Optional[Cycle] = None
+    #: Every suite pass of the run, in order: {"pass", "when", "tree_digest", "reused_from", "result"}. A pass on a
+    #: tree whose digest this run already measured reuses that result and names the pass it came from.
+    suite_passes: tuple[dict, ...] = ()
 
     @property
     def suite_before(self) -> Optional[SuiteRun]:
@@ -198,6 +201,7 @@ class TagTeam:
         max_declined: int = DEFAULT_MAX_DECLINED,
         joins: Sequence[Path] = (),
         allow_uncommitted_instruments: bool = False,
+        suite_always: bool = False,
     ) -> None:
         #: Let an instrument root that is not a git checkout with a readable version run (see
         #: `isolation.verify_root`). Off: such a root is refused. On: it runs, the run record says so, and the run
@@ -229,6 +233,9 @@ class TagTeam:
         #: Seconds one seat call may take. None or 0 turns the limit off.
         self.seat_timeout = seat_timeout
         self.max_declined = max_declined
+        #: Run the suite at every pass. Off: a pass on a tree whose fingerprint this run already measured reuses
+        #: that result (six passes become three on a run with one change and one finishing edit). Never across runs.
+        self.suite_always = suite_always
 
     def run(
         self,
@@ -278,6 +285,9 @@ class TagTeam:
         #: Ghost's own severity word for every finding id seen in this run (critical, major, minor,
         #: informational), as the scanner said it, apart from Warden's remapped `Defect.severity`.
         self._ghost_words: dict[str, str] = {}
+        self._suite_passes: list[dict] = []
+        #: Tree fingerprint -> the number of the pass that measured it, within this run only.
+        self._suite_seen: dict[str, int] = {}
         lock = runstate.TargetLock(target)
         try:
             held = lock.acquire()
@@ -363,7 +373,7 @@ class TagTeam:
             notes=tuple(self._notes + [said]), unmeasured=self._unmeasured(self._sound, never_ran=True),
             reason=said, ghost_scan=self._ghost_info, drafter_skipped=self._skipped_lines(),
             ghost_baseline=self._baseline_report(), swizzle_sound=self._sound,
-            informational=tuple(self._info))
+            informational=tuple(self._info), suite_passes=tuple(self._suite_passes))
 
     def _settle(self, target: Path, result: TagTeamResult) -> TagTeamResult:
         """A run that does not end accepted leaves the tree as it was found. An ACCEPT_UNVERIFIED run
@@ -662,7 +672,8 @@ class TagTeam:
                 verdict=verdict, reason=why.strip(), ghost_scan=self._ghost_info,
                 ghost_baseline=self._baseline_report(),
                 drafter_skipped=self._skipped_lines(), informational=tuple(self._info),
-                attacks=self._attacks, evidence=self._evidence, finish_cycle=finish_cycle)
+                attacks=self._attacks, evidence=self._evidence, finish_cycle=finish_cycle,
+                suite_passes=tuple(self._suite_passes))
 
         if self._stale_baseline:
             return stop("REJECT", f"Ghost's baseline has {self._stale_baseline} entr"
@@ -1097,11 +1108,27 @@ class TagTeam:
             if when.endswith("before"):
                 notes.append("Rule 7 NOT RUN: run_tests=False. Behavior preservation is unmeasured.")
             return None
+        digest = _fingerprint(target)
+        number = len(self._suite_passes) + 1
+        earlier = self._suite_seen.get(digest)
+        if earlier is not None and not self.suite_always:
+            # The same bytes were measured in this run already; a second run of the suite on them would measure the
+            # suite's own stability, not the change. Reuse is never across runs: this map lives for one run only.
+            result = self._suite_passes[earlier - 1]["result"]
+            self._suite_ran = True
+            notes.append(f"Rule 7 suite pass {when}: reused the result of pass {earlier}, tree digest {digest} "
+                         "identical.")
+            self._suite_passes.append({"pass": number, "when": when, "tree_digest": digest, "reused_from": earlier,
+                                       "result": result})
+            return result
         source_before = _source_hash(target)
         self._suite_ran = True
         result = run_suite(target, python, self.suite_timeout, self.suite_runner)
         runner = " (cargo)" if isinstance(result, CargoSuiteRun) else ""
         notes.append(f"Rule 7 suite{runner} {when}: {result.describe()}.")
+        self._suite_passes.append({"pass": number, "when": when, "tree_digest": digest, "reused_from": None,
+                                   "result": result})
+        self._suite_seen.setdefault(digest, number)
         if _source_hash(target) != source_before:
             notes.append(f"Rule 7: {SOURCE_CHANGED_NOTE}.")
             raise SuiteChangedSource(SOURCE_CHANGED_NOTE)

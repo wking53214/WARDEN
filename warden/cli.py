@@ -486,6 +486,11 @@ def _main(argv: list[str] | None) -> int:
     p_t.add_argument("--suite-runner", choices=("auto", "pytest", "cargo"), default="auto",
                      help="which tool measures the target's suite: auto picks cargo for a Rust project with no "
                           "Python tests and pytest otherwise (default auto)")
+    p_t.add_argument("--suite-always", action="store_true",
+                     help="run the target's suite at every pass. By default a pass on a tree whose fingerprint this "
+                          "run already measured reuses that result and the record says which pass it came from "
+                          "(six passes become three on a run with one change and one finishing edit); reuse never "
+                          "reaches across runs")
     p_t.add_argument("--seat-timeout", type=_positive_number, default=3600,
                      help="seconds one seat call (Drafter, Finisher, Judge, or building a seat) may take "
                           "before the run stops as ERROR (default 3600)")
@@ -808,7 +813,8 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
                    drafter=drafter, finisher=finisher, judge=judge, max_cycles=args.max_cycles,
                    ghost_timeout=args.ghost_timeout, suite_timeout=args.suite_timeout, suite_runner=args.suite_runner,
                    seat_timeout=args.seat_timeout, joins=getattr(args, "joins", ()),
-                   allow_uncommitted_instruments=getattr(args, "allow_uncommitted_instruments", False))
+                   allow_uncommitted_instruments=getattr(args, "allow_uncommitted_instruments", False),
+                   suite_always=bool(getattr(args, "suite_always", False)))
     # A seat that print()s, or writes straight to file descriptor 1, must not corrupt the JSON on stdout.
     with runstate.stdout_to_stderr():
         result = team.run(args.path, authorization=auth, findings=findings)
@@ -844,6 +850,8 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
             "judge": result.verdict.judge},
         "claim": row,
         "evidence": evidence,
+        "suite_passes": [{k: v for k, v in p.items() if k != "result"} | dataclasses.asdict(p["result"])
+                         for p in result.suite_passes],
     }
     _print_json(payload)
     if result.held_digest:
