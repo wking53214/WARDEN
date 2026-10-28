@@ -4,9 +4,77 @@ All notable changes to Warden. The format follows [Keep a Changelog](https://kee
 and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single source of truth.
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
-Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged. The
+Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged, and
+`0.14.0` is not tagged either. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
+
+## [0.14.0] - 2026-10-28
+
+`CONTRACT` is still `"1"`. This release sits on top of the 0.13.10 commit `9ecd1124e6c1b1c4ad7daed37b17f9009662dd9d`
+(the branch head `9ecd112`) and builds the four strategies of the sim9 simulations (A claim row, B severity, C chronicle,
+D suite reuse) plus the owner's two rulings on the Judge. CNS stays at the tag `v2.0.0`; the new record keys are extra keys
+there and typed from CNS 2.1.0. Not tagged. Minor version: new command-line options, a new subcommand, a changed guard
+rule and record keys. No exit code changed.
+
+### Added
+
+- **The claim seat** (`warden/claim.py`): `--claim-commit SHA` (with `--claim-repo PATH`) or `--claim-diff FILE` with
+  `--claim-subject` and `--claim-author` takes the Drafter seat with a real change, proposed once as writes and deletes
+  of UTF-8 text and then nothing. Binary files, symbolic links, submodules, renames, copies, mode changes, quoted paths and
+  a target not at the change's base are refused with a reason before anything runs (exit 2); `--claim-*` beside
+  `--drafter` is a usage error. `Transformation.claim` carries the facts. (Step 1.)
+- **The claim row** (`warden/claimrow.py`, `claim_row(result, authorization, versions)`): the record's `claim` key with
+  the shared field names (origin, base and claimed commits and tree digests, subject, author, date, diff sha256 and size,
+  files by sha256 with a protected flag, actor, authority, authorization and transformation ids, scope, suite results,
+  Ghost counts, new and closed findings, `rules_fired`, judge, decision, held digest, held tree digest, participants,
+  finisher edits) and the Judge's whole Evidence as `evidence`; both also in the held file (`held.attach`) and the
+  receipt. `TagTeamResult` gained `held_tree_digest`, `evidence`, `finish_cycle`; each applied cycle records what landed
+  by file and the tree fingerprint after the apply. (Step 2.)
+- **`Evidence.ghost_severity`** is filled with Ghost's own severity word per finding id when the installed
+  `cns.seat.Evidence` has the field (CNS 2.1.0); under 2.0.0 nothing changes. (Step 3.)
+- **Suite reuse within a run** (`--suite-always` turns it off): a pass on a tree whose fingerprint was already measured in
+  this run reuses that result, with a note and a `suite_passes` list (`reused_from`) in the record and `pass`,
+  `reused_from` on the row's suite results. Six passes become three on a run with one change and one finishing edit.
+  (Step 4.)
+- **The chronicle** (`warden/chronicle.py`, `--chronicle DIR`, `warden keep --chronicle DIR`, `warden chronicle DIR
+  [--origin X]`): one JSON line per run keyed by (origin, base commit, claimed commit) with the promises a result opens
+  if kept; a later run on the same tree settles them (HELD, BROKEN, OPEN with the measurement) into its own line and
+  its record's notes and `chronicle` key. (Step 7.)
+
+### Changed
+
+- **A protected path is applied, measured, named and held, not refused** (the owner's ruling, borderline, reviewed by the
+  author). `guard.violation` no longer refuses tests, test or build configuration, CI, dependency lists and git hooks;
+  the edit is applied and measured, `judging_files_touched` names it (by its own name or where a link really points) and
+  the Judge decides, so the run ends held for `warden keep`. Test material and `.ghost_*` files stay refused
+  (`guard.is_ghost_file`); escapes stay escapes. The pinned Judge 0.4.8 still says REJECT on such an edit. (Step 5.)
+- An `ACCEPT` record's `reason` is never empty: it says what converged, what the Judge said and what was measured. A
+  red suite at a proposal (INCONCLUSIVE) or at the finishing change (FINISH_REJECTED) names the failing tests, ten at
+  most (`suite.PytestSuiteRun.failed_ids`). (Step 6.)
+- Version 0.14.0; README entries under WHAT WORKS, WHAT DOES NOT WORK and the ledger; docs/ARCHITECTURE.md and
+  docs/EXIT_CODES.md regenerated. (Step 8.)
+
+### Fixed
+
+- `tests/test_stale_bytecode.py`'s control plants its `.pyc` where plain Python looks even when the suite runs under a
+  bytecode cache prefix, as it does under Warden's own `suite.py` (self-hosting run 3). (Step 6.)
+
+### Tests
+
+- New: `tests/test_claim_seat.py` (Step 1), `tests/test_claim_row.py` (Step 2), `tests/test_ghost_severity.py` (Step 3),
+  `tests/test_suite_reuse.py` (Step 4), `tests/test_protected_hold.py` (Step 5), `tests/test_record_honesty.py` and one
+  test in `tests/test_stale_bytecode.py` (Step 6), `tests/test_chronicle.py` (Step 7).
+- Edited under rule 5 because the behaviour they assert is what a step changed: Step 4,
+  `tests/test_closing_false_accepts.py::test_a_suite_that_goes_red_in_a_later_cycle_puts_the_earlier_edits_back` (the red
+  third run is now the second cycle's after-pass, REJECT); Step 5,
+  `tests/test_seams.py::test_the_loop_cannot_weaken_the_tests_that_judge_it`, `::test_a_finisher_cannot_plant_a_conftest`,
+  `tests/test_round3_suite_and_guard.py::test_a_symlink_to_a_protected_file_is_not_a_way_in`,
+  `::test_a_symlinked_folder_into_a_protected_folder_is_protected`, `::test_the_folder_git_runs_hooks_from_is_protected`,
+  `tests/test_honest_exit_codes.py::test_a_proposal_that_also_touches_a_test_file_is_still_rejected`; Step 6,
+  `tests/test_honest_exit_codes.py::test_0_is_accept_and_only_accept` (an ACCEPT reason is no longer empty); Step 8,
+  `tests/test_docs.py::test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged` (the version is 0.14.0 and
+  the documents say it is not tagged). Nothing else was edited.
 
 ## [0.13.10] - 2026-10-24
 
