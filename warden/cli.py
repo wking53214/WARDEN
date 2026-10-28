@@ -24,9 +24,10 @@ from pathlib import Path
 from . import CONTRACT, __version__
 from .authorization import Unauthorized, grant
 from . import audit as audit_file, gitstate, held, isolation, runstate, textio, versions
+from . import chronicle
 from . import claim as claimseat
 from . import log as warden_log
-from .claimrow import claim_row
+from .claimrow import claim_row, origin_of
 from .ghost import load_report, scan as ghost_scan
 from .tagteam import TagTeam
 
@@ -543,6 +544,12 @@ def _main(argv: list[str] | None) -> int:
                           "lie outside the target and, if it exists, be a regular file (a pipe, device or folder "
                           "is refused before anything runs). The run's decision and exit code are unchanged")
 
+    p_t.add_argument("--chronicle", type=Path, default=None, metavar="DIR",
+                     help="append this run as one JSON line to DIR/<origin slug>.jsonl, keyed by origin, base commit "
+                          "and claimed commit, with the promises it opens if kept; first settle the promises of every "
+                          "earlier run whose claimed or held tree is this run's base tree (HELD or BROKEN, with the "
+                          "measurement) and write the settlement into the line and the record's notes")
+
     p_k = sub.add_parser("keep", parents=[common],
                          help="apply one held unverified result, only with a human grant for its digest")
     p_k.add_argument("path", type=Path)
@@ -550,6 +557,12 @@ def _main(argv: list[str] | None) -> int:
     p_k.add_argument("--authorize", default=None, metavar="ACTOR",
                      help="the human approving this exact result; without it nothing is applied")
     p_k.add_argument("--reason", default="")
+    p_k.add_argument("--chronicle", type=Path, default=None, metavar="DIR",
+                     help="append a line saying who kept which digest, and when, to the chronicle in DIR")
+
+    p_c = sub.add_parser("chronicle", parents=[common], help="print a chronicle folder's chain of runs, in order")
+    p_c.add_argument("directory", type=Path)
+    p_c.add_argument("--origin", default=None, metavar="X", help="only the chain of this origin (a remote URL)")
 
     p_a = sub.add_parser("audit", parents=[common],
                          help="WARDEN_AUDIT.md: Ghost findings under durable IDs (Rules 5, 9)")
@@ -572,6 +585,8 @@ def _main(argv: list[str] | None) -> int:
         return _audit(args)
     if args.command == "keep":
         return _keep(args)
+    if args.command == "chronicle":
+        return _chronicle(args)
     if args.command == "tagteam":
         try:
             return _tagteam(args)
@@ -648,8 +663,45 @@ def _keep(args) -> int:
         return _stop("REFUSED", str(e))
     except Exception as e:  # noqa: BLE001 - the CLI always prints valid JSON, never a traceback
         return _stop("ERROR", f"Warden failed with {type(e).__name__}. Nothing was kept.")
+    notes = [outcome["reason"]]
+    if args.chronicle is not None:
+        try:
+            key = (held.load(path, args.digest).get("claim") or {})
+            key = {k: key.get(k) for k in ("origin", "base_commit", "claimed_commit")} if key else None
+            where = chronicle.append(args.chronicle, origin_of(path.resolve()),
+                                     chronicle.keep_line(origin_of(path.resolve()), args.digest, args.authorize,
+                                                         args.reason.strip(), key))
+            notes.append(f"Chronicle: the keep was written to {where}.")
+        except (OSError, ValueError, HeldError) as e:
+            notes.append(f"Chronicle: the keep could not be written ({type(e).__name__}); the result was kept all "
+                         "the same.")
     _print_json({"decision": outcome["decision"], "digest": outcome["digest"], "reason": outcome["reason"],
-                 "approved_by": args.authorize, "contract": CONTRACT, "notes": [outcome["reason"]]})
+                 "approved_by": args.authorize, "contract": CONTRACT, "notes": notes})
+    return 0
+
+
+def _chronicle(args) -> int:
+    """Print the chain of runs a chronicle folder holds, oldest line first, one origin's file after another."""
+    directory = Path(args.directory)
+    if not directory.is_dir():
+        print(f"warden: the chronicle folder {str(directory)!r} does not exist or is not a directory.", file=sys.stderr)
+        return 2
+    entries: list[dict] = []
+    for path in sorted(directory.glob("*.jsonl")):
+        if args.origin is not None and path.name != chronicle.path_for(directory, args.origin).name:
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                item = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(item, dict):
+                entries.append(item)
+    for line in chronicle.render(entries):
+        _emit(line)
+    if not entries:
+        which = f" for origin {args.origin!r}" if args.origin else ""
+        print(f"warden: the chronicle holds no readable line{which}.", file=sys.stderr)
     return 0
 
 
@@ -815,6 +867,9 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
                    seat_timeout=args.seat_timeout, joins=getattr(args, "joins", ()),
                    allow_uncommitted_instruments=getattr(args, "allow_uncommitted_instruments", False),
                    suite_always=bool(getattr(args, "suite_always", False)))
+    chronicle_dir = getattr(args, "chronicle", None)
+    origin = origin_of(Path(args.path).resolve()) if chronicle_dir is not None else None
+    earlier = chronicle.read(chronicle_dir, origin) if chronicle_dir is not None else []
     # A seat that print()s, or writes straight to file descriptor 1, must not corrupt the JSON on stdout.
     with runstate.stdout_to_stderr():
         result = team.run(args.path, authorization=auth, findings=findings)
@@ -823,6 +878,10 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
     # and the Judge's Evidence is kept whole, so a reader can replay the verdict from the record alone.
     row = claim_row(result, auth, report)
     evidence = None if result.evidence is None else dataclasses.asdict(result.evidence)
+    chronicle_notes: list[str] = []
+    chronicled: Optional[dict] = None
+    if chronicle_dir is not None:
+        chronicle_notes, chronicled = _chronicle_run(chronicle_dir, origin, earlier, row, result)
     payload = {
         "schema": CNS_RUN_SCHEMA,
         "decision": result.decision,
@@ -834,7 +893,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "held_digest": result.held_digest,
         "reason": _accept_reason(result) if result.decision == "ACCEPT"
         else (result.reason or (result.notes[-1] if result.notes else "")),
-        "notes": list(result.notes) + list(warnings),
+        "notes": list(result.notes) + list(warnings) + chronicle_notes,
         "observed": [d.identity for d in result.observed],
         "reobserved": [d.identity for d in result.reobserved],
         "contract": CONTRACT,
@@ -853,6 +912,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "evidence": evidence,
         "suite_passes": [{k: v for k, v in p.items() if k != "result"} | dataclasses.asdict(p["result"])
                          for p in result.suite_passes],
+        "chronicle": chronicled,
     }
     _print_json(payload)
     if result.held_digest:
@@ -868,6 +928,25 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
     if result.swizzle_sound is False:
         print("warden: SWIZZLE's own proofs do not hold; nothing was written.", file=sys.stderr)
     return code
+
+
+def _chronicle_run(directory: Path, origin: Optional[str], earlier: list, row: dict, result) -> tuple[list[str], dict]:
+    """Settle what earlier runs promised about this run's base tree, then append this run's line. A chronicle that
+    cannot be written is said in the notes and never changes the decision."""
+    ghost_ran = result.ghost_scan is not None or (result.observed and "ghost" not in result.unmeasured)
+    observed = [d.identity for d in result.observed] if ghost_ran else None
+    declined = list((result.ghost_scan or {}).get("declined") or [])
+    settled = chronicle.settle(earlier, row["base_tree_digest"], row["suite_before"], observed, declined)
+    line = chronicle.entry(row, [d.identity for d in result.reobserved], declined, settled)
+    notes = chronicle.notes_for(settled)
+    try:
+        where = chronicle.append(directory, origin, line)
+    except OSError as e:
+        notes.append(f"Chronicle: this run's line could not be written ({type(e).__name__}).")
+        return notes, {"file": None, "settled": settled, "promises": line["promises"]}
+    notes.append(f"Chronicle: this run is line {len(earlier) + 1} of {where} (origin {origin or 'none'}); it settled "
+                 f"{len(settled)} promise(s) and opens {len(line['promises'])}.")
+    return notes, {"file": str(where), "settled": settled, "promises": line["promises"]}
 
 
 def _accept_reason(result) -> str:
