@@ -691,6 +691,8 @@ def test_an_out_of_scope_proposal_repeated_ends_the_run(rig):
 
 
 def test_a_proposal_that_also_touches_a_test_file_is_still_rejected(rig):
+    """Since 0.14.0 the test file is not refused as protected; under a documentation grant both edits are out of
+    scope, so the proposal is declined without a write, and the seat repeating it ends the run."""
     code, payload, _ = rig.run(drafter="exit_seats:ScopeAndTest", scope="documentation")
-    assert payload["decision"] == "REJECT" and code == 1
+    assert payload["decision"] == "NOT_CONVERGED" and code == 1
     assert (rig.target / "tests" / "test_x.py").read_text(encoding="utf-8").count("assert VALUE == 1") == 1

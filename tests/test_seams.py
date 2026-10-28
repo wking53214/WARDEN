@@ -176,18 +176,25 @@ def test_a_documentation_grant_can_still_change_prose(tmp_path):
 
 
 def test_the_loop_cannot_weaken_the_tests_that_judge_it(tmp_path):
+    """Since 0.14.0 (the owner's ruling) the edit is applied and measured, not refused at the guard; with no Judge to
+    approve it the run ends held, the tree is put back, and the row names the test file as protected."""
     _repo(tmp_path)
     weaker = "from pkg import VALUE\n\ndef test_v():\n    assert True\n"
     result = _run(tmp_path, Once(lambda t: _t(t, FileEdit("tests/test_x.py", "write", weaker, ""))))
-    assert result.decision == "REJECT" and any("decides whether a change is acceptable" in n for n in result.notes)
+    assert result.decision == "ACCEPT_UNVERIFIED" and result.cycles[0].outcome == "APPLIED" and result.held_digest
     assert "assert VALUE == 1" in (tmp_path / "tests" / "test_x.py").read_text(encoding="utf-8")
+    from warden.claimrow import claim_row
+    named = claim_row(result, _auth(tmp_path))["files"][0]
+    assert named["path"] == "tests/test_x.py" and named["protected"] is True
 
 
 def test_a_finisher_cannot_plant_a_conftest(tmp_path):
+    """Since 0.14.0 the planted conftest is applied and measured, then held with the rest of the result: nothing
+    stands without a named person, and the file is not left on disk."""
     _repo(tmp_path)
     result = TagTeam(drafter=FakeDrafter(steps=()), finisher=FakeFinisher(path="conftest.py", new_text="import os\n")).run(
         tmp_path, findings=[], authorization=_auth(tmp_path))
-    assert result.decision == "FINISH_REJECTED" and not (tmp_path / "conftest.py").exists()
+    assert result.decision == "ACCEPT_UNVERIFIED" and result.finished and not (tmp_path / "conftest.py").exists()
 
 
 def test_apply_itself_refuses_a_path_outside_the_target(tmp_path):

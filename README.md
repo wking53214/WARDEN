@@ -635,18 +635,24 @@ and folders are in the protected list. Ghost Tools analyses Python, so on a Rust
 Rule 7 gate is the only behavior check.
 
 **What a proposal may touch.** Never: anything outside the target, version control and
-environments, and the files that judge or build the work: test files and folders (`tests`,
+environments, test material (`fixtures`, `specimens`, `testdata`, `golden`, `snapshots`, `corpus`
+folders, not even their whitespace), and Ghost's own `.ghost_*` files. The files that judge or build
+the work are protected, which since 0.14.0 means named, not refused: test files and folders (`tests`,
 `test`, `testing`, `tests.py`), `conftest.py`, every pytest/tox/setup/nox/make/pyproject
 config, CI configs (`.github`, `.circleci`, `.gitlab-ci.yml`, `Jenkinsfile`,
 `azure-pipelines.yml` and the like), git hooks (`.githooks` and any `core.hooksPath` folder),
 `.gitmodules`, lockfiles, `requirements*.txt` / `constraints*.txt` / `Pipfile`, Docker and
-compose files, and any `.ghost_*` file. Names are compared without regard to case. A symlink is
-judged by where it really points, before the check: a link that points at a protected file is
-that file, and one that points outside the target is an escape. A tidy that leaves a Python
-file's syntax tree identical (comments, spacing) is still allowed on protected `.py` files. In the
+compose files. An edit to one of them is applied and measured like any other, every such path is
+named in the Judge's `judging_files_touched` and in the claim row's `files` (`protected` true), and
+the Judge decides; the machine does not approve it, so the run ends held (`ACCEPT_UNVERIFIED`) by
+digest for a named person to keep or drop with `warden keep` (the owner's ruling, 2026-10-28; a Judge
+older than that ruling says REJECT instead and the whole tree is put back). Names are compared
+without regard to case. A symlink is judged by where it really points, before the check: a link that
+points at a protected file is that file, and one that points outside the target is an escape. In the
 default `documentation` scope only real prose is editable: `.md`, `.rst` and `.txt`, except
 requirements and constraints lists, `CMakeLists.txt`, `LICENSE*`, `NOTICE*`, `COPYING*` and
-similar non-prose text files.
+similar non-prose text files, so under that scope a protected code or configuration file is declined
+as out of scope and nothing is written.
 
 **Seats.** Before a seat is loaded, `''` and the current directory (and anything inside the
 target) are taken off Python's import path, and the loaded module (and the seat's class) must not

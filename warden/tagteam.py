@@ -38,8 +38,8 @@ from .authorization import Authorization, Unauthorized, is_stack_actor
 from .deletion import commented_variant, is_deletion, keep_variant, stamp_now
 from .ghost import GhostCrashed, GhostRefused, _clean as _plain, defects_from_ghost, scan as ghost_scan
 from .textio import clip as _clip
-from .guard import (FORBIDDEN_DIRS, iter_tree, SeatBrokeCharter, Snapshot, _RESTORE_LIMIT, is_protected,
-                    is_test_code, violation, watch)
+from .guard import (FORBIDDEN_DIRS, iter_tree, SeatBrokeCharter, Snapshot, _RESTORE_LIMIT, hooks_dirs, is_protected,
+                    is_test_code, real_rel, violation, watch)
 from .isolation import InstrumentRootError
 from .models import Defect, FileEdit, Transformation, TransformationStatus, safe_id
 from .roles import Evidence, Facts, Finisher, Drafter, Judge, Verdict
@@ -485,7 +485,7 @@ class TagTeam:
         evidence = Evidence(
             target=str(target), scope=authorization.scope if authorization else "",
             cycles=tuple((c.number, c.outcome) for c in cycles), changed=tuple(edits),
-            judging_files_touched=tuple(sorted({p for p, _ in edits if is_protected(p)})),
+            judging_files_touched=tuple(sorted({p for p, _ in edits if _judging(target, p)})),
             suite_before=first_suite if first_suite is not None else suite_after, suite_after=suite_after,
             ghost_before=tuple(sorted(d.identity for d in first)) if ghost else None,
             ghost_after=tuple(sorted(d.identity for d in current)) if ghost else None,
@@ -1174,6 +1174,14 @@ def _commented(target: Path, proposal: Transformation) -> Optional[Transformatio
                            for rel, text in files.items())
     proposal.intent = "comment out unused code (not deleted): " + proposal.intent
     return proposal
+
+
+def _judging(target: Path, rel: str) -> bool:
+    """True when an applied edit touched a protected path (tests, test or build configuration, CI, dependency lists,
+    git hooks), by its own name or by where a link in it really points. Named to the Judge, never refused here."""
+    hooks = hooks_dirs(target)
+    real = real_rel(target, rel)
+    return is_protected(rel, hooks) or (real is not None and is_protected(real, hooks))
 
 
 def _fingerprint(target: Path) -> str:
