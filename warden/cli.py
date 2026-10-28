@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import dataclasses
 import importlib
 import json
 import os
@@ -22,9 +23,10 @@ from pathlib import Path
 
 from . import CONTRACT, __version__
 from .authorization import Unauthorized, grant
-from . import audit as audit_file, gitstate, isolation, runstate, textio, versions
+from . import audit as audit_file, gitstate, held, isolation, runstate, textio, versions
 from . import claim as claimseat
 from . import log as warden_log
+from .claimrow import claim_row
 from .ghost import load_report, scan as ghost_scan
 from .tagteam import TagTeam
 
@@ -810,6 +812,11 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
     # A seat that print()s, or writes straight to file descriptor 1, must not corrupt the JSON on stdout.
     with runstate.stdout_to_stderr():
         result = team.run(args.path, authorization=auth, findings=findings)
+    report = _versions(args, drafter, finisher, judge)
+    # The claim row names the change the run governed (commit, diff digest, files by digest, verdict, held tree),
+    # and the Judge's Evidence is kept whole, so a reader can replay the verdict from the record alone.
+    row = claim_row(result, auth, report)
+    evidence = None if result.evidence is None else dataclasses.asdict(result.evidence)
     payload = {
         "schema": CNS_RUN_SCHEMA,
         "decision": result.decision,
@@ -824,7 +831,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "observed": [d.identity for d in result.observed],
         "reobserved": [d.identity for d in result.reobserved],
         "contract": CONTRACT,
-        "versions": _versions(args, drafter, finisher, judge),
+        "versions": report,
         "swizzle_sound": result.swizzle_sound,
         "allow_uncommitted_instruments": bool(getattr(args, "allow_uncommitted_instruments", False)),
         "unmeasured": list(result.unmeasured),
@@ -835,20 +842,28 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "verdict": None if result.verdict is None else {
             "decision": result.verdict.decision, "reasons": list(result.verdict.reasons),
             "judge": result.verdict.judge},
+        "claim": row,
+        "evidence": evidence,
     }
     _print_json(payload)
+    if result.held_digest:
+        try:
+            held.attach(Path(args.path), result.held_digest, {"claim": row, "evidence": evidence})
+        except (OSError, ValueError) as e:  # the held result stands without the row; the record above carries it
+            print(f"warden: the claim row was not added to the held result ({type(e).__name__}).", file=sys.stderr)
     code = 2 if result.swizzle_sound is False else EXIT_CODES.get(result.decision, 1)
     logger.info("tagteam finished: decision=%s exit=%s put_back=%s unmeasured=%s", result.decision, code,
                 result.put_back, ",".join(result.unmeasured) or "none")
     if args.receipt is not None:
-        _write_receipt(args, auth, result)
+        _write_receipt(args, auth, result, {"claim": row, "evidence": evidence})
     if result.swizzle_sound is False:
         print("warden: SWIZZLE's own proofs do not hold; nothing was written.", file=sys.stderr)
     return code
 
 
-def _write_receipt(args, auth, result) -> None:
-    """Write the horsemen production receipt for a finished run. A failure is said on stderr and never
+def _write_receipt(args, auth, result, extra: Optional[dict] = None) -> None:
+    """Write the horsemen production receipt for a finished run, with `extra` keys (the claim row and the Judge's
+    evidence) beside the receipt's own. A failure is said on stderr and never
     changes the run's decision or exit code: the run is over, and the JSON on stdout is the record.
 
     The file is written under a temporary name and renamed into place, so a reader never sees half a receipt.
@@ -864,7 +879,7 @@ def _write_receipt(args, auth, result) -> None:
             raise OSError(f"{str(out)!r} is {kind}, not a regular file, so it was not replaced")
         receipt = receipt_for_run(result=result, target=target, authorization=auth,
                                   baseline_sha=versions.own_commit(target) or "unknown", assay_root=args.assay_root)
-        tmp.write_text(json.dumps(receipt.to_dict(), indent=2) + "\n", encoding="utf-8")
+        tmp.write_text(json.dumps({**receipt.to_dict(), **(extra or {})}, indent=2) + "\n", encoding="utf-8")
         try:
             tmp.chmod(stat.S_IMODE(os.stat(out).st_mode))
         except (FileNotFoundError, NotADirectoryError):

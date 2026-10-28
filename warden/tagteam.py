@@ -154,6 +154,13 @@ class TagTeamResult:
     ghost_baseline: Optional[dict] = None
     #: SWIZZLE's attacks on the governor, as it reported them (scenario, severity, status), when they ran.
     attacks: Optional[tuple] = None
+    #: Warden's fingerprint of the tree at the end of the run, taken before any put-back: the held tree for a held
+    #: run, the standing tree for an ACCEPT. None when the run never reached the tree.
+    held_tree_digest: Optional[str] = None
+    #: The Evidence handed to the Judge, kept so the record can carry it. None when no Judge was asked.
+    evidence: Optional[Evidence] = None
+    #: The Finisher's applied change as a cycle (its files before and after), when one stands.
+    finish_cycle: Optional[Cycle] = None
 
     @property
     def suite_before(self) -> Optional[SuiteRun]:
@@ -266,6 +273,7 @@ class TagTeam:
         self._unproven = self._unproven_instruments() if self.allow_uncommitted_instruments else []
         self._skipped: list[str] = []
         self._skipped_more = 0
+        self._evidence: Optional[Evidence] = None
         lock = runstate.TargetLock(target)
         try:
             held = lock.acquire()
@@ -357,7 +365,13 @@ class TagTeam:
         """A run that does not end accepted leaves the tree as it was found. An ACCEPT_UNVERIFIED run
         is also put back, but its final state is saved first as a held result a human can approve."""
         start = self._start
-        if result.decision in _ENDS_ACCEPTED or start is None:
+        if start is None:
+            return result
+        try:
+            result = replace(result, held_tree_digest=_fingerprint(target))
+        except OSError:
+            pass
+        if result.decision in _ENDS_ACCEPTED:
             return result
         try:
             changed = start.changes()
@@ -460,6 +474,7 @@ class TagTeam:
             assay=({**self._assay, "floor": self.assay_floor} if self._assay_state else None),
             ghost_baseline_before=self._baseline_first, ghost_baseline_after=self._baseline_last,
             finisher_ran=finisher_ran)
+        self._evidence = evidence
         # A Judge that raises, or answers with the wrong kind of thing or an unknown label, has approved
         # nothing: the error ends the run (ERROR) and the whole tree is put back like any other non-accept.
         assert self.judge is not None  # _judge is only reached when a Judge is seated
@@ -599,7 +614,7 @@ class TagTeam:
         finisher_called = False
 
         def stop(decision: str, why: str, cycles=(), converged=False, current=None,
-                 finish=None, finished=False, unsound=False) -> TagTeamResult:
+                 finish=None, finished=False, unsound=False, finish_cycle=None) -> TagTeamResult:
             shown_sound = False if unsound else sound
             candidate = decision == "ACCEPT"
             will_judge = candidate and self.judge is not None
@@ -637,7 +652,7 @@ class TagTeam:
                 verdict=verdict, reason=why.strip(), ghost_scan=self._ghost_info,
                 ghost_baseline=self._baseline_report(),
                 drafter_skipped=self._skipped_lines(), informational=tuple(self._info),
-                attacks=self._attacks)
+                attacks=self._attacks, evidence=self._evidence, finish_cycle=finish_cycle)
 
         if self._stale_baseline:
             return stop("REJECT", f"Ghost's baseline has {self._stale_baseline} entr"
@@ -792,7 +807,7 @@ class TagTeam:
         done = self._apply(target, finish, authorization, python, notes, 0, len(observed))
         if done.outcome != "APPLIED":
             return stop("FINISH_REJECTED", f"Finishing: {done.outcome}. The finishing change was put back.",
-                        cycles, converged=True, finish=finish)
+                        cycles, converged=True, finish=finish, finish_cycle=done)
         after = self._reinspect(target, observed, python, notes)
         new = {d.ghost_id for d in after if d.ghost_id} - {d.ghost_id for d in observed if d.ghost_id}
         if new:
@@ -802,7 +817,7 @@ class TagTeam:
                         "The finishing change was put back.", cycles, converged=True,
                         current=observed, finish=finish)
         return stop("ACCEPT", "Loop converged and the finishing change stands.", cycles,
-                    converged=True, current=after, finish=finish, finished=True)
+                    converged=True, current=after, finish=finish, finished=True, finish_cycle=done)
 
     # -- steps ------------------------------------------------------------
 
@@ -875,6 +890,10 @@ class TagTeam:
             notes.append(f"Cycle {number}: the change could not be applied ({err}); it was put back.")
             return _Applied(number, seen, proposal, False, "PUT_BACK", before, None, snapshot)
         notes.append(f"Cycle {number}: transformation applied under granted authorization.")
+        # What landed, by file and as a tree, so the record can name the change by digest.
+        landed = {e.path: ((target / e.path).read_bytes() if (target / e.path).is_file() else None)
+                  for e in proposal.edits}
+        tree_after = _fingerprint(target)
         try:
             after = self._suite(target, python, notes, f"cycle {number} after")
         except SuiteChangedSource:
@@ -885,8 +904,8 @@ class TagTeam:
             _restore(target, snapshot)
             proposal.status = TransformationStatus.REJECTED
             notes.append(f"Rule 7: {broken}.")
-            return _Applied(number, seen, proposal, False, "PUT_BACK", before, after, snapshot)
-        return _Applied(number, seen, proposal, True, "APPLIED", before, after, snapshot)
+            return _Applied(number, seen, proposal, False, "PUT_BACK", before, after, snapshot, landed, tree_after)
+        return _Applied(number, seen, proposal, True, "APPLIED", before, after, snapshot, landed, tree_after)
 
     def _calibrate(self, python: str, notes: list[str]) -> Optional[bool]:
         """SWIZZLE's instrument check: are its own planted defects still real?"""
@@ -1086,10 +1105,16 @@ class TagTeam:
 @dataclass
 class _Applied(Cycle):
     restore: Dict[str, Optional[bytes]] = field(default_factory=dict)
+    #: Each touched file's bytes right after the apply (None: the file was deleted), and the tree's fingerprint then.
+    applied_bytes: Dict[str, Optional[bytes]] = field(default_factory=dict)
+    tree_after: Optional[str] = None
 
-    def __init__(self, number, observed, proposal, applied, outcome, before, after, restore):
+    def __init__(self, number, observed, proposal, applied, outcome, before, after, restore, applied_bytes=None,
+                 tree_after=None):
         super().__init__(number, observed, proposal, applied, outcome, before, after)
         self.restore = restore
+        self.applied_bytes = applied_bytes or {}
+        self.tree_after = tree_after
 
 
 def _commented(target: Path, proposal: Transformation) -> Optional[Transformation]:

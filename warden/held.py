@@ -15,7 +15,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Mapping, Optional
 
 from . import runstate
 from .authorization import Authorization, is_stack_actor
@@ -72,6 +72,20 @@ def hold(target: Path, final: Snapshot, baseline: str, decision: str, reason: st
         json.dump(record, fh)
     os.replace(tmp, path)
     return digest
+
+
+def attach(target: Path, digest: str, extra: Mapping[str, object]) -> None:
+    """Add `extra` keys (the claim row, the Judge's evidence) to a held result's file. The digest covers the
+    saved files and git parts only, so the record still checks; a key the file already has is left alone."""
+    path = _dir(Path(target)) / f"{digest}.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    for key, value in extra.items():
+        record.setdefault(key, value)
+    tmp = path.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(record, fh)
+    os.replace(tmp, path)
 
 
 def load(target: Path, digest: str) -> dict:
