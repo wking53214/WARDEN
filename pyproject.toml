@@ -24,9 +24,9 @@ classifiers = [
     ]
 # The shared rows (seat contract, defects, run record) come from the hub.
 # Pinned by tag, spelled the same way in every repository of the circuit (CNS's seat_pins check compares the text, and
-# pip treats a tag URL and a commit URL as two sources). The tag peels to b13e5d2f9e0e4291725f82794b89117c3d840ac1.
+# pip treats a tag URL and a commit URL as two sources). The tag peels to fde931ffa89aebec95647742256ad53033bd3d02.
 # To bump it, change the tag here and the CNS row in STACK.md together and run the full suite.
-dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v2.0.0"]  # v2.0.0 = b13e5d2f9e0e4291725f82794b89117c3d840ac1
+dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v2.1.0"]  # v2.1.0 = fde931ffa89aebec95647742256ad53033bd3d02
 
 [project.urls]
 Homepage = "https://github.com/wking53214/Warden"
@@ -40,9 +40,9 @@ dev = ["pytest>=8", "ruff==0.17.1", "mypy==2.4.0"]
 # warden.ghost runs Ghost Tools when it is installed, and still reads Ghost
 # JSON produced elsewhere when it is not. Declared here so the dependency is
 # visible and pinned: `pip install -e '.[ghost]'` from a checkout (a bare `warden` on PyPI is another project). Pinned to a full commit SHA
-# (ghost_tools 1.10.9); to bump it, change the SHA and
+# (ghost_tools 1.10.10); to bump it, change the SHA and
 # note the version it corresponds to here, and the same SHA in .github/workflows/tests.yml and STACK.md.
-ghost = ["ghost-tools @ git+https://github.com/wking53214/ghost_tools@3df51b374ed016b3f42def17c080700cd770e85a"]
+ghost = ["ghost-tools @ git+https://github.com/wking53214/ghost_tools@99f3d5209bc98657db91eea1c25e833136ea61ab"]
 
 [tool.setuptools]
 packages = ["warden", "warden.horsemen"]

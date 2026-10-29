@@ -33,7 +33,7 @@ the owner's decision.
 
 ## HOW TO INSTALL AND RUN
 
-Python 3.11, 3.12 or 3.13. The only runtime dependency is `cns`, installed from GitHub at the tag `v2.0.0`. The first two blocks of commands below were run as written in a fresh virtual environment on Python 3.12 on 2026-10-22 (from a clone of this repository), and `pip check` reported no broken requirements.
+Python 3.11, 3.12 or 3.13. The only runtime dependency is `cns`, installed from GitHub at the tag `v2.1.0`. The first two blocks of commands below were run as written in a fresh virtual environment on Python 3.12 on 2026-10-22 (from a clone of this repository), and `pip check` reported no broken requirements.
 
 ```
 git clone https://github.com/wking53214/WARDEN.git
@@ -77,6 +77,8 @@ mypy
 Count the tests with `pytest --collect-only -q`; this README states no count, because a number written here goes stale. A test skips when something it exercises is absent: the live ASSAY registry (`ASSAY_ROOT`), the real Judge seat (`judge.seat`) and `cargo`. `WARDEN_FAIL_ON_SKIP=1` turns any skip into a failure, as CI does.
 
 **Moving from CNS `v1.9.0` to `v2.0.0`.** The pin is the tag `v2.0.0`, which peels to `b13e5d2f9e0e4291725f82794b89117c3d840ac1`. Warden imports `cns.attack`, `cns.defect`, `cns.epistemic`, `cns.finding`, `cns.seat` and `cns.suite`; of those only `cns.seat.Evidence` changed (it gained `finisher_ran`, which Warden now fills). Warden does not import `cns.stack`, the one item that broke. The suite was run against the installed `cns` 2.0.0 (`direct_url.json` names `requested_revision` `v2.0.0` and that commit).
+
+**Moving from CNS `v2.0.0` to `v2.1.0`.** The pin is now the tag `v2.1.0`, which peels to `fde931ffa89aebec95647742256ad53033bd3d02` (Warden 0.15.1). Warden's code did not change: it already checked that `Evidence` has a `ghost_severity` field before filling it, and it writes `claim` and `evidence` into the run record as extra keys, which 2.1.0 now types. The suite was run against the installed `cns` 2.1.0.
 
 ## WHAT WORKS
 
@@ -153,7 +155,7 @@ Each line names the test, the CI job or the recorded run that shows it. A test f
 - **Suite reuse trades one kind of information for time.** A pass that reuses an earlier result on an identical tree cannot notice a test that fails one time in thirty on an unchanged tree (the falsifier's run 07 was such a case). `--suite-always` buys that information back at the old cost. Reuse within one run only; a cross-run reuse keyed by the chronicle's tree digests is not built.
 - **The chronicle settles only trees with identical fingerprints, and only when a later run happens.** A kept result opens promises that stay OPEN until a run is made on that tree; a declined check is OPEN until it is measured or 90 days pass. Settlement needs this run's first suite pass and first Ghost scan: without Ghost the finding promises stay OPEN. Nothing is signed or anchored; a chronicle file is as trustworthy as the folder it sits in.
 - **The pinned Judge (0.4.8) still says REJECT on a protected edit.** Warden applies, measures and names it; the Judge decides, and the Judge that turns the sentence into INSUFFICIENT (so the run ends held) is a JUDGE change, not in the set this CI tests. Until that lands, a protected edit under the real Judge ends `JUDGE_REJECTED` with the whole tree put back; with no Judge or a stand-in it ends held, as `tests/test_protected_hold.py` shows.
-- **`claim`, `evidence`, `suite_passes` and `chronicle` are extra keys of the `cns.run/1` record at CNS 2.0.0.** The pin stays `v2.0.0`, which allows and ignores them; a reader may rely on `claim` and `evidence` only from CNS 2.1.0, which types them. `Evidence.ghost_severity` is filled only when that CNS is installed.
+- **`claim`, `evidence`, `suite_passes` and `chronicle` are written as keys of the `cns.run/1` record.** The pin is `v2.1.0`, which types `claim` and `evidence` (`RunRecord.claim`, `RunRecord.evidence`); `suite_passes` and `chronicle` stay extra keys, which every CNS version allows and ignores. `Evidence.ghost_severity` is filled only when the installed CNS has that field, which 2.1.0 does and 2.0.0 does not.
 - **The removal gate still refuses a claimed commit that deletes a file or shrinks code unless Ghost cites a finding.** Releasing seats from the circuit did not change `warden.deletion`: a claimed commit that deletes a file or shrinks a code file is refused as systemic without Ghost, and with Ghost it is declined because the claim cites no Ghost finding.
 - **ASSAY stays a required instrument.** `--stack` cannot release `assay` (nor `ghost_tools`, `swizzle` or `judge`): the Judge uses ASSAY's grade of Ghost, and what an ungraded Ghost should mean is a Judge ruling not made here.
 
@@ -240,7 +242,7 @@ What that record does not mean: an `ACCEPT` here carries seven gaps. It does not
 - **One human maintainer**, William King. A large share of the commits are authored by an AI assistant (`git shortlog -sn --all` shows the split). Nobody else is recorded as having reviewed the code.
 - **No outside users are known.** Nothing in this repository records anyone using it besides the owner.
 - **Releases are tagged by the owner**, not by CI and not by a change. Check the repository's tags and releases on GitHub for what exists.
-- **Every pin is a snapshot.** The sibling commits in [STACK.md](STACK.md) are the last set this repository's CI tested on its own, not the heads of anything, and CNS is pinned by the tag `v2.0.0`. Whether the landing set works together is checked by the `stack` job in the CNS repository.
+- **Every pin is a snapshot.** The sibling commits in [STACK.md](STACK.md) are the last set this repository's CI tested on its own, not the heads of anything, and CNS is pinned by the tag `v2.1.0`. Whether the landing set works together is checked by the `stack` job in the CNS repository.
 - **The registry rows are self-reported** by the people who ran them (see SELF-HOSTING).
 
 ## REFERENCE

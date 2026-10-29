@@ -7,7 +7,7 @@ Ghost itself used (critical, major, minor, informational), taken from the Ghost 
 checked here with a stand-in Evidence class, so the test does not depend on which CNS is installed.
 """
 
-from dataclasses import dataclass
+from dataclasses import MISSING, dataclass, field, fields, make_dataclass
 from pathlib import Path
 from typing import Mapping, Optional
 
@@ -25,12 +25,27 @@ from fakes import FakeDrafter, FakeJudge
 class EvidenceWithSeverity(PlainEvidence):
     """What cns.seat.Evidence looks like from CNS 2.1.0 on."""
 
-    ghost_severity: Optional[Mapping[str, str]] = None
+    ghost_severity: Optional[Mapping[str, str]] = field(default=None, kw_only=True)
 
 
-@dataclass(frozen=True)
-class EvidenceWithout(PlainEvidence):
-    """The 2.0.0 shape, by another name, so the test does not depend on the installed CNS either way."""
+def _evidence_without_ghost_severity():
+    """The 2.0.0 shape, by another name, so the test does not depend on the installed CNS either way: every field of
+    the installed `cns.seat.Evidence` except `ghost_severity` (a subclass cannot drop an inherited field)."""
+    specs = []
+    for f in fields(PlainEvidence):
+        if f.name == "ghost_severity":
+            continue
+        if f.default is not MISSING:
+            spec = field(default=f.default)
+        elif f.default_factory is not MISSING:
+            spec = field(default_factory=f.default_factory)
+        else:
+            spec = field()
+        specs.append((f.name, f.type, spec))
+    return make_dataclass("EvidenceWithout", specs, frozen=True)
+
+
+EvidenceWithout = _evidence_without_ghost_severity()
 
 
 def _finding(ident: str, severity: str) -> dict:
