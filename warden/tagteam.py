@@ -165,6 +165,9 @@ class TagTeamResult:
     #: Every suite pass of the run, in order: {"pass", "when", "tree_digest", "reused_from", "result"}. A pass on a
     #: tree whose digest this run already measured reuses that result and names the pass it came from.
     suite_passes: tuple[dict, ...] = ()
+    #: Ghost's own severity word (critical, major, minor, informational) per finding id, as Ghost said it. The claim
+    #: row carries it as `severity`, the same word the Judge gets in `evidence.ghost_severity` when that field exists.
+    ghost_words: Optional[dict] = None
 
     @property
     def suite_before(self) -> Optional[SuiteRun]:
@@ -373,7 +376,8 @@ class TagTeam:
             notes=tuple(self._notes + [said]), unmeasured=self._unmeasured(self._sound, never_ran=True),
             reason=said, ghost_scan=self._ghost_info, drafter_skipped=self._skipped_lines(),
             ghost_baseline=self._baseline_report(), swizzle_sound=self._sound,
-            informational=tuple(self._info), suite_passes=tuple(self._suite_passes))
+            informational=tuple(self._info), suite_passes=tuple(self._suite_passes),
+            ghost_words=dict(self._ghost_words))
 
     def _settle(self, target: Path, result: TagTeamResult) -> TagTeamResult:
         """A run that does not end accepted leaves the tree as it was found. An ACCEPT_UNVERIFIED run
@@ -673,7 +677,7 @@ class TagTeam:
                 ghost_baseline=self._baseline_report(),
                 drafter_skipped=self._skipped_lines(), informational=tuple(self._info),
                 attacks=self._attacks, evidence=self._evidence, finish_cycle=finish_cycle,
-                suite_passes=tuple(self._suite_passes))
+                suite_passes=tuple(self._suite_passes), ghost_words=dict(self._ghost_words))
 
         if self._stale_baseline:
             return stop("REJECT", f"Ghost's baseline has {self._stale_baseline} entr"

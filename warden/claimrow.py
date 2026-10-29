@@ -125,10 +125,12 @@ def _finisher_edits(result: Any) -> list[dict]:
     return out
 
 
-def _finding(defect: Any) -> dict:
-    severity = getattr(defect.severity, "value", defect.severity)
-    return {"id": defect.identity, "detector": defect.detector, "severity": severity, "file": defect.file,
-            "line": defect.line, "summary": defect.summary}
+def _finding(defect: Any, words: Mapping[str, str]) -> dict:
+    """`severity` is Ghost's own word for the finding (null when Ghost gave none), the word the Judge receives in
+    `evidence.ghost_severity`; Warden's remapped word is `warden_severity`."""
+    warden_severity = getattr(defect.severity, "value", defect.severity)
+    return {"id": defect.identity, "detector": defect.detector, "severity": words.get(defect.identity),
+            "file": defect.file, "line": defect.line, "summary": defect.summary, "warden_severity": warden_severity}
 
 
 def _findings(result: Any) -> tuple[list[dict], list[str]]:
@@ -136,7 +138,8 @@ def _findings(result: Any) -> tuple[list[dict], list[str]]:
     after = Counter(d.identity for d in result.reobserved)
     new_ids = sorted((after - before).elements())
     by_id = {d.identity: d for d in reversed(result.reobserved)}
-    new = [_finding(by_id[i]) for i in new_ids if i in by_id]
+    words = getattr(result, "ghost_words", None) or {}
+    new = [_finding(by_id[i], words) for i in new_ids if i in by_id]
     return new, sorted((before - after).elements())
 
 

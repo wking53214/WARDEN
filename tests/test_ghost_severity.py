@@ -100,3 +100,26 @@ def test_without_ghost_the_field_is_left_as_the_shape_defaults_it(tmp_path, monk
     auth = grant("william", "transform", str(tmp_path.resolve()), "documentation", "severity test")
     TagTeam(drafter=FakeDrafter(steps=("new\n",)), judge=judge).run(tmp_path, findings=[], authorization=auth)
     assert judge.evidence.ghost_before is None and judge.evidence.ghost_severity is None
+
+
+@pytest.mark.parametrize("shape", [EvidenceWithSeverity, EvidenceWithout])
+@pytest.mark.parametrize("word, remapped", [("critical", "critical"), ("major", "high"), ("minor", "medium"),
+                                            ("informational", "low")])
+def test_the_claim_rows_new_finding_carries_ghosts_word_and_the_judge_sees_the_same_word(
+        tmp_path, monkeypatch, measured, shape, word, remapped):
+    """The proof run found the row saying "medium" where the Judge saw "minor". `severity` is now Ghost's own word,
+    the word `evidence.ghost_severity` holds; Warden's remapped word moves to `warden_severity`."""
+    from warden.claimrow import claim_row
+    new = _finding("ghost-new", word)
+    monkeypatch.setattr(tagteam, "ghost_scan", lambda target, **kw: (new,))
+    monkeypatch.setattr(tagteam, "Evidence", shape)
+    judge = FakeJudge("INSUFFICIENT", ("held",))
+    _repo(tmp_path)
+    auth = grant("william", "transform", str(tmp_path.resolve()), "documentation", "severity test")
+    team = TagTeam(drafter=FakeDrafter(steps=("new\n",)), judge=judge, ghost_tools_root=Path("."),
+                   swizzle_root=Path("."), assay_root=Path("."))
+    result = team.run(tmp_path, findings=[], authorization=auth)
+    entry, = claim_row(result, auth)["new_findings"]
+    assert entry["id"] == "ghost-new" and entry["severity"] == word and entry["warden_severity"] == remapped
+    if shape is EvidenceWithSeverity:
+        assert judge.evidence.ghost_severity["ghost-new"] == entry["severity"]
