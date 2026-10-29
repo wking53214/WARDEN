@@ -5,9 +5,40 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor is `0.15.0`. The
+`0.14.0` is not tagged either, nor are `0.15.0` and `0.15.1`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
+
+## [0.15.1] - 2026-10-29
+
+`CONTRACT` is still `"1"`. Not tagged. This release sits on the 0.15.0 head `a959724`. No code changed; the pins moved.
+Patch version.
+
+### Changed
+
+- **CNS is pinned to the tag `v2.1.0`**: `cns @ git+https://github.com/wking53214/CNS.git@v2.1.0` with the comment
+  `v2.1.0 = fde931ffa89aebec95647742256ad53033bd3d02` (the tag object is `0cc90472f7edc46c3bf40079e69fb03a06718e29`),
+  from `v2.0.0`. 2.1.0 types `RunRecord.claim`, `RunRecord.evidence` and `Evidence.ghost_severity`; Warden already
+  wrote the first two as record keys and filled the third only when the field exists, so no code changed. (Pin21
+  step 1.)
+- **The tested set moves to the 2026-10-29 heads of three siblings**: ghost_tools 1.10.10
+  `99f3d5209bc98657db91eea1c25e833136ea61ab` (the `ghost` extra too), SWIZZLE 0.8.10
+  `b7451ad417cd166d10d4897a6b7dbe076ec02029` and ASSAY 0.11.7 `8f6ef8599d9acb2a2672a5a78c36ec0e276fa78c`, in
+  `pyproject.toml`, `.github/workflows/tests.yml` (checkouts and the `circuit` job's `--expect` lines) and `STACK.md`.
+  The JUDGE pin (0.4.8, `e5c3f98`) is a tested-set line and is not moved, so the `circuit` job here still runs the older
+  Judge. The header sentence about the siblings' cns extras now says what is true: v2.1.0 for the three moved commits,
+  v1.9.0 for the JUDGE commit, which is installed with `--no-deps`. (Pin21 step 1.)
+- Version 0.15.1, README version line and tag sentence, and this entry. (Pin21 step 2.)
+
+### Tests
+
+- Edited under rule 5, Pin21 step 1: `tests/test_docs.py` (the CNS tag and commit assertions, the three sibling
+  versions, and the guard test renamed `..._v2_1_0_...`); `tests/test_ghost_severity.py` (under CNS 2.1.0 the installed
+  `Evidence` already has `ghost_severity`, so the module did not collect and `EvidenceWithout`, meant as the 2.0.0 shape,
+  inherited the field: the stand-in now declares the field keyword-only as CNS does, and `EvidenceWithout` is built from
+  the installed `Evidence` fields without `ghost_severity`; no assertion changed).
+- Edited under rule 5, Pin21 step 2: `tests/test_docs.py::test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged`
+  accepts the version `0.15.1`. Nothing else changed in any pre-existing test.
 
 ## [0.15.0] - 2026-10-29
 

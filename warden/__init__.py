@@ -33,7 +33,7 @@ from .roles import Facts, Finisher, Drafter
 from .tagteam import TagTeam, TagTeamResult
 from .horsemen import HorsemenWorkflow, ChangeClass, ScopedGrant
 
-__version__ = "0.15.0"
+__version__ = "0.15.1"
 
 #: The version of the shapes other repositories build against: Evidence, Verdict, Facts and
 #: Transformation. Bumped only when one of them changes in a way that breaks a seat written for
