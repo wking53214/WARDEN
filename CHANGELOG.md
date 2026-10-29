@@ -5,9 +5,39 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either. The
+`0.14.0` is not tagged either, nor is `0.15.0`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
+
+## [0.15.0] - 2026-10-29
+
+`CONTRACT` is still `"1"`. Not tagged. This release sits on the 0.14.0 head `68f2a95`. CNS stays at the tag `v2.0.0`; no
+cross-repository pin moved. Minor version: a new rule for `--stack`, a new record key and a renamed row field. No exit
+code changed.
+
+### Changed
+
+- **`--stack` with a pinned manifest may leave out `drafter` and `burnish`** (the owner released both, and WATCHER_MCU,
+  from the circuit on 2026-10-29; nothing is deleted). `--stack DIR` alone is unchanged: all six checkouts are required.
+  With `--stack-manifest FILE` (or `--cns DIR`) `ghost_tools`, `swizzle`, `assay` and `judge` must be named by the
+  manifest and present; `drafter` and `burnish` are absent only when the manifest does not name them and the folder does
+  not hold them. A folder that holds one the manifest does not name is still refused as an unnamed seat, and a manifest
+  that names one the folder lacks is still refused. A stack without `drafter` needs `--claim-commit`, `--claim-diff` or
+  `--drafter` (usage error 2 otherwise); a stack without `burnish` runs with no finisher (`Evidence.finisher_ran` is
+  false); an explicit `--finisher` or `--drafter` still wins. The run record gains `released_seats` and a note
+  `released seats not seated: ...`; the claim row and `participants` list only seated seats. (Step W1.)
+- **The claim row's `new_findings[].severity` is Ghost's own word** (critical, major, minor, informational), the word the
+  Judge receives in `evidence.ghost_severity`; Warden's remapped word moves to `warden_severity` in the same entry. The
+  proof run of 2026-10-28 found the row saying "medium" where the Judge saw "minor". `TagTeamResult.ghost_words` keeps the
+  words, so this also holds under CNS 2.0.0. (Step W2.)
+- Version 0.15.0; README entries under WHAT WORKS, WHAT DOES NOT WORK and the ledger. (Step W3.)
+
+### Tests
+
+- New: `tests/test_stack_released.py` (Step W1) and one test in `tests/test_ghost_severity.py` (Step W2).
+- Edited under rule 5: Step W3, `tests/test_docs.py::test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged`
+  accepts the version `0.15.0` (the assertion about which versions the tag sentence covers). Nothing else changed in
+  any pre-existing test.
 
 ## [0.14.0] - 2026-10-28
 
