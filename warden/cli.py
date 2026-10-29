@@ -84,6 +84,30 @@ STACK_ROOTS = {"ghost_tools": "ghost_root", "swizzle": "swizzle_root", "assay": 
 STACK_SEATS = {"drafter": ("drafter", "drafter.seat:Drafter"),
                "judge": ("judge", "judge.seat:Judge"),
                "burnish": ("finisher", "burnish.finisher:Burnish")}
+#: The two stack folders a pinned manifest may leave out. The other four (the three instruments and the Judge)
+#: can never be released: they must be named by the manifest and present.
+RELEASABLE = ("drafter", "burnish")
+
+
+def _manifest_names(args) -> Optional[set[str]]:
+    """The lower-cased checkout names the pinned manifest given with `--stack` names, or None when there is no
+    usable manifest. A manifest that cannot be read gets no say here: the strict rule applies (all six required) and
+    `_joins_from_manifest` reports the manifest's own problem."""
+    manifest = args.stack_manifest
+    if manifest is None and args.cns is not None:
+        manifest = Path(args.cns).expanduser() / CNS_MANIFEST
+    elif args.cns is not None:
+        return None  # --cns and --stack-manifest together is reported later; nothing is released on the strength of it
+    if manifest is None:
+        return None
+    try:
+        data = json.loads(Path(manifest).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    repos = data.get("repos") if isinstance(data, dict) else None
+    if not isinstance(repos, dict) or not all(isinstance(k, str) for k in repos):
+        return None
+    return {k.lower() for k in repos}
 
 
 def _resolve_stack(args) -> tuple[list[Path], str]:
@@ -97,6 +121,12 @@ def _resolve_stack(args) -> tuple[list[Path], str]:
     only by case are refused rather than guessed between. The folders actually filled in (not
     overridden by an explicit option) are left in `args.stack_used`, name to path: those are the
     checkouts the run executes or reads as instruments, and `_stack_use_problem` vets them.
+
+    With a pinned manifest (`--stack-manifest`, or `--cns`) the manifest says which checkouts the circuit
+    consists of, and `drafter` and `burnish` may be left out: a seat is absent only when the manifest does not
+    name it and the folder does not hold it. The run then proceeds without it and says so (`args.released_seats`).
+    A folder holding one the manifest does not name, or a manifest naming one the folder lacks, is refused as
+    before. A stack without a `drafter` needs a proposer (the claim seat or an explicit `--drafter`).
     """
     stack = Path(args.stack)
     if not stack.is_dir():
@@ -115,9 +145,13 @@ def _resolve_stack(args) -> tuple[list[Path], str]:
     if doubled:
         return [], (f"the --stack folder {str(stack)!r} holds more than one folder named "
                     f"{', '.join(doubled)} (differing only by case), so it cannot be used")
-    missing = [name for name in wanted if name not in found]
+    named = _manifest_names(args)
+    released = [name for name in RELEASABLE if named is not None and name not in named and name not in found]
+    missing = [name for name in wanted if name not in found and name not in released]
     if missing:
         return [], f"the --stack folder {str(stack)!r} has no {', '.join(missing)} checkout"
+    if "drafter" in released and not args.drafter:
+        return [], "this stack has no drafter and nothing to propose; give --claim-commit, --claim-diff or --drafter"
     used: dict[str, Path] = {}
     for name, option in STACK_ROOTS.items():
         if getattr(args, option) is None:
@@ -125,11 +159,14 @@ def _resolve_stack(args) -> tuple[list[Path], str]:
             used[name] = found[name].resolve()
     paths: list[Path] = []
     for name, (option, spec) in STACK_SEATS.items():
+        if name in released:
+            continue
         if getattr(args, option) is None:
             setattr(args, option, spec)
             paths.append(found[name].resolve())
             used[name] = found[name].resolve()
     args.stack_used = used
+    args.released_seats = sorted(released)
     return paths, ""
 
 
@@ -514,8 +551,10 @@ def _main(argv: list[str] | None) -> int:
                      help="a folder holding checkouts of the whole circuit: ghost_tools, swizzle, assay, "
                           "drafter, judge and burnish (names matched without regard to case). Fills "
                           "--ghost-root, --swizzle-root, --assay-root, --drafter, --judge and --finisher "
-                          "with them; an option you give explicitly wins. Every one of the six must be "
-                          "there, or the command is a usage error and nothing is run")
+                          "with them; an option you give explicitly wins. Without --stack-manifest every one "
+                          "of the six must be there, or the command is a usage error and nothing is run. With "
+                          "it (or --cns), drafter and burnish may be left out when the manifest does not name "
+                          "them and the folder does not hold them; the run says so and records released_seats")
     p_t.add_argument("--join", type=Path, action="append", default=[], metavar="PATH",
                      help="a sibling checkout Ghost may read beside the target (repeatable). A boundary the "
                           "target reaches across is then measured instead of reported as a gap that holds the "
@@ -880,6 +919,8 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
     evidence = None if result.evidence is None else dataclasses.asdict(result.evidence)
     chronicle_notes: list[str] = []
     chronicled: Optional[dict] = None
+    released = list(getattr(args, "released_seats", ()) or ())
+    released_notes = [_released_note(args, released)] if released else []
     if chronicle_dir is not None:
         chronicle_notes, chronicled = _chronicle_run(chronicle_dir, origin, earlier, row, result)
     payload = {
@@ -893,10 +934,11 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "held_digest": result.held_digest,
         "reason": _accept_reason(result) if result.decision == "ACCEPT"
         else (result.reason or (result.notes[-1] if result.notes else "")),
-        "notes": list(result.notes) + list(warnings) + chronicle_notes,
+        "notes": list(result.notes) + list(warnings) + released_notes + chronicle_notes,
         "observed": [d.identity for d in result.observed],
         "reobserved": [d.identity for d in result.reobserved],
         "contract": CONTRACT,
+        "released_seats": released,
         "versions": report,
         "swizzle_sound": result.swizzle_sound,
         "allow_uncommitted_instruments": bool(getattr(args, "allow_uncommitted_instruments", False)),
@@ -928,6 +970,19 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
     if result.swizzle_sound is False:
         print("warden: SWIZZLE's own proofs do not hold; nothing was written.", file=sys.stderr)
     return code
+
+
+def _released_note(args, released: list[str]) -> str:
+    """The note that says which seats the pinned manifest and the --stack folder agreed were absent, and what, if
+    anything, filled the role instead."""
+    filled = []
+    if "drafter" in released:
+        filled.append("the Drafter role is filled by the claim seat" if args.claim_commit is not None
+                      or args.claim_diff is not None else "the Drafter role is filled by the explicit --drafter")
+    if "burnish" in released:
+        filled.append("the explicit --finisher fills the Finisher role" if args.finisher
+                      else "the run has no finisher")
+    return f"released seats not seated: {', '.join(released)} ({'; '.join(filled)})."
 
 
 def _chronicle_run(directory: Path, origin: Optional[str], earlier: list, row: dict, result) -> tuple[list[str], dict]:

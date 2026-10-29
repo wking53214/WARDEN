@@ -355,8 +355,21 @@ the other six repositories, `ghost_tools`, `swizzle`, `assay`, `drafter`, `judge
 same), and fills `--ghost-root`, `--swizzle-root`, `--assay-root`, `--drafter`
 (`drafter.seat:Drafter`), `--judge` (`judge.seat:Judge`) and `--finisher`
 (`burnish.finisher:Burnish`) from them. An option you give explicitly wins over the folder's
-copy. All six must be there: a missing one is a usage error (exit 2) that names it, because a
-circuit quietly run without a seat would read as the circuit. Two folders that differ only by
+copy. There are two modes. **`--stack DIR` alone:** all six must be there; a missing one is a
+usage error (exit 2) that names it. **`--stack DIR --stack-manifest FILE` (or `--cns DIR`):** the
+pinned manifest says which checkouts the circuit consists of. `ghost_tools`, `swizzle`, `assay`
+and `judge` must be named by the manifest and present (a manifest that omits one, or a folder that
+lacks one the manifest names, is a usage error naming it). `drafter` and `burnish` are
+releasable: if the manifest does not name them and the folder does not hold them, the run
+proceeds without them and says so. A folder that holds one the manifest does not name is still
+refused as an unnamed seat, and a manifest that names one the folder lacks is still refused. A
+circuit quietly run without a seat would read as the circuit, so a seat is absent only when the
+pinned manifest and the folder agree it is absent, and the record says so. A stack without a
+`drafter` needs a proposer: `--claim-commit`, `--claim-diff` or an explicit `--drafter`;
+otherwise it is a usage error. A stack without `burnish` runs with no finisher
+(`evidence.finisher_ran` is false); an explicit `--finisher` still wins. The record carries
+`released_seats` (for example `["burnish", "drafter"]`) and a note `released seats not seated: ...`;
+the claim row and its `participants` list only seats that were seated. Two folders that differ only by
 case are refused rather than guessed between. The seats are imported from the folder's
 checkouts ahead of any other copy, and a seat that turns out to live inside the target is
 still refused. With a clone of each repository beside the others:
