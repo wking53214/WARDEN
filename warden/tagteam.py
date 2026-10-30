@@ -27,6 +27,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import logging
+import stat
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -1269,13 +1270,25 @@ def _judging(target: Path, rel: str) -> bool:
 
 
 def _fingerprint(target: Path) -> str:
-    """A short hash of the tree, so a proposal can say which state it was written against."""
+    """A short hash of the tree, so a proposal can say which state it was written against.
+
+    The hash covers the number of files, and for each file its length-prefixed path, the file's executable bit and its
+    length-prefixed bytes, so no shift of a boundary between a path and its content, or between two files, can give
+    two different trees the same hash. Warden 0.16.2 and earlier hashed the path and then the bytes with no delimiter;
+    a hash they wrote does not equal the one written now."""
     digest = hashlib.sha256()
     skip = {".git", "__pycache__", ".pytest_cache", ".venv", "node_modules"}
-    for path in iter_tree(target):
-        if path.is_file() and not skip.intersection(path.relative_to(target).parts):
-            digest.update(str(path.relative_to(target)).encode())
-            digest.update(path.read_bytes())
+    entries = [path for path in iter_tree(target)
+               if path.is_file() and not skip.intersection(path.relative_to(target).parts)]
+    digest.update(len(entries).to_bytes(8, "big"))
+    for path in entries:
+        name = str(path.relative_to(target)).encode()
+        data = path.read_bytes()
+        digest.update(len(name).to_bytes(8, "big"))
+        digest.update(name)
+        digest.update(b"\x01" if path.stat().st_mode & stat.S_IXUSR else b"\x00")
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
     return digest.hexdigest()[:16]
 
 
