@@ -64,7 +64,8 @@ def read(directory: Path, origin: Optional[str]) -> list[dict]:
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
-        raise ChronicleError(f"the chronicle file {str(path)!r} is not valid UTF-8 text (at byte {exc.start}).") from exc
+        raise ChronicleError(f"the chronicle file {str(path)!r} is not valid UTF-8 text "
+                             f"(at byte {exc.start}).") from exc
     out = []
     for number, line in enumerate(text.splitlines(), 1):
         if not line.strip():
