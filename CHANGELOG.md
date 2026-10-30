@@ -5,9 +5,54 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0` and `0.15.1`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1` and `0.16.0`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
+
+## [0.16.0] - 2026-10-30
+
+`CONTRACT` is still `"1"`. Not tagged. Three steps (Stage 1, section W), one commit each; no pin on ghost_tools, SWIZZLE, ASSAY
+or CNS moved, and only the tested-set line for the Judge did.
+
+### Changed
+
+- **Step W1 (borderline; the owner ruled "fix the gate" on 2026-10-30): a claimed commit's removals are applied, measured and
+  held.** A commit named through the claim seat (`--claim-commit`, `--claim-diff`) that deletes a file or shrinks a code file
+  used to meet the removal gate in `warden.deletion`: refused without Ghost, declined without a cited finding, so such real
+  commits were not governed. Now, for the claim seat only (the seat object, not a field a Drafter could set), the removal is
+  applied and measured like any claimed change (suite before and after, Ghost before and after, Rule 7 unchanged), named in a
+  new claim-row key `removals` (`path`, `kind` `deleted` or `shrunk`, `lines_before`, `lines_after`, `protected`), and the run
+  ends `ACCEPT_UNVERIFIED` with the result held for a named person even when the Judge says `ACCEPT`. A removal proposed by a
+  Drafter or a Finisher, test material, Ghost's `.ghost_*` files and paths outside the project keep the gate exactly as before.
+  Before any edit the real Judge (JUDGE `ad3d66f`, 0.5.1) was run with the real Ghost, SWIZZLE and ASSAY on a claimed commit
+  that deletes a non-test file and one that shrinks a code file, in a throwaway repository, Warden's gate stepped over for the
+  probe only: it said `ACCEPT` on both (exit 0), so no JUDGE change is needed and the hold, which is Warden's, is reachable end
+  to end; the same two commits through the final code ended `ACCEPT_UNVERIFIED`, exit 3, nothing unmeasured. `removals` is
+  the last key of the claim row (`claimrow.KEYS`).
+- **Step W2: the tested set moves the Judge from 0.4.8 (`e5c3f98`) to 0.5.1 (`ad3d66f84a15ad7c320285e4d9ab006de90bdfdd`)**,
+  the head of its branch by `git ls-remote` on 2026-10-30, in the workflow header, both installs of the Judge (the `pytest` and
+  `circuit` jobs), `STACK.md` and the README. The `circuit` job now exercises the Judge's rulings: `tools/circuit_smoke.py
+  --real-judge` adds a run in which a code-scope Drafter edits a test file, and the real Judge's `INSUFFICIENT` must hold it
+  (`ACCEPT_UNVERIFIED`, exit 3, nothing unmeasured, the tree put back, the result held by digest, the row's `protected` flag).
+  The README limit "the pinned Judge still says REJECT on a protected edit" is removed.
+- **Step W3: opt-in suite reuse across runs, keyed by the chronicle** (`--reuse-chronicle-suite`, default off, needs
+  `--chronicle`). The first suite pass takes a green result an earlier chronicle line recorded for this run's base tree when
+  the environment key (Python, pytest and Warden versions, platform, suite runner, suite command) is equal; otherwise the
+  suite runs. The record, the row and a note say `chronicle:<run id>`. Chronicle lines now store `run_id` and `suite_trees` (per
+  tree the suite result, its green flag and the environment key); a line without them never matches. The chronicle is an
+  unsigned file, so whoever can edit it can make this flag skip a suite run: use it only where that person is trusted. No
+  signing or tamper detection was added.
+- Version 0.16.0, README version line and tag sentence, and this entry.
+
+### Tests
+
+- New: `tests/test_claimed_removal.py` (W1) and `tests/test_chronicle_suite_reuse.py` (W3). The circuit smoke test (W2) is
+  exercised by the `circuit` job.
+- Edited under rule 5, step W2: `tests/test_docs.py::test_the_tested_set_is_the_same_everywhere_it_is_stated`, the JUDGE
+  version `0.4.8` becomes `0.5.1` (the pinned version it asserts, nothing else).
+- Edited under rule 5, step W4: `tests/test_docs.py::test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged`
+  accepts the version `0.16.0` (the assertion about which versions the tag sentence covers, nothing else). No other
+  pre-existing test was edited.
 
 ## [0.15.1] - 2026-10-29
 
