@@ -5,9 +5,33 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2` and `0.16.3`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3` and `0.16.4`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by tag.
+
+## [0.16.4] - 2026-10-30
+
+`CONTRACT` is still `"1"`. Not tagged. One step, one commit.
+
+### Changed
+
+- **Pins.** The pins on ghost_tools, SWIZZLE and ASSAY move to the Stage 5 Wave 1 heads (ghost_tools 1.10.14 `a9115b5`, SWIZZLE 0.8.13 `87cddb4`, ASSAY 0.11.10 `f7ea4a4`). The Judge in the tested set stays at 0.5.3 (`62843b8`). Pre-existing test edited under the exact-behaviour rule: `tests/test_docs.py` (the versions written next to the pins and the tag sentence, which now lists 0.16.4). Nothing else about it changed.
+- **Claim row.** `claimrow.KEYS` gains, after `removals`, `target_tree_digest` and `base_matches_parent`. Record only: no new refusal. `--claim-commit` help says the touched files must match the parent and the row says whether the whole tree did.
+- README: quickstart date labelled, "all seven live" lists seven, the claim seat bullet and the known-gaps bullet say per path what is refused (a `--claim-commit` rename is a delete plus an add and ends held; a `--claim-diff` rename header is refused; quoted paths are refused by `--claim-diff` only), suite reuse across runs is reconciled with the opt-in flag, and WHAT DOES NOT WORK now says plainly that `--authorize` is an unauthenticated string, that `--cns` and the manifest are the trust root, that a manifest omitting WARDEN is not refused (owner decision pending), that the suite runs unsandboxed, that a change passing every test can be wrong, that `drafter-main` and `drafter.git` are not matched, and that the held file keeps `.git/config` base64 encoded.
+
+### Fixed
+
+- **The claim row named bytes that did not land.** The claim seat wrote through `textio.encode_like`, which keeps a pure-CRLF file CRLF, so a claimed commit turning CRLF into LF left CRLF on disk while `after_sha256` was the commit's blob. The claim seat now writes the claimed bytes exactly, `after_sha256` is the digest of the landed bytes, and a landed digest that differs from the claimed blob refuses the run before the after-suite (`USAGE_ERROR`, exit 2, the file and both digests named, everything put back). A claimed commit that changes only line endings was skipped as "nothing to propose"; it is applied. Drafter and Finisher edits keep `encode_like`.
+- **A held deletion of an executable left the tree dirty.** The snapshot restores (`guard.Snapshot` and the proposal snapshot) now record and restore permission bits.
+- **Credentials leaked into the record.** `claimrow.strip_credentials` removes URL and scp-style userinfo and token-like query or fragment parameters from the origin before it is recorded or slugged.
+- **`warden chronicle DIR`** exits 2 naming the file and line for a non-UTF-8 file, a bad JSON line or a non-object line.
+- **A claimed path through a symbolic link** is refused (lstat per component), and a `--claim-diff` that is not a regular file is refused before it is opened.
+- **`_fingerprint`** encodes names with `os.fsencode`, so a tree with a non-UTF-8 file name fingerprints. Hashes of ordinary names are unchanged.
+
+### Correction
+
+- The 0.16.3 entry "A damaged chronicle gave a traceback or was silently skipped" says `chronicle.read` now refuses a damaged file and exits 2. That was true of the run path (`warden tagteam --chronicle`) only. The reader command `warden chronicle DIR` still gave a traceback (exit 1) for a non-UTF-8 file and skipped bad lines until 0.16.4. The 0.16.3 text is left as it was.
+- README before 0.16.4 said the target "must stand at the parent". Only the touched files were compared.
 
 ## [0.16.3] - 2026-10-30
 
