@@ -23,7 +23,9 @@ claimed change.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import stat
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -101,6 +103,23 @@ def _git(repo: Path, *args: str) -> bytes:
         said = done.stderr.decode("utf-8", "replace").strip().splitlines()
         raise ClaimError(f"git {args[0]} failed in {repo}: {said[-1] if said else 'exit ' + str(done.returncode)}.")
     return done.stdout
+
+
+def _refuse_links(target: Path, rel: str) -> None:
+    """A claimed path whose own entry, or any folder above it inside the target, is a symbolic link is refused: writing
+    through it would change something other than the file the change names. Each component is looked at with lstat."""
+    here = Path(target)
+    for part in Path(rel).parts:
+        here = here / part
+        try:
+            mode = os.lstat(here).st_mode
+        except FileNotFoundError:
+            return  # nothing below a missing component exists yet, so nothing below it can be a link
+        except OSError as exc:
+            raise ClaimError(f"{rel}: {part} could not be examined ({exc.strerror or type(exc).__name__}).") from exc
+        if stat.S_ISLNK(mode):
+            raise ClaimError(f"{rel}: {part} is a symbolic link, so the claimed change would reach through it to "
+                             "something else; a claimed path may not be, or lie below, a link.")
 
 
 def _text(data: bytes, what: str) -> str:
@@ -237,6 +256,8 @@ def _apply_hunks(path: str, old_text: str, hunks: Sequence[tuple[int, list[str]]
 def from_diff(target: Path, diff_path: Path, subject: str, author: str) -> Claim:
     """A unified diff (git style or plain), applied to the target's files to learn each file's text after."""
     target = Path(target).resolve()
+    if not stat.S_ISREG(os.stat(diff_path).st_mode):
+        raise ClaimError(f"{diff_path} is not a regular file (a pipe, a device or a folder), so it is not read.")
     diff = Path(diff_path).read_bytes()
     lines = _text(diff, "the diff file").split("\n")
     sections: list[dict] = []
@@ -289,6 +310,7 @@ def from_diff(target: Path, diff_path: Path, subject: str, author: str) -> Claim
         if old_name.endswith("/dev/null") or old_name == "/dev/null":
             before = None
         else:
+            _refuse_links(target, old_name)
             path = target / old_name
             if not path.is_file():
                 raise ClaimError(f"{old_name} is not a file in the target, so the diff cannot be applied to it.")
@@ -322,6 +344,7 @@ def check_base(target: Path, claim: Claim) -> None:
     """The target must hold every touched file exactly as the change's base has it, or nothing is claimed."""
     target = Path(target).resolve()
     for file in claim.files:
+        _refuse_links(target, file.path)
         path = target / file.path
         if file.before is None:
             if path.exists():
