@@ -180,6 +180,65 @@ def test_a_folder_holding_a_seat_the_manifest_omits_is_refused_as_unnamed(tmp_pa
     _untouched(target)
 
 
+def _commit_claim(tmp_path):
+    """--claim-commit with a name that need not exist: the folder is checked against the manifest before the claim is
+    read, so a refusal there must not depend on the commit."""
+    return ["--claim-commit", "HEAD"]
+
+
+# 0.16.2: the folder is checked against the manifest before any option is substituted, so the option that a seat's
+# checkout would have filled (set by --claim-*, --drafter or --finisher) cannot let a checkout the manifest omits in.
+@pytest.mark.parametrize("how", ["claim-commit", "claim-diff", "drafter"])
+def test_a_drafter_checkout_the_manifest_omits_is_refused_whatever_option_supplies_the_seat(
+        tmp_path, capsys, measured, how):  # noqa: F811
+    stack, manifest = _released_stack(tmp_path, manifest_omit=("drafter",))
+    extra = {"claim-commit": _commit_claim(tmp_path), "claim-diff": _claim_args(tmp_path),
+             "drafter": ["--drafter", "explicit_drafter:Drafter"]}[how]
+    code, payload, err, target = _go(tmp_path, capsys, stack, manifest, *extra)
+    assert code == 2 and payload["decision"] == "USAGE_ERROR", (payload["reason"], err)
+    assert "does not name 'drafter' (the checkout at" in payload["reason"]
+    assert payload["reason"].endswith("Nothing was run.")
+    _untouched(target)
+
+
+def test_a_burnish_checkout_the_manifest_omits_is_refused_with_an_explicit_finisher(tmp_path, capsys, measured):  # noqa: F811
+    stack, manifest = _released_stack(tmp_path, manifest_omit=("burnish",))
+    code, payload, err, target = _go(tmp_path, capsys, stack, manifest, "--finisher", "explicit_finisher:Finisher")
+    assert code == 2 and payload["decision"] == "USAGE_ERROR", (payload["reason"], err)
+    assert "does not name 'burnish' (the checkout at" in payload["reason"]
+    assert payload["reason"].endswith("Nothing was run.")
+    _untouched(target)
+
+
+@pytest.mark.parametrize("how", ["claim-commit", "claim-diff"])
+def test_both_checkouts_the_manifest_omits_are_named_together_whatever_supplies_them(tmp_path, capsys, measured, how):  # noqa: F811
+    stack, manifest = _released_stack(tmp_path, manifest_omit=("drafter", "burnish"))
+    extra = _commit_claim(tmp_path) if how == "claim-commit" else _claim_args(tmp_path)
+    code, payload, err, target = _go(tmp_path, capsys, stack, manifest, *extra, "--finisher", "explicit_finisher:F")
+    assert code == 2 and payload["decision"] == "USAGE_ERROR", (payload["reason"], err)
+    assert "'drafter'" in payload["reason"] and "'burnish'" in payload["reason"]
+    _untouched(target)
+
+
+def test_a_drafter_checkout_the_manifest_names_runs_with_a_claim(tmp_path, capsys, measured):  # noqa: F811
+    stack, manifest = _released_stack(tmp_path)
+    code, payload, err, target = _go(tmp_path, capsys, stack, manifest, *_claim_args(tmp_path))
+    assert code in (0, 3), (payload["reason"], err)
+    assert payload["released_seats"] == []
+    assert payload["versions"]["seats"]["drafter"]["spec"] == "warden.claim:ClaimDrafter"
+
+
+@pytest.mark.parametrize("seat", ["burnish", "drafter"])
+def test_a_manifest_naming_a_seat_the_folder_lacks_is_refused_even_with_an_explicit_option(
+        tmp_path, capsys, measured, seat):  # noqa: F811
+    stack, manifest = _released_stack(tmp_path, absent=(seat,), manifest_extra={seat: "1" * 40})
+    option = ["--drafter", "explicit_drafter:Drafter"] if seat == "drafter" else ["--finisher", "explicit_finisher:F"]
+    code, payload, err, target = _go(tmp_path, capsys, stack, manifest, *option)
+    assert code == 2 and payload["decision"] == "USAGE_ERROR", err
+    assert f"has no {seat} checkout" in payload["reason"] and payload["reason"].endswith("Nothing was run.")
+    _untouched(target)
+
+
 @pytest.mark.parametrize("seat", ["burnish", "drafter"])
 def test_a_manifest_naming_a_seat_the_folder_lacks_is_refused(tmp_path, capsys, measured, seat):  # noqa: F811
     stack, manifest = _released_stack(tmp_path, absent=(seat,), manifest_extra={seat: "1" * 40})

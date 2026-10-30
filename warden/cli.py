@@ -91,8 +91,8 @@ RELEASABLE = ("drafter", "burnish")
 
 def _manifest_names(args) -> Optional[set[str]]:
     """The lower-cased checkout names the pinned manifest given with `--stack` names, or None when there is no
-    usable manifest. A manifest that cannot be read gets no say here: the strict rule applies (all six required) and
-    `_joins_from_manifest` reports the manifest's own problem."""
+    usable manifest. A manifest that cannot be read, or is not one this Warden accepts, gets no say here: the strict
+    rule applies (all six required) and `_joins_from_manifest` reports the manifest's own problem."""
     manifest = args.stack_manifest
     if manifest is None and args.cns is not None:
         manifest = Path(args.cns).expanduser() / CNS_MANIFEST
@@ -104,8 +104,12 @@ def _manifest_names(args) -> Optional[set[str]]:
         data = json.loads(Path(manifest).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    repos = data.get("repos") if isinstance(data, dict) else None
-    if not isinstance(repos, dict) or not all(isinstance(k, str) for k in repos):
+    if (not isinstance(data, dict) or data.get("schema") != STACK_MANIFEST_SCHEMA
+            or str(data.get("contract")) != CONTRACT):
+        return None  # not a manifest this Warden accepts: `_joins_from_manifest` says why, and it releases nothing
+    repos = data.get("repos")
+    if not isinstance(repos, dict) or not repos or not all(isinstance(k, str) and isinstance(v, str) and v
+                                                           for k, v in repos.items()):
         return None
     return {k.lower() for k in repos}
 
@@ -125,8 +129,10 @@ def _resolve_stack(args) -> tuple[list[Path], str]:
     With a pinned manifest (`--stack-manifest`, or `--cns`) the manifest says which checkouts the circuit
     consists of, and `drafter` and `burnish` may be left out: a seat is absent only when the manifest does not
     name it and the folder does not hold it. The run then proceeds without it and says so (`args.released_seats`).
-    A folder holding one the manifest does not name, or a manifest naming one the folder lacks, is refused as
-    before. A stack without a `drafter` needs a proposer (the claim seat or an explicit `--drafter`).
+    A folder holding one the manifest does not name, or a manifest naming one the folder lacks, is refused,
+    whatever `--claim-commit`, `--claim-diff`, `--drafter` or `--finisher` say: the folder is checked against the
+    manifest before any option is substituted. A stack without a `drafter` needs a proposer (the claim seat or an
+    explicit `--drafter`).
     """
     stack = Path(args.stack)
     if not stack.is_dir():
@@ -146,6 +152,20 @@ def _resolve_stack(args) -> tuple[list[Path], str]:
         return [], (f"the --stack folder {str(stack)!r} holds more than one folder named "
                     f"{', '.join(doubled)} (differing only by case), so it cannot be used")
     named = _manifest_names(args)
+    # A releasable seat is used only if the manifest names it and the folder holds it. A folder that holds one the
+    # manifest omits is refused here, before any option is substituted, when the option the folder would have filled
+    # is already set (--claim-commit and --claim-diff set the drafter; --drafter and --finisher set theirs): the
+    # substitution below skips such a seat, so nothing later would compare the folder with the manifest. A seat whose
+    # option is still unset is filled from the folder and refused with every other unnamed folder by the manifest check.
+    target = Path(args.path).resolve()
+    unnamed = [f"{name!r} (the checkout at {str(found[name])!r})" for name in RELEASABLE
+               if named is not None and name not in named and name in found
+               and getattr(args, STACK_SEATS[name][0]) is not None and not _is_target(found[name], target)]
+    if unnamed:
+        return [], ("the stack manifest does not name " + ", ".join(unnamed) + ", yet the --stack folder holds "
+                    + ("it" if len(unnamed) == 1 else "them") + ". A releasable seat is absent only when the "
+                    "manifest omits it and the folder lacks it, whatever --claim-commit, --claim-diff, --drafter or "
+                    "--finisher say. Name it in the manifest, or take the checkout out of the folder")
     released = [name for name in RELEASABLE if named is not None and name not in named and name not in found]
     missing = [name for name in wanted if name not in found and name not in released]
     if missing:

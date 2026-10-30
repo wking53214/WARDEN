@@ -5,9 +5,28 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0` and `0.16.1`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1` and `0.16.2`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
+
+## [0.16.2] - 2026-10-30
+
+`CONTRACT` is still `"1"`. Not tagged. One step, one commit.
+
+### Fixed
+
+- **A `--stack` folder holding a seat the pinned manifest omits was accepted when an option supplied the seat.** With a manifest
+  that omits `drafter`, a folder that still held a drafter checkout was refused on a bare `--stack` but accepted with
+  `--claim-commit`, `--claim-diff` or an explicit `--drafter`; the same for `burnish` with `--finisher`. The README says such a
+  folder is refused. `_resolve_stack` compared the folder with the manifest only for a seat whose option was still unset, and
+  those options had already set it. The rule now holds in every combination: a releasable seat (`drafter`, `burnish`) is used
+  only if the manifest names it and the folder holds it, and is absent only if the manifest omits it and the folder lacks it;
+  any other combination is a usage error (exit 2) naming the seat, made before any option is substituted. A bare `--stack`
+  is unchanged, the governed target itself is not counted as a held seat (as in the other checks), and a manifest that is not
+  one this Warden accepts (wrong schema or contract, no repositories) is treated as no manifest here, so its own problem is the
+  one reported. New tests in `tests/test_stack_released.py`. Pre-existing test edited: `tests/test_docs.py`
+  (`test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged`: the tag sentence and the version prefix list
+  gain 0.16.2, because the test pins the version to the sentence); no test that asserted the old acceptance existed.
 
 ## [0.16.1] - 2026-10-30
 
