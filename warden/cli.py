@@ -757,13 +757,11 @@ def _chronicle(args) -> int:
     for path in sorted(directory.glob("*.jsonl")):
         if args.origin is not None and path.name != chronicle.path_for(directory, strip_credentials(args.origin)).name:
             continue
-        for line in path.read_text(encoding="utf-8").splitlines():
-            try:
-                item = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(item, dict):
-                entries.append(item)
+        try:
+            entries.extend(chronicle.read_file(path, objects_only=True))
+        except chronicle.ChronicleError as e:
+            print(f"warden: the chronicle cannot be read: {e}", file=sys.stderr)
+            return 2
     for line in chronicle.render(entries):
         _emit(line)
     if not entries:

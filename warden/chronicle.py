@@ -61,6 +61,13 @@ def read(directory: Path, origin: Optional[str]) -> list[dict]:
     path = path_for(directory, origin)
     if not path.is_file():
         return []
+    return read_file(path)
+
+
+def read_file(path: Path, objects_only: bool = False) -> list[dict]:
+    """The lines of one chronicle file, with the refusal `read` makes. `objects_only` (the reader command) also
+    refuses a line that is valid JSON but not an object, which the run path skips."""
+    path = Path(path)
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
@@ -77,6 +84,8 @@ def read(directory: Path, origin: Optional[str]) -> list[dict]:
                                  f"({getattr(exc, 'msg', 'unreadable')}).") from exc
         if isinstance(item, dict):
             out.append(item)
+        elif objects_only:
+            raise ChronicleError(f"line {number} of the chronicle file {str(path)!r} is not a JSON object.")
     return out
 
 
