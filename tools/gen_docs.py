@@ -79,8 +79,10 @@ def exit_codes_md() -> str:
         "",
         "| what was about to be written | decision | exit |",
         "|---|---|---|",
-        "| a Drafter's proposal | `INCONCLUSIVE` (\"Cycle N: the suite is not green; nothing was written\") | 6 |",
-        "| the Finisher's change (the Drafter had nothing) | `FINISH_REJECTED` (\"Finishing: SUITE_RED\") | 1 |",
+        "| a Drafter's proposal | `INCONCLUSIVE` (\"Cycle N: the suite is not green (the counts and the failing "
+        "test ids); nothing was written\") | 6 |",
+        "| the Finisher's change (the Drafter had nothing) | `FINISH_REJECTED` (\"Finishing: SUITE_RED (the counts "
+        "and the failing test ids)\") | 1 |",
         "| nothing: no one proposes anything | `JUDGE_REJECTED`, the Judge seeing the red suite at the end | 1 |",
         "",
         "Every row writes nothing and none exits 0. Only the first is the INCONCLUSIVE of exit 6: the other two are",

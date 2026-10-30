@@ -211,9 +211,12 @@ def _own_root(module_name: str, module_file: str) -> Optional[Path]:
 def _installed(module_name: str, module_file: Optional[str], avoid: Optional[Path] = None) -> dict:
     """Version, commit and dirty flag of the code a module really came from.
 
-    The commit comes from the install record (`direct_url.json`) or from the module's OWN checkout. A
-    module that sits inside `avoid` (the folder being governed) gets None for everything but what its
-    install record says.
+    When the module's file sits in a checkout of its own (the `--stack` case, or an editable install) the
+    record names that checkout's version, commit and dirty flag: that is the code which ran, and a copy pip
+    also installed (an older release, say) is not. A checkout whose version cannot be read reports None, never
+    the installed copy's. Otherwise (the module is in site-packages) the install record (`direct_url.json` and the
+    distribution's version) is all there is. A module that sits inside `avoid` (the folder being governed) gets
+    None for everything but what its install record says.
     """
     out: dict = {"version": None, "commit": None, "dirty": None}
     top = module_name.partition(".")[0]
@@ -232,12 +235,9 @@ def _installed(module_name: str, module_file: Optional[str], avoid: Optional[Pat
     if module_file and not _inside(Path(module_file), avoid):
         root = _own_root(module_name, module_file)
         if root is not None:
-            own = git_commit(root)
-            if out["commit"] is None:
-                out["commit"] = own
+            out["commit"] = git_commit(root)
             out["dirty"] = _dirty(root)
-            if out["version"] is None:
-                out["version"] = project_version(root)
+            out["version"] = project_version(root)
     return out
 
 

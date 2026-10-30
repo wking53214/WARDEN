@@ -56,6 +56,9 @@ The table below is generated from each module's own docstring by `tools/gen_docs
 | `warden` | Warden: the discipline of change. |
 | `warden.audit` | Rules 5 and 9: the defect audit file, with IDs that never change meaning. |
 | `warden.authorization` | Human authority boundary. |
+| `warden.chronicle` | The chronicle: one line per run, keyed by (origin, base commit, claimed commit); the next run settles its promises. |
+| `warden.claim` | The claim seat: a Drafter that proposes one real change the operator names, then nothing. |
+| `warden.claimrow` | The claim row: what one run governed, as facts a stranger can check without the clone. |
 | `warden.cli` | warden: govern a change: observe, authorize, gate on the suite, record. |
 | `warden.deletion` | The removal gate: code is commented out only after two opposite tests pass. |
 | `warden.epistemic` | Truthful epistemic language. |

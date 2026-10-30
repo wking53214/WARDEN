@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Optional, Protocol, runtime_checkable
 
 from .models import Defect, Transformation
-from cns.seat import Evidence, Facts, Verdict  # the shared seat rows: cns 1.9.0
+from cns.seat import Evidence, Facts, Verdict  # the shared seat rows: cns 2.0.0
 
 
 

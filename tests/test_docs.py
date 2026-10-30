@@ -72,7 +72,7 @@ def test_dependencies_and_ci_siblings_are_pinned_to_full_commits():
     git_deps = re.findall(r"git\+https://[^\"'\s]+", pyproject)
     assert len(git_deps) == 2
     for dep in git_deps:
-        if "/CNS.git@" in dep:      # CNS is pinned by tag, see test_the_cns_pin_is_the_v1_9_0_tag_and_is_stated_in_stack
+        if "/CNS.git@" in dep:      # CNS is pinned by tag, see test_the_cns_pin_is_the_v2_1_0_tag_and_is_stated_in_stack
             continue
         assert SHA.fullmatch(dep.rsplit("@", 1)[1]), dep
     workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
@@ -171,33 +171,33 @@ def test_the_tested_set_is_the_same_everywhere_it_is_stated():
     assert len(re.findall(r"wking53214/JUDGE@", workflow)) == 2
     assert workflow.count("repository: wking53214/ASSAY\n          ref:") == 2
     # The version written next to each pin is the version the repository declares at that commit (kept by hand).
-    for repo, version in (("ghost_tools", "1.10.6"), ("SWIZZLE", "0.8.5"), ("ASSAY", "0.11.3"), ("JUDGE", "0.4.8")):
+    for repo, version in (("ghost_tools", "1.10.14"), ("SWIZZLE", "0.8.13"), ("ASSAY", "0.11.10"), ("JUDGE", "0.5.3")):
         assert re.search(rf"^\| {repo} \| {re.escape(version)} \|", stack, re.MULTILINE), (repo, version)
         assert re.search(rf"^#\s+{repo}\s+{re.escape(version)}\s", workflow, re.MULTILINE), (repo, version)
 
 
-def test_the_cns_pin_is_the_v1_9_0_tag_and_is_stated_in_stack():
+def test_the_cns_pin_is_the_v2_2_0_tag_and_is_stated_in_stack():
     """CNS is pinned by tag, spelled the same way in every repository of the circuit (CNS's seat_pins check compares
     the text, and pip treats a tag URL and a commit URL as two sources). STACK.md names the tag and the commit it
     peels to."""
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     stack = (ROOT / "STACK.md").read_text(encoding="utf-8")
-    assert pyproject.count("cns @ git+https://github.com/wking53214/CNS.git@v1.9.0") == 1
-    assert 'dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v1.9.0"]' in pyproject
-    peeled = "da18e411743d4e3b0e783105394d845fb1c16746"
-    assert re.search(rf"^\| CNS \| v1\.9\.0 \| `{peeled}` \|", stack, re.MULTILINE)
+    assert pyproject.count("cns @ git+https://github.com/wking53214/CNS.git@v2.2.0") == 1
+    assert 'dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v2.2.0"]' in pyproject
+    peeled = "ce6bd05578a7a3e3cafa0cfa1e9a2cca8a5f171f"
+    assert re.search(rf"^\| CNS \| v2\.2\.0 \| `{peeled}` \|", stack, re.MULTILINE)
 
 
 def test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged():
     """Asserts the text only: it never needs the repository's tags to be present (a shallow CI checkout has none)."""
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     changelog = " ".join((ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split())
-    # The docs say "0.13.x is not tagged"; a new minor series makes that stale, so this fails then and points at
-    # the sentence to update.
-    assert warden.__version__.startswith("0.13."), "update the tag sentence in README.md and CHANGELOG.md"
+    # The docs say "0.13.x is not tagged", "0.14.0 is not tagged either" and "nor are 0.15.0, 0.15.1, 0.16.0, 0.16.1, 0.16.2, 0.16.3 and 0.16.4"; a newer version makes that
+    # stale, so this fails then and points at the sentence to update.
+    assert warden.__version__.startswith(("0.13.", "0.14.0", "0.15.0", "0.15.1", "0.16.0", "0.16.1", "0.16.2", "0.16.3", "0.16.4")), "update the tag sentence in README.md and CHANGELOG.md"
     for text in (readme, changelog):
         assert "Release tags exist up to `v0.12.0`" in text
-        assert "`0.13.x` releases are not tagged" in text
+        assert "`0.13.x` releases are not tagged" in text and "`0.14.0` is not tagged either" in text
         assert "last tag is `v0.11.4`" not in text and "newest tag is `v0.11.4`" not in text
         assert "`v0.10.0` tag does not match its tree" in text and "`__version__` is `0.9.0`" in text
         assert "owner's decision" in text
@@ -226,3 +226,15 @@ def test_the_workflow_token_is_read_only():
     top = workflow[:workflow.index("\njobs:")]
     assert re.search(r"^permissions:\n  contents: read$", top, re.MULTILINE)
     assert not re.search(r"^\s*(permissions|[a-z-]+): write\b", workflow, re.MULTILINE)
+
+
+def test_no_document_tells_a_reader_to_install_a_bare_name_from_pypi():
+    """`warden` and `cns` on PyPI are other projects, and so are the other names in this stack. A document may say
+    not to install one (a line with "Do not"); it may not tell a reader to."""
+    bare = re.compile(r"pip install\s+(?:-\S+\s+)*[\"']?(warden|cns|ghost[-_]tools|swizzle|assay|judge|drafter|burnish)"
+                      r"\b(?!\s*@)")
+    paths = [ROOT / "README.md", ROOT / "STACK.md", ROOT / "pyproject.toml", *sorted((ROOT / "docs").glob("*.md")),
+             *sorted((ROOT / "warden").rglob("*.py")), *sorted((ROOT / "tools").glob("*.py"))]
+    found = [f"{path.name}: {line.strip()[:80]}" for path in paths for line in path.read_text(encoding="utf-8").splitlines()
+             if bare.search(line) and "Do not" not in line]
+    assert not found, found

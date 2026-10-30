@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import dataclasses
 import importlib
 import json
 import os
@@ -22,8 +23,11 @@ from pathlib import Path
 
 from . import CONTRACT, __version__
 from .authorization import Unauthorized, grant
-from . import audit as audit_file, gitstate, runstate, textio, versions
+from . import audit as audit_file, gitstate, held, isolation, runstate, textio, versions
+from . import chronicle
+from . import claim as claimseat
 from . import log as warden_log
+from .claimrow import claim_row, origin_of, strip_credentials
 from .ghost import load_report, scan as ghost_scan
 from .tagteam import TagTeam
 
@@ -80,6 +84,34 @@ STACK_ROOTS = {"ghost_tools": "ghost_root", "swizzle": "swizzle_root", "assay": 
 STACK_SEATS = {"drafter": ("drafter", "drafter.seat:Drafter"),
                "judge": ("judge", "judge.seat:Judge"),
                "burnish": ("finisher", "burnish.finisher:Burnish")}
+#: The two stack folders a pinned manifest may leave out. The other four (the three instruments and the Judge)
+#: can never be released: they must be named by the manifest and present.
+RELEASABLE = ("drafter", "burnish")
+
+
+def _manifest_names(args) -> Optional[set[str]]:
+    """The lower-cased checkout names the pinned manifest given with `--stack` names, or None when there is no
+    usable manifest. A manifest that cannot be read, or is not one this Warden accepts, gets no say here: the strict
+    rule applies (all six required) and `_joins_from_manifest` reports the manifest's own problem."""
+    manifest = args.stack_manifest
+    if manifest is None and args.cns is not None:
+        manifest = Path(args.cns).expanduser() / CNS_MANIFEST
+    elif args.cns is not None:
+        return None  # --cns and --stack-manifest together is reported later; nothing is released on the strength of it
+    if manifest is None:
+        return None
+    try:
+        data = json.loads(Path(manifest).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if (not isinstance(data, dict) or data.get("schema") != STACK_MANIFEST_SCHEMA
+            or str(data.get("contract")) != CONTRACT):
+        return None  # not a manifest this Warden accepts: `_joins_from_manifest` says why, and it releases nothing
+    repos = data.get("repos")
+    if not isinstance(repos, dict) or not repos or not all(isinstance(k, str) and isinstance(v, str) and v
+                                                           for k, v in repos.items()):
+        return None
+    return {k.lower() for k in repos}
 
 
 def _resolve_stack(args) -> tuple[list[Path], str]:
@@ -93,6 +125,14 @@ def _resolve_stack(args) -> tuple[list[Path], str]:
     only by case are refused rather than guessed between. The folders actually filled in (not
     overridden by an explicit option) are left in `args.stack_used`, name to path: those are the
     checkouts the run executes or reads as instruments, and `_stack_use_problem` vets them.
+
+    With a pinned manifest (`--stack-manifest`, or `--cns`) the manifest says which checkouts the circuit
+    consists of, and `drafter` and `burnish` may be left out: a seat is absent only when the manifest does not
+    name it and the folder does not hold it. The run then proceeds without it and says so (`args.released_seats`).
+    A folder holding one the manifest does not name, or a manifest naming one the folder lacks, is refused,
+    whatever `--claim-commit`, `--claim-diff`, `--drafter` or `--finisher` say: the folder is checked against the
+    manifest before any option is substituted. A stack without a `drafter` needs a proposer (the claim seat or an
+    explicit `--drafter`).
     """
     stack = Path(args.stack)
     if not stack.is_dir():
@@ -111,9 +151,27 @@ def _resolve_stack(args) -> tuple[list[Path], str]:
     if doubled:
         return [], (f"the --stack folder {str(stack)!r} holds more than one folder named "
                     f"{', '.join(doubled)} (differing only by case), so it cannot be used")
-    missing = [name for name in wanted if name not in found]
+    named = _manifest_names(args)
+    # A releasable seat is used only if the manifest names it and the folder holds it. A folder that holds one the
+    # manifest omits is refused here, before any option is substituted, when the option the folder would have filled
+    # is already set (--claim-commit and --claim-diff set the drafter; --drafter and --finisher set theirs): the
+    # substitution below skips such a seat, so nothing later would compare the folder with the manifest. A seat whose
+    # option is still unset is filled from the folder and refused with every other unnamed folder by the manifest check.
+    target = Path(args.path).resolve()
+    unnamed = [f"{name!r} (the checkout at {str(found[name])!r})" for name in RELEASABLE
+               if named is not None and name not in named and name in found
+               and getattr(args, STACK_SEATS[name][0]) is not None and not _is_target(found[name], target)]
+    if unnamed:
+        return [], ("the stack manifest does not name " + ", ".join(unnamed) + ", yet the --stack folder holds "
+                    + ("it" if len(unnamed) == 1 else "them") + ". A releasable seat is absent only when the "
+                    "manifest omits it and the folder lacks it, whatever --claim-commit, --claim-diff, --drafter or "
+                    "--finisher say. Name it in the manifest, or take the checkout out of the folder")
+    released = [name for name in RELEASABLE if named is not None and name not in named and name not in found]
+    missing = [name for name in wanted if name not in found and name not in released]
     if missing:
         return [], f"the --stack folder {str(stack)!r} has no {', '.join(missing)} checkout"
+    if "drafter" in released and not args.drafter:
+        return [], "this stack has no drafter and nothing to propose; give --claim-commit, --claim-diff or --drafter"
     used: dict[str, Path] = {}
     for name, option in STACK_ROOTS.items():
         if getattr(args, option) is None:
@@ -121,11 +179,14 @@ def _resolve_stack(args) -> tuple[list[Path], str]:
             used[name] = found[name].resolve()
     paths: list[Path] = []
     for name, (option, spec) in STACK_SEATS.items():
+        if name in released:
+            continue
         if getattr(args, option) is None:
             setattr(args, option, spec)
             paths.append(found[name].resolve())
             used[name] = found[name].resolve()
     args.stack_used = used
+    args.released_seats = sorted(released)
     return paths, ""
 
 
@@ -381,7 +442,66 @@ class _JsonParser(argparse.ArgumentParser):
         raise SystemExit(EXIT_CODES["USAGE_ERROR"])
 
 
+#: What `_write_stdout` answers when the reader of stdout went away (a broken pipe).
+_READER_LEFT = "the reader of standard output left"
+#: The first stdout failure of the current `main` call, or None. Reset at the start of every call.
+_delivery: dict[str, Optional[str]] = {"failure": None}
+
+
+def _write_stdout(text: str) -> Optional[str]:
+    """Print `text` and flush. None when delivered, `_READER_LEFT` on a broken pipe, otherwise why it was not."""
+    out = sys.stdout
+    if out is None:
+        return "standard output is closed"
+    try:
+        print(text, file=out)
+        out.flush()
+        return None
+    except BrokenPipeError:
+        failure = _READER_LEFT
+    except (OSError, ValueError) as err:  # ValueError: the stream was closed under us
+        failure = f"{type(err).__name__}: {err}"
+    real = sys.__stdout__
+    if real is not None and out is real:
+        # The bytes that failed are still queued; the interpreter would flush them again at exit and end in status
+        # 120 with a message of its own. Closing the stream drops them (its close error is this same failure).
+        try:
+            real.close()
+        except (OSError, ValueError):
+            pass
+    return failure
+
+
+def _emit(text: str) -> None:
+    """Everything Warden prints on stdout goes through here. A failure is remembered, not raised: the run carries
+    on (a receipt is still written, the earned exit code is still worked out) and `main` settles the exit code."""
+    if _delivery["failure"] is None:
+        _delivery["failure"] = _write_stdout(text)
+
+
 def main(argv: list[str] | None = None) -> int:
+    """Run the command line and return its exit code.
+
+    Delivery. Standard output carries the result, so a result that was not delivered is not an approval. If the reader
+    of stdout left (a broken pipe, `warden tagteam DIR | head`) nothing more is printed and the earned exit code stands.
+    If stdout is closed or a write fails for any other reason (a full device), one line on stderr says so, no traceback
+    is printed, and a run that earned 0 exits 1. A non-zero code is kept as it is."""
+    _delivery["failure"] = None
+    with isolation.private_bytecode_cache():  # before any seat module is imported
+        code = _main(argv)
+    failure = _delivery["failure"]
+    if failure is None or failure == _READER_LEFT:
+        return code
+    try:
+        print(f"warden: the result could not be delivered on standard output ({failure})"
+              + ("; a run that was not delivered is not an ACCEPT, so the exit code is 1" if code == 0 else ""),
+              file=sys.stderr)
+    except (OSError, ValueError):
+        pass  # a closed or broken stderr loses this one line; the exit code is unchanged by it
+    return code or 1
+
+
+def _main(argv: list[str] | None) -> int:
     parser = _JsonParser(prog="warden")
     parser.add_argument("--version", action="version", version=f"warden {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -397,6 +517,19 @@ def main(argv: list[str] | None = None) -> int:
     p_t.add_argument("--ghost-root", type=Path, default=None)
     p_t.add_argument("--drafter", default=None, metavar="MODULE:FACTORY",
                      help="in the loop: proposes fixes, e.g. drafter.seat:Drafter")
+    p_t.add_argument("--claim-commit", default=None, metavar="SHA",
+                     help="take the Drafter seat with a real change: the diff of SHA against its first parent, read "
+                          "from the target's own git (or from --claim-repo), proposed once and then nothing. The "
+                          "touched files must match the parent (the claim row's base_matches_parent says whether "
+                          "the whole tree did). Cannot be combined with --drafter")
+    p_t.add_argument("--claim-repo", type=Path, default=None, metavar="PATH",
+                     help="with --claim-commit: the git repository that holds the commit, when the target does not")
+    p_t.add_argument("--claim-diff", type=Path, default=None, metavar="FILE",
+                     help="take the Drafter seat with a unified diff applied to the target as it stands, proposed "
+                          "once and then nothing; needs --claim-subject and --claim-author. Binary files, renames "
+                          "and mode changes are refused, not guessed. Cannot be combined with --drafter")
+    p_t.add_argument("--claim-subject", default=None, metavar="TEXT", help="with --claim-diff: what the change is")
+    p_t.add_argument("--claim-author", default=None, metavar="TEXT", help="with --claim-diff: who made the change")
     p_t.add_argument("--judge", default=None, metavar="MODULE:FACTORY",
                      help="at the end, once: reads the evidence and decides ACCEPT or REJECT. "
                           "Without one, a run cannot be ACCEPTed, only ACCEPT_UNVERIFIED")
@@ -412,6 +545,11 @@ def main(argv: list[str] | None = None) -> int:
     p_t.add_argument("--suite-runner", choices=("auto", "pytest", "cargo"), default="auto",
                      help="which tool measures the target's suite: auto picks cargo for a Rust project with no "
                           "Python tests and pytest otherwise (default auto)")
+    p_t.add_argument("--suite-always", action="store_true",
+                     help="run the target's suite at every pass. By default a pass on a tree whose fingerprint this "
+                          "run already measured reuses that result and the record says which pass it came from "
+                          "(six passes become three on a run with one change and one finishing edit); reuse never "
+                          "reaches across runs")
     p_t.add_argument("--seat-timeout", type=_positive_number, default=3600,
                      help="seconds one seat call (Drafter, Finisher, Judge, or building a seat) may take "
                           "before the run stops as ERROR (default 3600)")
@@ -434,8 +572,10 @@ def main(argv: list[str] | None = None) -> int:
                      help="a folder holding checkouts of the whole circuit: ghost_tools, swizzle, assay, "
                           "drafter, judge and burnish (names matched without regard to case). Fills "
                           "--ghost-root, --swizzle-root, --assay-root, --drafter, --judge and --finisher "
-                          "with them; an option you give explicitly wins. Every one of the six must be "
-                          "there, or the command is a usage error and nothing is run")
+                          "with them; an option you give explicitly wins. Without --stack-manifest every one "
+                          "of the six must be there, or the command is a usage error and nothing is run. With "
+                          "it (or --cns), drafter and burnish may be left out when the manifest does not name "
+                          "them and the folder does not hold them; the run says so and records released_seats")
     p_t.add_argument("--join", type=Path, action="append", default=[], metavar="PATH",
                      help="a sibling checkout Ghost may read beside the target (repeatable). A boundary the "
                           "target reaches across is then measured instead of reported as a gap that holds the "
@@ -464,6 +604,20 @@ def main(argv: list[str] | None = None) -> int:
                           "lie outside the target and, if it exists, be a regular file (a pipe, device or folder "
                           "is refused before anything runs). The run's decision and exit code are unchanged")
 
+    p_t.add_argument("--chronicle", type=Path, default=None, metavar="DIR",
+                     help="append this run as one JSON line to DIR/<origin slug>.jsonl, keyed by origin, base commit "
+                          "and claimed commit, with the promises it opens if kept; first settle the promises of every "
+                          "earlier run whose claimed or held tree is this run's base tree (HELD or BROKEN, with the "
+                          "measurement) and write the settlement into the line and the record's notes")
+
+    p_t.add_argument("--reuse-chronicle-suite", action="store_true",
+                     help="needs --chronicle. At the first suite pass, take the result an earlier run of the "
+                          "chronicle recorded for this very tree (its claimed or held tree digest equals this run's "
+                          "base tree digest) when that result is green and the environment matches on Python, pytest "
+                          "and Warden versions, platform, suite runner and suite command; otherwise run the suite. "
+                          "Off by default. The chronicle is an unsigned file: whoever can edit it can make this skip "
+                          "a suite run, so use it only where that person is trusted")
+
     p_k = sub.add_parser("keep", parents=[common],
                          help="apply one held unverified result, only with a human grant for its digest")
     p_k.add_argument("path", type=Path)
@@ -471,6 +625,12 @@ def main(argv: list[str] | None = None) -> int:
     p_k.add_argument("--authorize", default=None, metavar="ACTOR",
                      help="the human approving this exact result; without it nothing is applied")
     p_k.add_argument("--reason", default="")
+    p_k.add_argument("--chronicle", type=Path, default=None, metavar="DIR",
+                     help="append a line saying who kept which digest, and when, to the chronicle in DIR")
+
+    p_c = sub.add_parser("chronicle", parents=[common], help="print a chronicle folder's chain of runs, in order")
+    p_c.add_argument("directory", type=Path)
+    p_c.add_argument("--origin", default=None, metavar="X", help="only the chain of this origin (a remote URL)")
 
     p_a = sub.add_parser("audit", parents=[common],
                          help="WARDEN_AUDIT.md: Ghost findings under durable IDs (Rules 5, 9)")
@@ -481,13 +641,20 @@ def main(argv: list[str] | None = None) -> int:
                      help="write the file; without it the result is printed and nothing is written")
     p_a.add_argument("--reason", default="")
 
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except BrokenPipeError:
+        # `--help` or `--version` printed to a reader that had left: nothing was decided, the answer is 0.
+        _delivery["failure"] = _READER_LEFT
+        return 0
     warden_log.configure(args.verbose)
     logger.debug("warden %s: %s", __version__, args.command)
     if args.command == "audit":
         return _audit(args)
     if args.command == "keep":
         return _keep(args)
+    if args.command == "chronicle":
+        return _chronicle(args)
     if args.command == "tagteam":
         try:
             return _tagteam(args)
@@ -499,7 +666,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _print_json(payload) -> None:
-    print(json.dumps(payload, indent=2))
+    _emit(json.dumps(payload, indent=2))
 
 
 #: The contract every run record Warden prints is written against (cns.run in the CNS repository).
@@ -564,8 +731,43 @@ def _keep(args) -> int:
         return _stop("REFUSED", str(e))
     except Exception as e:  # noqa: BLE001 - the CLI always prints valid JSON, never a traceback
         return _stop("ERROR", f"Warden failed with {type(e).__name__}. Nothing was kept.")
+    notes = [outcome["reason"]]
+    if args.chronicle is not None:
+        try:
+            key = (held.load(path, args.digest).get("claim") or {})
+            key = {k: key.get(k) for k in ("origin", "base_commit", "claimed_commit")} if key else None
+            where = chronicle.append(args.chronicle, origin_of(path.resolve()),
+                                     chronicle.keep_line(origin_of(path.resolve()), args.digest, args.authorize,
+                                                         args.reason.strip(), key))
+            notes.append(f"Chronicle: the keep was written to {where}.")
+        except (OSError, ValueError, HeldError) as e:
+            notes.append(f"Chronicle: the keep could not be written ({type(e).__name__}); the result was kept all "
+                         "the same.")
     _print_json({"decision": outcome["decision"], "digest": outcome["digest"], "reason": outcome["reason"],
-                 "approved_by": args.authorize, "contract": CONTRACT, "notes": [outcome["reason"]]})
+                 "approved_by": args.authorize, "contract": CONTRACT, "notes": notes})
+    return 0
+
+
+def _chronicle(args) -> int:
+    """Print the chain of runs a chronicle folder holds, oldest line first, one origin's file after another."""
+    directory = Path(args.directory)
+    if not directory.is_dir():
+        print(f"warden: the chronicle folder {str(directory)!r} does not exist or is not a directory.", file=sys.stderr)
+        return 2
+    entries: list[dict] = []
+    for path in sorted(directory.glob("*.jsonl")):
+        if args.origin is not None and path.name != chronicle.path_for(directory, strip_credentials(args.origin)).name:
+            continue
+        try:
+            entries.extend(chronicle.read_file(path, objects_only=True))
+        except chronicle.ChronicleError as e:
+            print(f"warden: the chronicle cannot be read: {e}", file=sys.stderr)
+            return 2
+    for line in chronicle.render(entries):
+        _emit(line)
+    if not entries:
+        which = f" for origin {args.origin!r}" if args.origin else ""
+        print(f"warden: the chronicle holds no readable line{which}.", file=sys.stderr)
     return 0
 
 
@@ -585,6 +787,15 @@ def _tagteam(args) -> int:
             return _stop("USAGE_ERROR", f"--receipt {str(args.receipt)!r} is {kind}, not a regular file, and Warden "
                                         "replaces the receipt file whole, so it would swap that for a plain file. "
                                         "Name a regular file or a path that does not exist yet. Nothing was run.")
+    problem = _reuse_problem(args)
+    if problem:
+        return _stop("USAGE_ERROR", f"usage error: {problem}. Nothing was run.")
+    problem = _claim_problem(args)
+    if problem:
+        return _stop("USAGE_ERROR", f"usage error: {problem}. Nothing was run.")
+    claiming = args.claim_commit is not None or args.claim_diff is not None
+    if claiming:
+        args.drafter = claimseat.SEAT_SPEC  # the claim takes the Drafter seat, so --stack does not fill it
     seat_paths: list[Path] = []
     if args.stack is not None:
         seat_paths, problem = _resolve_stack(args)
@@ -609,6 +820,13 @@ def _tagteam(args) -> int:
     if shadowed:
         _governed = None
         return _stop("SEAT_NOT_LOADED", shadowed)
+    claim_drafter = None
+    if claiming:
+        try:
+            claim_drafter = claimseat.seat_from_args(args, _governed)
+        except (claimseat.ClaimError, OSError) as e:
+            _governed = None
+            return _stop("USAGE_ERROR", f"The claimed change cannot be governed: {e} Nothing was run.")
     joins = [Path(j).expanduser().resolve() for j in (args.join or [])]
     manifest = args.stack_manifest
     if args.cns is not None:
@@ -649,7 +867,7 @@ def _tagteam(args) -> int:
         try:
             with runstate.interrupts(), runstate.stdout_to_stderr(), \
                     runstate.seat_timer(args.seat_timeout, "A seat while it was being loaded"):
-                drafter = _load_seat(args.drafter, warnings)
+                drafter = claim_drafter if claiming else _load_seat(args.drafter, warnings)
                 finisher = _load_seat(args.finisher, warnings)
                 judge = _load_seat(args.judge, warnings)
         except ContractMismatch as e:
@@ -669,6 +887,42 @@ def _tagteam(args) -> int:
         sys.path[:] = saved_path
 
 
+def _reuse_problem(args) -> str:
+    """Why --reuse-chronicle-suite cannot be honoured as given, else an empty string."""
+    if not getattr(args, "reuse_chronicle_suite", False):
+        return ""
+    if getattr(args, "chronicle", None) is None:
+        return "--reuse-chronicle-suite takes its result from the chronicle, so it needs --chronicle DIR"
+    if getattr(args, "suite_always", False):
+        return "--reuse-chronicle-suite and --suite-always contradict each other"
+    return ""
+
+
+def _claim_problem(args) -> str:
+    """The reason the --claim-* options cannot be used as given, or empty. The claim seat and --drafter both fill
+    the Drafter seat, so naming both is a usage error; so is naming the change twice or half."""
+    claiming = args.claim_commit is not None or args.claim_diff is not None
+    if not claiming:
+        if args.claim_repo is not None:
+            return "--claim-repo goes with --claim-commit"
+        if args.claim_subject is not None or args.claim_author is not None:
+            return "--claim-subject and --claim-author go with --claim-diff"
+        return ""
+    if args.drafter:
+        return "--claim-commit or --claim-diff takes the Drafter seat, so --drafter cannot be given as well; give one"
+    if args.claim_commit is not None and args.claim_diff is not None:
+        return "--claim-commit and --claim-diff both name the change; give one"
+    if args.claim_diff is not None:
+        if args.claim_repo is not None:
+            return "--claim-repo goes with --claim-commit, not with --claim-diff"
+        if not (args.claim_subject or "").strip() or not (args.claim_author or "").strip():
+            return "--claim-diff needs --claim-subject and --claim-author"
+    elif args.claim_subject is not None or args.claim_author is not None:
+        return ("--claim-commit reads the subject and author from git; --claim-subject and --claim-author go with "
+                "--claim-diff")
+    return ""
+
+
 def _findings_problem(path, err: Exception) -> str:
     """One plain sentence for a --from-ghost file that could not be used: which file and what was wrong."""
     named = f"The findings file {str(path)!r} given to --from-ghost"
@@ -686,15 +940,35 @@ def _findings_problem(path, err: Exception) -> str:
 
 
 def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> int:
+    chronicle_dir = getattr(args, "chronicle", None)
+    origin = origin_of(Path(args.path).resolve()) if chronicle_dir is not None else None
+    try:
+        earlier = chronicle.read(chronicle_dir, origin) if chronicle_dir is not None else []
+    except chronicle.ChronicleError as e:
+        return _stop("USAGE_ERROR", f"The chronicle cannot be read: {e} Nothing was run.")
     team = TagTeam(ghost_tools_root=args.ghost_root, swizzle_root=args.swizzle_root,
                    assay_root=args.assay_root, assay_floor=args.assay_floor,
                    drafter=drafter, finisher=finisher, judge=judge, max_cycles=args.max_cycles,
                    ghost_timeout=args.ghost_timeout, suite_timeout=args.suite_timeout, suite_runner=args.suite_runner,
                    seat_timeout=args.seat_timeout, joins=getattr(args, "joins", ()),
-                   allow_uncommitted_instruments=getattr(args, "allow_uncommitted_instruments", False))
+                   allow_uncommitted_instruments=getattr(args, "allow_uncommitted_instruments", False),
+                   suite_always=bool(getattr(args, "suite_always", False)),
+                   chronicle_entries=earlier, reuse_chronicle_suite=bool(getattr(args, "reuse_chronicle_suite", False)),
+                   record_suite_environment=chronicle_dir is not None)
     # A seat that print()s, or writes straight to file descriptor 1, must not corrupt the JSON on stdout.
     with runstate.stdout_to_stderr():
         result = team.run(args.path, authorization=auth, findings=findings)
+    report = _versions(args, drafter, finisher, judge)
+    # The claim row names the change the run governed (commit, diff digest, files by digest, verdict, held tree),
+    # and the Judge's Evidence is kept whole, so a reader can replay the verdict from the record alone.
+    row = claim_row(result, auth, report)
+    evidence = None if result.evidence is None else dataclasses.asdict(result.evidence)
+    chronicle_notes: list[str] = []
+    chronicled: Optional[dict] = None
+    released = list(getattr(args, "released_seats", ()) or ())
+    released_notes = [_released_note(args, released)] if released else []
+    if chronicle_dir is not None:
+        chronicle_notes, chronicled = _chronicle_run(chronicle_dir, origin, earlier, row, result)
     payload = {
         "schema": CNS_RUN_SCHEMA,
         "decision": result.decision,
@@ -704,12 +978,14 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "finished": result.finished,
         "put_back": result.put_back,
         "held_digest": result.held_digest,
-        "reason": "" if result.decision == "ACCEPT" else (result.reason or (result.notes[-1] if result.notes else "")),
-        "notes": list(result.notes) + list(warnings),
+        "reason": _accept_reason(result) if result.decision == "ACCEPT"
+        else (result.reason or (result.notes[-1] if result.notes else "")),
+        "notes": list(result.notes) + list(warnings) + released_notes + chronicle_notes,
         "observed": [d.identity for d in result.observed],
         "reobserved": [d.identity for d in result.reobserved],
         "contract": CONTRACT,
-        "versions": _versions(args, drafter, finisher, judge),
+        "released_seats": released,
+        "versions": report,
         "swizzle_sound": result.swizzle_sound,
         "allow_uncommitted_instruments": bool(getattr(args, "allow_uncommitted_instruments", False)),
         "unmeasured": list(result.unmeasured),
@@ -720,20 +996,81 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "verdict": None if result.verdict is None else {
             "decision": result.verdict.decision, "reasons": list(result.verdict.reasons),
             "judge": result.verdict.judge},
+        "claim": row,
+        "evidence": evidence,
+        "suite_passes": [{k: v for k, v in p.items() if k != "result"} | dataclasses.asdict(p["result"])
+                         for p in result.suite_passes],
+        "chronicle": chronicled,
     }
     _print_json(payload)
+    if result.held_digest:
+        try:
+            held.attach(Path(args.path), result.held_digest, {"claim": row, "evidence": evidence})
+        except (OSError, ValueError) as e:  # the held result stands without the row; the record above carries it
+            print(f"warden: the claim row was not added to the held result ({type(e).__name__}).", file=sys.stderr)
     code = 2 if result.swizzle_sound is False else EXIT_CODES.get(result.decision, 1)
     logger.info("tagteam finished: decision=%s exit=%s put_back=%s unmeasured=%s", result.decision, code,
                 result.put_back, ",".join(result.unmeasured) or "none")
     if args.receipt is not None:
-        _write_receipt(args, auth, result)
+        _write_receipt(args, auth, result, {"claim": row, "evidence": evidence})
     if result.swizzle_sound is False:
         print("warden: SWIZZLE's own proofs do not hold; nothing was written.", file=sys.stderr)
     return code
 
 
-def _write_receipt(args, auth, result) -> None:
-    """Write the horsemen production receipt for a finished run. A failure is said on stderr and never
+def _released_note(args, released: list[str]) -> str:
+    """The note that says which seats the pinned manifest and the --stack folder agreed were absent, and what, if
+    anything, filled the role instead."""
+    filled = []
+    if "drafter" in released:
+        filled.append("the Drafter role is filled by the claim seat" if args.claim_commit is not None
+                      or args.claim_diff is not None else "the Drafter role is filled by the explicit --drafter")
+    if "burnish" in released:
+        filled.append("the explicit --finisher fills the Finisher role" if args.finisher
+                      else "the run has no finisher")
+    return f"released seats not seated: {', '.join(released)} ({'; '.join(filled)})."
+
+
+def _chronicle_run(directory: Path, origin: Optional[str], earlier: list, row: dict, result) -> tuple[list[str], dict]:
+    """Settle what earlier runs promised about this run's base tree, then append this run's line. A chronicle that
+    cannot be written is said in the notes and never changes the decision."""
+    ghost_ran = result.ghost_scan is not None or (result.observed and "ghost" not in result.unmeasured)
+    observed = [d.identity for d in result.observed] if ghost_ran else None
+    declined = list((result.ghost_scan or {}).get("declined") or [])
+    settled = chronicle.settle(earlier, row["base_tree_digest"], row["suite_before"], observed, declined)
+    line = chronicle.entry(row, [d.identity for d in result.reobserved], declined, settled,
+                           trees=chronicle.suite_trees(result.suite_passes), number=len(earlier) + 1)
+    notes = chronicle.notes_for(settled)
+    try:
+        where = chronicle.append(directory, origin, line)
+    except OSError as e:
+        notes.append(f"Chronicle: this run's line could not be written ({type(e).__name__}).")
+        return notes, {"file": None, "settled": settled, "promises": line["promises"]}
+    notes.append(f"Chronicle: this run is line {len(earlier) + 1} of {where} (origin {origin or 'none'}); it settled "
+                 f"{len(settled)} promise(s) and opens {len(line['promises'])}.")
+    return notes, {"file": str(where), "settled": settled, "promises": line["promises"]}
+
+
+def _accept_reason(result) -> str:
+    """An ACCEPT's reason is never empty: it says what converged, what the Judge said, and what was measured."""
+    before = result.suite_before
+    after = result.evidence.suite_after if result.evidence is not None and result.evidence.suite_after else None
+    after = after or result.suite_after
+    measured = []
+    if before is not None and after is not None:
+        measured.append(f"the suite {before.passed} passed before and {after.passed} passed after ({after.describe()})")
+    else:
+        measured.append("the suite was not run")
+    if "ghost" in result.unmeasured:
+        measured.append("Ghost did not run")
+    else:
+        measured.append(f"Ghost {len(result.observed)} finding(s) before and {len(result.reobserved)} after")
+    return f"{result.reason} Measured: {'; '.join(measured)}.".strip()
+
+
+def _write_receipt(args, auth, result, extra: Optional[dict] = None) -> None:
+    """Write the horsemen production receipt for a finished run, with `extra` keys (the claim row and the Judge's
+    evidence) beside the receipt's own. A failure is said on stderr and never
     changes the run's decision or exit code: the run is over, and the JSON on stdout is the record.
 
     The file is written under a temporary name and renamed into place, so a reader never sees half a receipt.
@@ -749,7 +1086,7 @@ def _write_receipt(args, auth, result) -> None:
             raise OSError(f"{str(out)!r} is {kind}, not a regular file, so it was not replaced")
         receipt = receipt_for_run(result=result, target=target, authorization=auth,
                                   baseline_sha=versions.own_commit(target) or "unknown", assay_root=args.assay_root)
-        tmp.write_text(json.dumps(receipt.to_dict(), indent=2) + "\n", encoding="utf-8")
+        tmp.write_text(json.dumps({**receipt.to_dict(), **(extra or {})}, indent=2) + "\n", encoding="utf-8")
         try:
             tmp.chmod(stat.S_IMODE(os.stat(out).st_mode))
         except (FileNotFoundError, NotADirectoryError):
@@ -854,7 +1191,7 @@ def _audit(args) -> int:
               file=sys.stderr)
         return 2
     if not args.authorize:
-        print(updated)
+        _emit(updated)
         return 0
     if current.strip() and not audit_file.has_markers(current):
         print(f"warden: {path} exists, has no Warden markers ({audit_file.BEGIN} and {audit_file.END}), "
@@ -884,7 +1221,7 @@ def _audit(args) -> int:
     except OSError as e:
         print(f"warden: {path} could not be written ({type(e).__name__}).", file=sys.stderr)
         return 2
-    print(f"wrote {path} (authorized by {auth.actor})")
+    _emit(f"wrote {path} (authorized by {auth.actor})")
     return 0
 
 

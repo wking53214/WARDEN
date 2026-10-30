@@ -255,7 +255,10 @@ def test_a_suite_that_goes_red_in_a_later_cycle_puts_the_earlier_edits_back(tmp_
     before = _tree_state(target)
     result = TagTeam(drafter=FakeDrafter(steps=("one\n", "two\n"))).run(
         target, findings=[], authorization=_auth(target, "documentation"))
-    assert result.decision == "INCONCLUSIVE"
+    # Since 0.14.0 the second cycle's before-pass reuses the first cycle's after-pass (the same tree), so the suite's
+    # third run, the red one, is the second cycle's after-pass: Rule 7 puts that change back and the run is REJECT.
+    # The earlier edit is put back with it, which is what this test is for.
+    assert result.decision == "REJECT" and result.cycles[1].outcome == "PUT_BACK"
     assert _tree_state(target) == before
     assert result.cycles[0].outcome == "APPLIED" and result.cycles[0].proposal is not None
     assert "The tree was put back as it was found because the run did not finish accepted." in result.notes

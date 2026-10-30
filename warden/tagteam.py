@@ -24,8 +24,11 @@ This module refuses three self-certifying loops:
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import logging
+import os
+import stat
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -34,15 +37,18 @@ from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 from . import gitstate, held, runstate, textio
 from .authorization import Authorization, Unauthorized, is_stack_actor
-from .deletion import commented_variant, is_deletion, keep_variant, stamp_now
+from . import chronicle
+from .claim import ClaimDrafter
+from .deletion import commented_variant, is_deletion, keep_variant, removal_rows, stamp_now
 from .ghost import GhostCrashed, GhostRefused, _clean as _plain, defects_from_ghost, scan as ghost_scan
 from .textio import clip as _clip
-from .guard import (FORBIDDEN_DIRS, iter_tree, SeatBrokeCharter, Snapshot, _RESTORE_LIMIT, is_protected,
-                    is_test_code, violation, watch)
+from .guard import (FORBIDDEN_DIRS, iter_tree, SeatBrokeCharter, Snapshot, _RESTORE_LIMIT, hooks_dirs, is_protected,
+                    is_test_code, real_rel, violation, watch)
 from .isolation import InstrumentRootError
 from .models import Defect, FileEdit, Transformation, TransformationStatus, safe_id
 from .roles import Evidence, Facts, Finisher, Drafter, Judge, Verdict
-from .suite import DEFAULT_TIMEOUT as DEFAULT_SUITE_TIMEOUT, CargoSuiteRun, SuiteRun, preserved, run_suite
+from .suite import (DEFAULT_TIMEOUT as DEFAULT_SUITE_TIMEOUT, CargoSuiteRun, SuiteRun, detect_runner, preserved,
+                    run_suite, suite_environment)
 from .swizzle import assay_score, governor_attacks, swizzle_contract_holds, swizzle_proofs_hold
 from cns.finding import Finding
 
@@ -65,7 +71,7 @@ DEFAULT_MAX_DECLINED = 50
 #: Every decision this module can produce. The CLI maps each one to an exit code and
 #: treats anything else as a failure, never as success.
 DECISIONS = ("ACCEPT", "ACCEPT_UNVERIFIED", "REJECT", "JUDGE_REJECTED", "NOT_CONVERGED",
-             "FINISH_REJECTED", "REFUSED", "INCONCLUSIVE", "ERROR", "INTERRUPTED")
+             "FINISH_REJECTED", "REFUSED", "INCONCLUSIVE", "ERROR", "INTERRUPTED", "USAGE_ERROR")
 
 
 PUT_BACK_NOTE = "The tree was put back as it was found because the run did not finish accepted."
@@ -90,6 +96,10 @@ class GhostUnavailable(RuntimeError):
 
 class SuiteChangedSource(RuntimeError):
     """Running the target's suite changed its source files."""
+
+
+class ClaimNotLanded(RuntimeError):
+    """The bytes a claimed change left on disk are not the bytes of the claimed commit. The run is refused."""
 
 
 class WrongAnswer(RuntimeError):
@@ -145,7 +155,7 @@ class TagTeamResult:
     #: human can approve with a grant for `keep_unverified` on this folder (see held.py).
     held_digest: Optional[str] = None
     #: One plain sentence saying why the run ended as it did (the same sentence as the last note
-    #: before any put-back text). Empty for a plain ACCEPT.
+    #: before any put-back text). For a plain ACCEPT it says what converged and what the Judge said.
     reason: str = ""
     #: Information that is not a gap and changes no decision, such as `ghost_version_unverified`.
     informational: tuple[str, ...] = ()
@@ -154,6 +164,22 @@ class TagTeamResult:
     ghost_baseline: Optional[dict] = None
     #: SWIZZLE's attacks on the governor, as it reported them (scenario, severity, status), when they ran.
     attacks: Optional[tuple] = None
+    #: Warden's fingerprint of the tree at the end of the run, taken before any put-back: the held tree for a held
+    #: run, the standing tree for an ACCEPT. None when the run never reached the tree.
+    held_tree_digest: Optional[str] = None
+    #: The Evidence handed to the Judge, kept so the record can carry it. None when no Judge was asked.
+    evidence: Optional[Evidence] = None
+    #: The Finisher's applied change as a cycle (its files before and after), when one stands.
+    finish_cycle: Optional[Cycle] = None
+    #: Every suite pass of the run, in order: {"pass", "when", "tree_digest", "reused_from", "result"}. A pass on a
+    #: tree whose digest this run already measured reuses that result and names the pass it came from.
+    suite_passes: tuple[dict, ...] = ()
+    #: Ghost's own severity word (critical, major, minor, informational) per finding id, as Ghost said it. The claim
+    #: row carries it as `severity`, the same word the Judge gets in `evidence.ghost_severity` when that field exists.
+    ghost_words: Optional[dict] = None
+    #: What a claim-seat commit removed (a file deleted, a code file shrunk), as `deletion.removal_rows` reads it. The
+    #: claim row carries it as `removals`. Empty for every other run: only the claim seat's removals are applied.
+    removals: tuple[dict, ...] = ()
 
     @property
     def suite_before(self) -> Optional[SuiteRun]:
@@ -190,6 +216,10 @@ class TagTeam:
         max_declined: int = DEFAULT_MAX_DECLINED,
         joins: Sequence[Path] = (),
         allow_uncommitted_instruments: bool = False,
+        suite_always: bool = False,
+        chronicle_entries: Sequence[Mapping[str, Any]] = (),
+        reuse_chronicle_suite: bool = False,
+        record_suite_environment: bool = False,
     ) -> None:
         #: Let an instrument root that is not a git checkout with a readable version run (see
         #: `isolation.verify_root`). Off: such a root is refused. On: it runs, the run record says so, and the run
@@ -221,6 +251,16 @@ class TagTeam:
         #: Seconds one seat call may take. None or 0 turns the limit off.
         self.seat_timeout = seat_timeout
         self.max_declined = max_declined
+        #: Run the suite at every pass. Off: a pass on a tree whose fingerprint this run already measured reuses
+        #: that result (six passes become three on a run with one change and one finishing edit). Never across runs.
+        self.suite_always = suite_always
+        #: The lines of the chronicle read before this run (see `warden.chronicle`), and whether the first suite pass
+        #: may take a green result a line recorded for this very tree under the same environment. Off by default; the
+        #: chronicle is an unsigned file, so this trusts whoever can edit it. `record_suite_environment` has every
+        #: measured pass carry the environment key the chronicle line needs; reuse implies it.
+        self.chronicle_entries = tuple(chronicle_entries)
+        self.reuse_chronicle_suite = reuse_chronicle_suite
+        self.record_suite_environment = record_suite_environment or reuse_chronicle_suite
 
     def run(
         self,
@@ -266,6 +306,15 @@ class TagTeam:
         self._unproven = self._unproven_instruments() if self.allow_uncommitted_instruments else []
         self._skipped: list[str] = []
         self._skipped_more = 0
+        self._evidence: Optional[Evidence] = None
+        #: Ghost's own severity word for every finding id seen in this run (critical, major, minor,
+        #: informational), as the scanner said it, apart from Warden's remapped `Defect.severity`.
+        self._ghost_words: dict[str, str] = {}
+        self._suite_passes: list[dict] = []
+        #: The removals a claim-seat commit makes, read before they are applied (see `deletion.removal_rows`).
+        self._removals: list[dict] = []
+        #: Tree fingerprint -> the number of the pass that measured it, within this run only.
+        self._suite_seen: dict[str, int] = {}
         lock = runstate.TargetLock(target)
         try:
             held = lock.acquire()
@@ -328,6 +377,8 @@ class TagTeam:
             decision, said = "INTERRUPTED", f"Warden received {err.signal_name} and stopped."
         elif isinstance(err, SeatBrokeCharter):
             decision, said = "REJECT", str(err)
+        elif isinstance(err, ClaimNotLanded):
+            decision, said = "USAGE_ERROR", f"{err} Nothing was measured and everything was put back."
         elif isinstance(err, GhostUnavailable):
             decision, said = "INCONCLUSIVE", str(err)
             self._down.add("ghost")
@@ -351,13 +402,20 @@ class TagTeam:
             notes=tuple(self._notes + [said]), unmeasured=self._unmeasured(self._sound, never_ran=True),
             reason=said, ghost_scan=self._ghost_info, drafter_skipped=self._skipped_lines(),
             ghost_baseline=self._baseline_report(), swizzle_sound=self._sound,
-            informational=tuple(self._info))
+            informational=tuple(self._info), suite_passes=tuple(self._suite_passes),
+            ghost_words=dict(self._ghost_words))
 
     def _settle(self, target: Path, result: TagTeamResult) -> TagTeamResult:
         """A run that does not end accepted leaves the tree as it was found. An ACCEPT_UNVERIFIED run
         is also put back, but its final state is saved first as a held result a human can approve."""
         start = self._start
-        if result.decision in _ENDS_ACCEPTED or start is None:
+        if start is None:
+            return result
+        try:
+            result = replace(result, held_tree_digest=_fingerprint(target))
+        except OSError:
+            pass
+        if result.decision in _ENDS_ACCEPTED:
             return result
         try:
             changed = start.changes()
@@ -419,8 +477,12 @@ class TagTeam:
         self._seat = "Warden"  # not reached on an error, so the handler can still name the seat
 
     def _judge(self, target, authorization, cycles, first, current, finish, finished, sound,
-               declined, python, notes, start):
+               declined, python, notes, start, finisher_ran):
         """Hand the evidence to the Judge. Only the Judge can turn a run into ACCEPT.
+
+        `finisher_ran` is True when the Finisher's `finish` was called after the loop converged (it may have
+        had nothing to finish) and False when no Finisher was seated. This method is reached only on those
+        two paths, so the answer is always known here and `Evidence.finisher_ran` is never left at None.
 
         REJECT puts the whole tree back as it was found. INSUFFICIENT (the Judge cannot decide) leaves
         the changes held and unjudged. A Judge that fails or answers wrongly ends the run as ERROR.
@@ -444,17 +506,25 @@ class TagTeam:
         suite_after = self._suite(target, python, notes, "final state, for the Judge")  # may stop the run
         first_suite = next((c.suite_before for c in cycles if c.suite_before is not None), None)
         ghost = self.ghost_tools_root is not None
+        extra: Dict[str, Any] = {}
+        if ghost and "ghost_severity" in {f.name for f in dataclasses.fields(Evidence)}:
+            # CNS 2.1.0 and later: the scanner's own severity word beside each id. Under CNS 2.0.0 the field is
+            # absent and nothing here changes; ghost_before and ghost_after stay bare ids either way.
+            ids = {d.identity for d in first} | {d.identity for d in current}
+            extra["ghost_severity"] = {i: self._ghost_words[i] for i in sorted(ids) if i in self._ghost_words}
         evidence = Evidence(
             target=str(target), scope=authorization.scope if authorization else "",
             cycles=tuple((c.number, c.outcome) for c in cycles), changed=tuple(edits),
-            judging_files_touched=tuple(sorted({p for p, _ in edits if is_protected(p)})),
+            judging_files_touched=tuple(sorted({p for p, _ in edits if _judging(target, p)})),
             suite_before=first_suite if first_suite is not None else suite_after, suite_after=suite_after,
             ghost_before=tuple(sorted(d.identity for d in first)) if ghost else None,
             ghost_after=tuple(sorted(d.identity for d in current)) if ghost else None,
             declined=tuple(sorted(declined)), swizzle_proofs=sound, attacks=attacks,
             unmeasured=self._unmeasured(sound), notes=tuple(notes),
             assay=({**self._assay, "floor": self.assay_floor} if self._assay_state else None),
-            ghost_baseline_before=self._baseline_first, ghost_baseline_after=self._baseline_last)
+            ghost_baseline_before=self._baseline_first, ghost_baseline_after=self._baseline_last,
+            finisher_ran=finisher_ran, **extra)
+        self._evidence = evidence
         # A Judge that raises, or answers with the wrong kind of thing or an unknown label, has approved
         # nothing: the error ends the run (ERROR) and the whole tree is put back like any other non-accept.
         assert self.judge is not None  # _judge is only reached when a Judge is seated
@@ -590,9 +660,11 @@ class TagTeam:
         base0 = _fingerprint(target)
         start = self._start
         declined: set[str] = set()
+        #: True once the Finisher's `finish` has been called in this run (see `_judge`).
+        finisher_called = False
 
         def stop(decision: str, why: str, cycles=(), converged=False, current=None,
-                 finish=None, finished=False, unsound=False) -> TagTeamResult:
+                 finish=None, finished=False, unsound=False, finish_cycle=None) -> TagTeamResult:
             shown_sound = False if unsound else sound
             candidate = decision == "ACCEPT"
             will_judge = candidate and self.judge is not None
@@ -607,13 +679,20 @@ class TagTeam:
             if will_judge:
                 judged, verdict, extra = self._judge(
                     target, authorization, tuple(cycles), first, reobserved, finish, finished,
-                    sound, declined, python, notes, start)
+                    sound, declined, python, notes, start, finisher_called)
                 why += extra
                 # The Judge's run can itself reveal a gap (SWIZZLE's attacks not run), so look again.
                 missing = self._unmeasured(shown_sound)
                 gaps = tuple(m for m in missing if m != "judge")
                 # Whatever the Judge says, a run with gaps in its measurements is not a plain ACCEPT.
                 decision = "ACCEPT_UNVERIFIED" if judged == "ACCEPT" and gaps else judged
+            if self._removals and decision == "ACCEPT":
+                # The owner's ruling of 2026-10-30: a claimed commit that deletes a file or shrinks code is applied
+                # and measured, and the machine does not approve it. Whatever the Judge says, it ends held for a
+                # named human.
+                decision = "ACCEPT_UNVERIFIED"
+                why += (f" Held for a named human: the claimed commit removes code ({_removal_words(self._removals)}); "
+                        "the removal was applied and measured, and the machine does not approve it.")
             if candidate and decision in {"ACCEPT", "ACCEPT_UNVERIFIED"}:
                 # The floor is Warden's to enforce: a Judge's ACCEPT (or none at all) does not waive it.
                 below = self._below_floor()
@@ -630,7 +709,9 @@ class TagTeam:
                 verdict=verdict, reason=why.strip(), ghost_scan=self._ghost_info,
                 ghost_baseline=self._baseline_report(),
                 drafter_skipped=self._skipped_lines(), informational=tuple(self._info),
-                attacks=self._attacks)
+                attacks=self._attacks, evidence=self._evidence, finish_cycle=finish_cycle,
+                suite_passes=tuple(self._suite_passes), ghost_words=dict(self._ghost_words),
+                removals=tuple(self._removals))
 
         if self._stale_baseline:
             return stop("REJECT", f"Ghost's baseline has {self._stale_baseline} entr"
@@ -711,7 +792,15 @@ class TagTeam:
                 notes.append(f"Cycle {number}: change declined. {why}.")
                 continue
             removes = is_deletion(target, proposal)
-            if removes:
+            # A commit the operator named (the claim seat) is governed whole: its removals are applied, measured and
+            # held for a named human, not run through the keep test and commented out. Any other actor's removal
+            # meets the gate below exactly as it always did.
+            claimed = removes and isinstance(self.drafter, ClaimDrafter) and proposal.claim is not None
+            if claimed:
+                self._removals = removal_rows(target, proposal)
+                notes.append(f"Cycle {number}: the claimed commit removes code ({_removal_words(self._removals)}); "
+                             "it is applied and measured, and the run will end held for a named human.")
+            elif removes:
                 scope, why = self._keep_test(target, proposal, observed, python, notes, number)
                 if scope == "systemic":
                     cycles.append(Cycle(number, len(observed), proposal, False, "REFUSED"))
@@ -733,16 +822,17 @@ class TagTeam:
             seen.add(key)
             attempts += 1
             cycle = self._apply(target, proposal, authorization, python, notes, number,
-                                len(observed))
+                                len(observed), validated=claimed)
             cycles.append(cycle)
             if cycle.outcome == "SUITE_RED":
-                return stop("INCONCLUSIVE", f"Cycle {number}: the suite is not green; nothing was written.", cycles)
+                return stop("INCONCLUSIVE", f"Cycle {number}: the suite is not green ({_red(cycle)}); nothing was "
+                            "written.", cycles)
             if cycle.outcome != "APPLIED":
                 return stop("REJECT", f"Cycle {number}: {cycle.outcome}. The change was put back; "
                             "the loop stopped.", cycles)
             after = self._reinspect(target, observed, python, notes)
             new = {d.ghost_id for d in after if d.ghost_id} - {d.ghost_id for d in observed if d.ghost_id}
-            if removes and new:
+            if removes and not claimed and new:
                 _restore(target, cycle.restore)
                 proposal.status = TransformationStatus.REJECTED
                 cycle.applied, cycle.outcome = False, "DECLINED"
@@ -771,6 +861,7 @@ class TagTeam:
         facts = Facts(suite=self._suite(target, python, notes, "converged"),
                       remaining=observed, cycles=len([c for c in cycles if c.applied]),
                       unmeasured=self._unmeasured(end_sound))
+        finisher_called = True
         with self._seated("The Finisher"), watch(target, "The Finisher"):
             finish = _expect(self.finisher.finish(target, _fingerprint(target), facts), "The Finisher")
         if finish is None or not finish.edits:
@@ -783,8 +874,9 @@ class TagTeam:
                         cycles, converged=True, finish=finish)
         done = self._apply(target, finish, authorization, python, notes, 0, len(observed))
         if done.outcome != "APPLIED":
-            return stop("FINISH_REJECTED", f"Finishing: {done.outcome}. The finishing change was put back.",
-                        cycles, converged=True, finish=finish)
+            red = _red(done)
+            return stop("FINISH_REJECTED", f"Finishing: {done.outcome}{f' ({red})' if red else ''}. The finishing "
+                        "change was put back.", cycles, converged=True, finish=finish, finish_cycle=done)
         after = self._reinspect(target, observed, python, notes)
         new = {d.ghost_id for d in after if d.ghost_id} - {d.ghost_id for d in observed if d.ghost_id}
         if new:
@@ -794,7 +886,7 @@ class TagTeam:
                         "The finishing change was put back.", cycles, converged=True,
                         current=observed, finish=finish)
         return stop("ACCEPT", "Loop converged and the finishing change stands.", cycles,
-                    converged=True, current=after, finish=finish, finished=True)
+                    converged=True, current=after, finish=finish, finished=True, finish_cycle=done)
 
     # -- steps ------------------------------------------------------------
 
@@ -867,6 +959,16 @@ class TagTeam:
             notes.append(f"Cycle {number}: the change could not be applied ({err}); it was put back.")
             return _Applied(number, seen, proposal, False, "PUT_BACK", before, None, snapshot)
         notes.append(f"Cycle {number}: transformation applied under granted authorization.")
+        # What landed, by file and as a tree, so the record can name the change by digest.
+        landed = {e.path: ((target / e.path).read_bytes() if (target / e.path).is_file() else None)
+                  for e in proposal.edits}
+        tree_after = _fingerprint(target)
+        off = _landing_problem(proposal, landed)
+        if off:
+            # Refused before anything is measured: the row would name bytes that did not land.
+            _restore(target, snapshot)
+            proposal.status = TransformationStatus.REJECTED
+            raise ClaimNotLanded(off)
         try:
             after = self._suite(target, python, notes, f"cycle {number} after")
         except SuiteChangedSource:
@@ -877,8 +979,8 @@ class TagTeam:
             _restore(target, snapshot)
             proposal.status = TransformationStatus.REJECTED
             notes.append(f"Rule 7: {broken}.")
-            return _Applied(number, seen, proposal, False, "PUT_BACK", before, after, snapshot)
-        return _Applied(number, seen, proposal, True, "APPLIED", before, after, snapshot)
+            return _Applied(number, seen, proposal, False, "PUT_BACK", before, after, snapshot, landed, tree_after)
+        return _Applied(number, seen, proposal, True, "APPLIED", before, after, snapshot, landed, tree_after)
 
     def _calibrate(self, python: str, notes: list[str]) -> Optional[bool]:
         """SWIZZLE's instrument check: are its own planted defects still real?"""
@@ -926,6 +1028,7 @@ class TagTeam:
                  notes: list[str]) -> tuple[Defect, ...]:
         if findings is not None:
             observed = _defects(findings)
+            self._note_words(findings)
             self._absorb_ghost(findings)
             notes.append(f"Ghost Tools findings loaded ({len(observed)}), not scanned in this process.")
             return observed
@@ -933,6 +1036,7 @@ class TagTeam:
             notes.append("Ghost Tools scan SKIPPED: no ghost_tools_root. Observation is UNKNOWN.")
             return ()
         raw = self._scan(target, python)
+        self._note_words(raw)
         stale = [f for f in raw if isinstance(f, Mapping) and f.get("detector") == STALE_BASELINE_DETECTOR]
         self._stale_baseline = _inert_baseline_entries(stale)
         observed = _defects(raw)
@@ -999,6 +1103,12 @@ class TagTeam:
             self._notes.append("Ghost scan has gaps, so Ghost is counted as partly measured: "
                                + "; ".join(self._ghost_gaps[:5]) + ("; and more" if len(self._ghost_gaps) > 5 else ""))
 
+    def _note_words(self, findings) -> None:
+        """Keep Ghost's own severity word per finding id, for `Evidence.ghost_severity` (see `_judge`)."""
+        for f in findings:
+            if isinstance(f, Mapping) and isinstance(f.get("id"), str) and isinstance(f.get("severity"), str):
+                self._ghost_words[f["id"]] = _plain(f["severity"], 40)
+
     def _baseline_report(self) -> Optional[dict]:
         if self._baseline_first is None and self._baseline_last is None:
             return None
@@ -1052,21 +1162,67 @@ class TagTeam:
             if when.endswith("before"):
                 notes.append("Rule 7 NOT RUN: run_tests=False. Behavior preservation is unmeasured.")
             return None
+        digest = _fingerprint(target)
+        number = len(self._suite_passes) + 1
+        earlier = self._suite_seen.get(digest)
+        if earlier is not None and not self.suite_always:
+            # The same bytes were measured in this run already; a second run of the suite on them would measure the
+            # suite's own stability, not the change. Reuse is never across runs: this map lives for one run only.
+            result = self._suite_passes[earlier - 1]["result"]
+            self._suite_ran = True
+            notes.append(f"Rule 7 suite pass {when}: reused the result of pass {earlier}, tree digest {digest} "
+                         "identical.")
+            self._suite_passes.append({"pass": number, "when": when, "tree_digest": digest, "reused_from": earlier,
+                                       "result": result})
+            return result
+        environment = self._environment(target, python)
+        if (self.reuse_chronicle_suite and not self.suite_always and when == "cycle 1 before" and number == 1
+                and digest == self._baseline_fp):
+            # Opt-in (--reuse-chronicle-suite): an earlier run of this chronicle measured these very bytes, green, under
+            # this very environment. The chronicle is an unsigned file; this trusts whoever can edit it.
+            found = chronicle.reusable_suite(self.chronicle_entries, digest, environment)
+            if found is not None:
+                run_id, recorded = found
+                known = {f.name for f in dataclasses.fields(SuiteRun)}
+                result = SuiteRun(**{k: v for k, v in recorded.items() if k in known})
+                self._suite_ran = True
+                notes.append(f"Rule 7 suite pass {when}: reused the result of chronicle run {run_id}, tree digest "
+                             f"{digest} identical.")
+                self._suite_passes.append({"pass": number, "when": when, "tree_digest": digest,
+                                           "reused_from": f"chronicle:{run_id}", "result": result,
+                                           "environment": environment})
+                self._suite_seen.setdefault(digest, number)
+                return result
+            notes.append(f"Rule 7 suite pass {when}: no chronicle run recorded a green result for this tree under this "
+                         "environment, so the suite was run.")
         source_before = _source_hash(target)
         self._suite_ran = True
         result = run_suite(target, python, self.suite_timeout, self.suite_runner)
         runner = " (cargo)" if isinstance(result, CargoSuiteRun) else ""
         notes.append(f"Rule 7 suite{runner} {when}: {result.describe()}.")
+        self._suite_passes.append({"pass": number, "when": when, "tree_digest": digest, "reused_from": None,
+                                   "result": result, "environment": environment})
+        self._suite_seen.setdefault(digest, number)
         if _source_hash(target) != source_before:
             notes.append(f"Rule 7: {SOURCE_CHANGED_NOTE}.")
             raise SuiteChangedSource(SOURCE_CHANGED_NOTE)
         return result
 
+    def _environment(self, target: Path, python: str) -> Optional[dict]:
+        """The environment key of the suite about to run (see `suite.suite_environment`), or None when it is not asked
+        for or cannot be told."""
+        if not self.record_suite_environment:
+            return None
+        runner = detect_runner(target) if self.suite_runner == "auto" else self.suite_runner
+        return suite_environment(python, runner)
+
     def _reinspect(self, target: Path, observed: tuple[Defect, ...], python: str,
                    notes: list[str]) -> tuple[Defect, ...]:
         if self.ghost_tools_root is None:
             return observed
-        reobserved = _defects(self._scan(target, python))
+        raw = self._scan(target, python)
+        self._note_words(raw)
+        reobserved = _defects(raw)
         before_ids = {d.ghost_id for d in observed if d.ghost_id}
         after_ids = {d.ghost_id for d in reobserved if d.ghost_id}
         notes.append(f"Ghost re-inspected: {len(reobserved)} finding(s); "
@@ -1078,10 +1234,16 @@ class TagTeam:
 @dataclass
 class _Applied(Cycle):
     restore: Dict[str, Optional[bytes]] = field(default_factory=dict)
+    #: Each touched file's bytes right after the apply (None: the file was deleted), and the tree's fingerprint then.
+    applied_bytes: Dict[str, Optional[bytes]] = field(default_factory=dict)
+    tree_after: Optional[str] = None
 
-    def __init__(self, number, observed, proposal, applied, outcome, before, after, restore):
+    def __init__(self, number, observed, proposal, applied, outcome, before, after, restore, applied_bytes=None,
+                 tree_after=None):
         super().__init__(number, observed, proposal, applied, outcome, before, after)
         self.restore = restore
+        self.applied_bytes = applied_bytes or {}
+        self.tree_after = tree_after
 
 
 def _commented(target: Path, proposal: Transformation) -> Optional[Transformation]:
@@ -1096,14 +1258,65 @@ def _commented(target: Path, proposal: Transformation) -> Optional[Transformatio
     return proposal
 
 
+def _landing_problem(proposal: Transformation, landed: Mapping[str, Optional[bytes]]) -> str:
+    """For a claimed change, why the bytes now on disk are not the claimed commit's, naming the file and both digests;
+    "" when every file landed as claimed (or the proposal is not a claim)."""
+    if proposal.claim is None:
+        return ""
+    for entry in proposal.claim.get("files") or ():
+        path = entry["path"]
+        data = landed.get(path)
+        digest = None if data is None else hashlib.sha256(data).hexdigest()
+        if digest != entry.get("after_sha256"):
+            return (f"{path}: the bytes that landed (sha256 {digest}) are not the bytes of the claimed change "
+                    f"(sha256 {entry.get('after_sha256')}), so the claim cannot be governed as named.")
+    return ""
+
+
+def _removal_words(removals: Sequence[dict]) -> str:
+    """The removals as a short phrase: "deleted a.py (4 lines), shrunk b.py (9 to 3 lines)"."""
+    parts = [f"deleted {r['path']} ({r['lines_before']} lines)" if r["kind"] == "deleted"
+             else f"shrunk {r['path']} ({r['lines_before']} to {r['lines_after']} lines)" for r in removals[:5]]
+    return ", ".join(parts) + (f", and {len(removals) - 5} more" if len(removals) > 5 else "")
+
+
+def _red(cycle: Cycle) -> str:
+    """What the suite said when a cycle's change did not stand because of it, failing test ids included; empty
+    when the suite was green on both sides (the change failed for another reason)."""
+    for run in (cycle.suite_after, cycle.suite_before):
+        if run is not None and not run.green:
+            return run.describe()
+    return ""
+
+
+def _judging(target: Path, rel: str) -> bool:
+    """True when an applied edit touched a protected path (tests, test or build configuration, CI, dependency lists,
+    git hooks), by its own name or by where a link in it really points. Named to the Judge, never refused here."""
+    hooks = hooks_dirs(target)
+    real = real_rel(target, rel)
+    return is_protected(rel, hooks) or (real is not None and is_protected(real, hooks))
+
+
 def _fingerprint(target: Path) -> str:
-    """A short hash of the tree, so a proposal can say which state it was written against."""
+    """A short hash of the tree, so a proposal can say which state it was written against.
+
+    The hash covers the number of files, and for each file its length-prefixed path, the file's executable bit and its
+    length-prefixed bytes, so no shift of a boundary between a path and its content, or between two files, can give
+    two different trees the same hash. Warden 0.16.2 and earlier hashed the path and then the bytes with no delimiter;
+    a hash they wrote does not equal the one written now."""
     digest = hashlib.sha256()
     skip = {".git", "__pycache__", ".pytest_cache", ".venv", "node_modules"}
-    for path in iter_tree(target):
-        if path.is_file() and not skip.intersection(path.relative_to(target).parts):
-            digest.update(str(path.relative_to(target)).encode())
-            digest.update(path.read_bytes())
+    entries = [path for path in iter_tree(target)
+               if path.is_file() and not skip.intersection(path.relative_to(target).parts)]
+    digest.update(len(entries).to_bytes(8, "big"))
+    for path in entries:
+        name = os.fsencode(str(path.relative_to(target)))  # a name that is not valid UTF-8 still fingerprints
+        data = path.read_bytes()
+        digest.update(len(name).to_bytes(8, "big"))
+        digest.update(name)
+        digest.update(b"\x01" if path.stat().st_mode & stat.S_IXUSR else b"\x00")
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
     return digest.hexdigest()[:16]
 
 
@@ -1126,7 +1339,10 @@ def _changes_nothing(target: Path, proposal: Transformation) -> bool:
             if edit.kind == "delete" or not path.is_file():
                 return False
             current = textio.read_text(path, edit.path)
-            if edit.kind == "write":
+            if edit.kind == "write" and proposal.claim is not None:
+                # A claimed commit is its bytes: a change of line endings alone is a change.
+                same = edit.new.encode("utf-8") == path.read_bytes()
+            elif edit.kind == "write":
                 same = _lf(edit.new) == _lf(current)
             elif edit.kind == "replace":
                 same = _lf(edit.old) == _lf(edit.new)
@@ -1212,6 +1428,8 @@ class _Snap(dict):
     def __init__(self) -> None:
         super().__init__()
         self.new_dirs: list = []
+        #: Each existing file's permission bits, so a deleted executable comes back executable.
+        self.modes: Dict[str, int] = {}
 
 
 def _snapshot(target: Path, proposal: Transformation) -> Dict[str, Optional[bytes]]:
@@ -1220,6 +1438,8 @@ def _snapshot(target: Path, proposal: Transformation) -> Dict[str, Optional[byte
     for edit in proposal.edits:
         path = target / edit.path
         out[edit.path] = path.read_bytes() if path.is_file() else None
+        if path.is_file():
+            out.modes[edit.path] = stat.S_IMODE(path.stat().st_mode)
         parent = path.parent
         while parent != target and target in parent.parents and not parent.exists():
             if parent not in out.new_dirs:
@@ -1235,7 +1455,7 @@ def _restore(target: Path, snapshot: Mapping[str, Optional[bytes]]) -> None:
             path.unlink(missing_ok=True)
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
+            textio.write_bytes_with_mode(path, data, getattr(snapshot, "modes", {}).get(rel))
     # Folders the apply made, now empty again, go too (deepest first).
     for folder in sorted(getattr(snapshot, "new_dirs", ()), key=lambda d: len(d.parts), reverse=True):
         try:

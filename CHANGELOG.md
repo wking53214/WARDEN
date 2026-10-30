@@ -4,9 +4,383 @@ All notable changes to Warden. The format follows [Keep a Changelog](https://kee
 and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single source of truth.
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
-Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged. The
+Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged, and
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3` and `0.16.4`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
-decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
+decision, and the repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by tag.
+
+## [0.16.4] - 2026-10-30
+
+`CONTRACT` is still `"1"`. Not tagged. One step, one commit.
+
+### Changed
+
+- **Pins.** The pins on ghost_tools, SWIZZLE and ASSAY move to the Stage 5 Wave 1 heads (ghost_tools 1.10.14 `a9115b5`, SWIZZLE 0.8.13 `87cddb4`, ASSAY 0.11.10 `f7ea4a4`). The Judge in the tested set stays at 0.5.3 (`62843b8`). Pre-existing test edited under the exact-behaviour rule: `tests/test_docs.py` (the versions written next to the pins and the tag sentence, which now lists 0.16.4). Nothing else about it changed.
+- **Claim row.** `claimrow.KEYS` gains, after `removals`, `target_tree_digest` and `base_matches_parent`. Record only: no new refusal. `--claim-commit` help says the touched files must match the parent and the row says whether the whole tree did.
+- README: quickstart date labelled, "all seven live" lists seven, the claim seat bullet and the known-gaps bullet say per path what is refused (a `--claim-commit` rename is a delete plus an add and ends held; a `--claim-diff` rename header is refused; quoted paths are refused by `--claim-diff` only), suite reuse across runs is reconciled with the opt-in flag, and WHAT DOES NOT WORK now says plainly that `--authorize` is an unauthenticated string, that `--cns` and the manifest are the trust root, that a manifest omitting WARDEN is not refused (owner decision pending), that the suite runs unsandboxed, that a change passing every test can be wrong, that `drafter-main` and `drafter.git` are not matched, and that the held file keeps `.git/config` base64 encoded.
+
+### Fixed
+
+- **The claim row named bytes that did not land.** The claim seat wrote through `textio.encode_like`, which keeps a pure-CRLF file CRLF, so a claimed commit turning CRLF into LF left CRLF on disk while `after_sha256` was the commit's blob. The claim seat now writes the claimed bytes exactly, `after_sha256` is the digest of the landed bytes, and a landed digest that differs from the claimed blob refuses the run before the after-suite (`USAGE_ERROR`, exit 2, the file and both digests named, everything put back). A claimed commit that changes only line endings was skipped as "nothing to propose"; it is applied. Drafter and Finisher edits keep `encode_like`.
+- **A held deletion of an executable left the tree dirty.** The snapshot restores (`guard.Snapshot` and the proposal snapshot) now record and restore permission bits.
+- **Credentials leaked into the record.** `claimrow.strip_credentials` removes URL and scp-style userinfo and token-like query or fragment parameters from the origin before it is recorded or slugged.
+- **`warden chronicle DIR`** exits 2 naming the file and line for a non-UTF-8 file, a bad JSON line or a non-object line.
+- **A claimed path through a symbolic link** is refused (lstat per component), and a `--claim-diff` that is not a regular file is refused before it is opened.
+- **`_fingerprint`** encodes names with `os.fsencode`, so a tree with a non-UTF-8 file name fingerprints. Hashes of ordinary names are unchanged.
+
+### Correction
+
+- The 0.16.3 entry "A damaged chronicle gave a traceback or was silently skipped" says `chronicle.read` now refuses a damaged file and exits 2. That was true of the run path (`warden tagteam --chronicle`) only. The reader command `warden chronicle DIR` still gave a traceback (exit 1) for a non-UTF-8 file and skipped bad lines until 0.16.4. The 0.16.3 text is left as it was.
+- README before 0.16.4 said the target "must stand at the parent". Only the touched files were compared.
+
+## [0.16.3] - 2026-10-30
+
+`CONTRACT` is still `"1"`. Not tagged. One step, one commit.
+
+### Changed
+
+- **Pins.** The pins on ghost_tools, SWIZZLE and ASSAY move to the Stage 4 Wave 1 heads (ghost_tools 1.10.13 `eaf2ae8`,
+  SWIZZLE 0.8.12 `60ba9fc`, ASSAY 0.11.9 `3faba86`: documentation-only releases). The Judge in the tested set moves from 0.5.1
+  (`ad3d66f`) to 0.5.3 (`62843b8`) by owner decision, so that Warden's own `circuit` job exercises the rulings of the Judge that
+  ships. Pre-existing test edited under the exact-behaviour rule: `tests/test_docs.py` (the versions written next to the pins, and
+  the tag sentence, which now lists 0.16.3). Nothing else about those tests changed.
+- The roster text (README, STACK.md) says the circuit is five repositories, that any actor's real change enters through the claim
+  seat, and that DRAFTER, BURNISH and WATCHER_MCU are released from the circuit. A bare `--stack` still requires all six checkouts.
+  The README no longer cites the 0.13.9 run as the most recent: the run for any head is on the Actions page and the last checked
+  runs are listed in the CNS repository's `docs/STATUS.md`. Dated records (the 2026-10-14 run, the 2026-10-22 and 2026-10-23
+  self-hosting record) are labelled as the old circuit and are otherwise unchanged. Every Warden run declines eight Ghost checks
+  (the count is eight because ghost_tools 1.10.11 lists the ledger as declined under `--no-ledger`, not because Warden declined a
+  new check).
+
+### Fixed
+
+- **A claimed mode change was not refused.** The README and the claim module promised it, but a commit whose only change was a mode
+  (identical blobs, 100644 to 100755) was read as a write of the same text and went through, and `new file mode 100755` in a
+  `--claim-diff` file was written without the executable bit. A commit file whose old and new mode differ, a new file whose mode is
+  not 100644 (in a commit or a `--claim-diff` file) and `old mode`/`new mode` headers are now refused with a reason that names the
+  path and both modes (`warden/claim.py`).
+- **The tree fingerprint could collide.** `tagteam._fingerprint` hashed each path and then its bytes with no delimiter, so a shift
+  of the boundary between a path and its content, or between two files, gave two different trees one hash, and the executable bit
+  was not hashed. It now hashes the number of entries and, per entry, the length-prefixed path, the executable bit and the
+  length-prefixed bytes; the output is still 16 hex digits. **Fingerprints, and chronicle `reusable_suite` matches, from Warden
+  0.16.2 and earlier no longer match**: a chronicle line from an older Warden is simply not reused, and a held result saved by an
+  older Warden cannot be kept (its baseline fingerprint differs). The snapshot still does not give back the executable bit of a
+  deleted file it restores; the fingerprint now sees that bit (recorded in the README, not changed here).
+- **A damaged chronicle gave a traceback or was silently skipped.** `chronicle.read` raised on a file that is not UTF-8 and skipped a
+  line that is not JSON without a word. Both now refuse the run with exit 2 (`USAGE_ERROR`, "Nothing was run") with a reason naming
+  the file and the line. Blank lines are ignored. The chronicle stays an unsigned plain file; no tamper detection was added.
+
+## [0.16.2] - 2026-10-30
+
+`CONTRACT` is still `"1"`. Not tagged. One step, one commit.
+
+### Fixed
+
+- **A `--stack` folder holding a seat the pinned manifest omits was accepted when an option supplied the seat.** With a manifest
+  that omits `drafter`, a folder that still held a drafter checkout was refused on a bare `--stack` but accepted with
+  `--claim-commit`, `--claim-diff` or an explicit `--drafter`; the same for `burnish` with `--finisher`. The README says such a
+  folder is refused. `_resolve_stack` compared the folder with the manifest only for a seat whose option was still unset, and
+  those options had already set it. The rule now holds in every combination: a releasable seat (`drafter`, `burnish`) is used
+  only if the manifest names it and the folder holds it, and is absent only if the manifest omits it and the folder lacks it;
+  any other combination is a usage error (exit 2) naming the seat, made before any option is substituted. A bare `--stack`
+  is unchanged, the governed target itself is not counted as a held seat (as in the other checks), and a manifest that is not
+  one this Warden accepts (wrong schema or contract, no repositories) is treated as no manifest here, so its own problem is the
+  one reported. New tests in `tests/test_stack_released.py`. Pre-existing test edited: `tests/test_docs.py`
+  (`test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged`: the tag sentence and the version prefix list
+  gain 0.16.2, because the test pins the version to the sentence); no test that asserted the old acceptance existed.
+
+## [0.16.1] - 2026-10-30
+
+`CONTRACT` is still `"1"`. Not tagged. Two steps (Pin22), one commit each. No Warden code changed.
+
+### Changed
+
+- **Pin22 step 1: the CNS pin moves from the tag `v2.1.0` to the tag `v2.2.0`** (`ce6bd05578a7a3e3cafa0cfa1e9a2cca8a5f171f`, a
+  lightweight tag). The `cns` package at v2.2.0 equals v2.1.0 except its version string; the release adds a composition layer
+  beside it that Warden does not import. The pins on the siblings move to the Wave 1 heads: ghost_tools 1.10.12
+  (`e77f1bc`), SWIZZLE 0.8.11 (`dfef358`) and ASSAY 0.11.8 (`fe0179d`), in `pyproject.toml` (the `ghost` extra), the
+  workflow, the `--expect` lines, `STACK.md` and the README. The Judge tested set stays at JUDGE `ad3d66f` (0.5.1), whose own
+  CNS dependency is still `v2.1.0`; it is installed with `--no-deps`, so CNS there is this repository's pin, and the workflow
+  comment now says so. Pre-existing test edited under the exact-behaviour rule: `tests/test_docs.py` (the version table in
+  the pins test, and `test_the_cns_pin_is_the_v2_1_0_tag_and_is_stated_in_stack`, renamed `..._v2_2_0_tag_...`, with the pin
+  text, the commit and the `STACK.md` row). The `circuit` job passes against the new sibling heads.
+- **Pin22 step 2: version 0.16.1**, this entry, and the tag sentence in the README, here and in `tests/test_docs.py`.
+- **A governed run now declines eight checks (`mutate`, `kernel`, `structure`, `tests`, `project`, `secrets`, `correlate`,
+  `ledger`), not seven.** The count is eight because ghost_tools 1.10.11 lists the ledger as declined when it is called with
+  `--no-ledger`, as Warden always does, not because Warden declined a new check. No Warden test hard-coded seven. The README
+  states the eight beside the 2026-10-22 record; that record, and the self-hosting paragraph that quotes the 2026-10-23
+  record, keep their seven because those runs had seven. The claim row's `removals` key (0.16.0) is Warden's own key; nothing
+  in the CNS package reads it.
+
+## [0.16.0] - 2026-10-30
+
+`CONTRACT` is still `"1"`. Not tagged. Three steps (Stage 1, section W), one commit each; no pin on ghost_tools, SWIZZLE, ASSAY
+or CNS moved, and only the tested-set line for the Judge did.
+
+### Changed
+
+- **Step W1 (borderline; the owner ruled "fix the gate" on 2026-10-30): a claimed commit's removals are applied, measured and
+  held.** A commit named through the claim seat (`--claim-commit`, `--claim-diff`) that deletes a file or shrinks a code file
+  used to meet the removal gate in `warden.deletion`: refused without Ghost, declined without a cited finding, so such real
+  commits were not governed. Now, for the claim seat only (the seat object, not a field a Drafter could set), the removal is
+  applied and measured like any claimed change (suite before and after, Ghost before and after, Rule 7 unchanged), named in a
+  new claim-row key `removals` (`path`, `kind` `deleted` or `shrunk`, `lines_before`, `lines_after`, `protected`), and the run
+  ends `ACCEPT_UNVERIFIED` with the result held for a named person even when the Judge says `ACCEPT`. A removal proposed by a
+  Drafter or a Finisher, test material, Ghost's `.ghost_*` files and paths outside the project keep the gate exactly as before.
+  Before any edit the real Judge (JUDGE `ad3d66f`, 0.5.1) was run with the real Ghost, SWIZZLE and ASSAY on a claimed commit
+  that deletes a non-test file and one that shrinks a code file, in a throwaway repository, Warden's gate stepped over for the
+  probe only: it said `ACCEPT` on both (exit 0), so no JUDGE change is needed and the hold, which is Warden's, is reachable end
+  to end; the same two commits through the final code ended `ACCEPT_UNVERIFIED`, exit 3, nothing unmeasured. `removals` is
+  the last key of the claim row (`claimrow.KEYS`).
+- **Step W2: the tested set moves the Judge from 0.4.8 (`e5c3f98`) to 0.5.1 (`ad3d66f84a15ad7c320285e4d9ab006de90bdfdd`)**,
+  the head of its branch by `git ls-remote` on 2026-10-30, in the workflow header, both installs of the Judge (the `pytest` and
+  `circuit` jobs), `STACK.md` and the README. The `circuit` job now exercises the Judge's rulings: `tools/circuit_smoke.py
+  --real-judge` adds a run in which a code-scope Drafter edits a test file, and the real Judge's `INSUFFICIENT` must hold it
+  (`ACCEPT_UNVERIFIED`, exit 3, nothing unmeasured, the tree put back, the result held by digest, the row's `protected` flag).
+  The README limit "the pinned Judge still says REJECT on a protected edit" is removed.
+- **Step W3: opt-in suite reuse across runs, keyed by the chronicle** (`--reuse-chronicle-suite`, default off, needs
+  `--chronicle`). The first suite pass takes a green result an earlier chronicle line recorded for this run's base tree when
+  the environment key (Python, pytest and Warden versions, platform, suite runner, suite command) is equal; otherwise the
+  suite runs. The record, the row and a note say `chronicle:<run id>`. Chronicle lines now store `run_id` and `suite_trees` (per
+  tree the suite result, its green flag and the environment key); a line without them never matches. The chronicle is an
+  unsigned file, so whoever can edit it can make this flag skip a suite run: use it only where that person is trusted. No
+  signing or tamper detection was added.
+- Version 0.16.0, README version line and tag sentence, and this entry.
+
+### Tests
+
+- New: `tests/test_claimed_removal.py` (W1) and `tests/test_chronicle_suite_reuse.py` (W3). The circuit smoke test (W2) is
+  exercised by the `circuit` job.
+- Edited under rule 5, step W2: `tests/test_docs.py::test_the_tested_set_is_the_same_everywhere_it_is_stated`, the JUDGE
+  version `0.4.8` becomes `0.5.1` (the pinned version it asserts, nothing else).
+- Edited under rule 5, step W4: `tests/test_docs.py::test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged`
+  accepts the version `0.16.0` (the assertion about which versions the tag sentence covers, nothing else). No other
+  pre-existing test was edited.
+
+## [0.15.1] - 2026-10-29
+
+`CONTRACT` is still `"1"`. Not tagged. This release sits on the 0.15.0 head `a959724`. No code changed; the pins moved.
+Patch version.
+
+### Changed
+
+- **CNS is pinned to the tag `v2.1.0`**: `cns @ git+https://github.com/wking53214/CNS.git@v2.1.0` with the comment
+  `v2.1.0 = fde931ffa89aebec95647742256ad53033bd3d02` (the tag object is `0cc90472f7edc46c3bf40079e69fb03a06718e29`),
+  from `v2.0.0`. 2.1.0 types `RunRecord.claim`, `RunRecord.evidence` and `Evidence.ghost_severity`; Warden already
+  wrote the first two as record keys and filled the third only when the field exists, so no code changed. (Pin21
+  step 1.)
+- **The tested set moves to the 2026-10-29 heads of three siblings**: ghost_tools 1.10.10
+  `99f3d5209bc98657db91eea1c25e833136ea61ab` (the `ghost` extra too), SWIZZLE 0.8.10
+  `b7451ad417cd166d10d4897a6b7dbe076ec02029` and ASSAY 0.11.7 `8f6ef8599d9acb2a2672a5a78c36ec0e276fa78c`, in
+  `pyproject.toml`, `.github/workflows/tests.yml` (checkouts and the `circuit` job's `--expect` lines) and `STACK.md`.
+  The JUDGE pin (0.4.8, `e5c3f98`) is a tested-set line and is not moved, so the `circuit` job here still runs the older
+  Judge. The header sentence about the siblings' cns extras now says what is true: v2.1.0 for the three moved commits,
+  v1.9.0 for the JUDGE commit, which is installed with `--no-deps`. (Pin21 step 1.)
+- Version 0.15.1, README version line and tag sentence, and this entry. (Pin21 step 2.)
+
+### Tests
+
+- Edited under rule 5, Pin21 step 1: `tests/test_docs.py` (the CNS tag and commit assertions, the three sibling
+  versions, and the guard test renamed `..._v2_1_0_...`); `tests/test_ghost_severity.py` (under CNS 2.1.0 the installed
+  `Evidence` already has `ghost_severity`, so the module did not collect and `EvidenceWithout`, meant as the 2.0.0 shape,
+  inherited the field: the stand-in now declares the field keyword-only as CNS does, and `EvidenceWithout` is built from
+  the installed `Evidence` fields without `ghost_severity`; no assertion changed).
+- Edited under rule 5, Pin21 step 2: `tests/test_docs.py::test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged`
+  accepts the version `0.15.1`. Nothing else changed in any pre-existing test.
+
+## [0.15.0] - 2026-10-29
+
+`CONTRACT` is still `"1"`. Not tagged. This release sits on the 0.14.0 head `68f2a95`. CNS stays at the tag `v2.0.0`; no
+cross-repository pin moved. Minor version: a new rule for `--stack`, a new record key and a renamed row field. No exit
+code changed.
+
+### Changed
+
+- **`--stack` with a pinned manifest may leave out `drafter` and `burnish`** (the owner released both, and WATCHER_MCU,
+  from the circuit on 2026-10-29; nothing is deleted). `--stack DIR` alone is unchanged: all six checkouts are required.
+  With `--stack-manifest FILE` (or `--cns DIR`) `ghost_tools`, `swizzle`, `assay` and `judge` must be named by the
+  manifest and present; `drafter` and `burnish` are absent only when the manifest does not name them and the folder does
+  not hold them. A folder that holds one the manifest does not name is still refused as an unnamed seat, and a manifest
+  that names one the folder lacks is still refused. A stack without `drafter` needs `--claim-commit`, `--claim-diff` or
+  `--drafter` (usage error 2 otherwise); a stack without `burnish` runs with no finisher (`Evidence.finisher_ran` is
+  false); an explicit `--finisher` or `--drafter` still wins. The run record gains `released_seats` and a note
+  `released seats not seated: ...`; the claim row and `participants` list only seated seats. (Step W1.)
+- **The claim row's `new_findings[].severity` is Ghost's own word** (critical, major, minor, informational), the word the
+  Judge receives in `evidence.ghost_severity`; Warden's remapped word moves to `warden_severity` in the same entry. The
+  proof run of 2026-10-28 found the row saying "medium" where the Judge saw "minor". `TagTeamResult.ghost_words` keeps the
+  words, so this also holds under CNS 2.0.0. (Step W2.)
+- Version 0.15.0; README entries under WHAT WORKS, WHAT DOES NOT WORK and the ledger. (Step W3.)
+
+### Tests
+
+- New: `tests/test_stack_released.py` (Step W1) and one test in `tests/test_ghost_severity.py` (Step W2).
+- Edited under rule 5: Step W3, `tests/test_docs.py::test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged`
+  accepts the version `0.15.0` (the assertion about which versions the tag sentence covers). Nothing else changed in
+  any pre-existing test.
+
+## [0.14.0] - 2026-10-28
+
+`CONTRACT` is still `"1"`. This release sits on top of the 0.13.10 commit `9ecd1124e6c1b1c4ad7daed37b17f9009662dd9d`
+(the branch head `9ecd112`) and builds the four strategies of the sim9 simulations (A claim row, B severity, C chronicle,
+D suite reuse) plus the owner's two rulings on the Judge. CNS stays at the tag `v2.0.0`; the new record keys are extra keys
+there and typed from CNS 2.1.0. Not tagged. Minor version: new command-line options, a new subcommand, a changed guard
+rule and record keys. No exit code changed.
+
+### Added
+
+- **The claim seat** (`warden/claim.py`): `--claim-commit SHA` (with `--claim-repo PATH`) or `--claim-diff FILE` with
+  `--claim-subject` and `--claim-author` takes the Drafter seat with a real change, proposed once as writes and deletes
+  of UTF-8 text and then nothing. Binary files, symbolic links, submodules, renames, copies, mode changes, quoted paths and
+  a target not at the change's base are refused with a reason before anything runs (exit 2); `--claim-*` beside
+  `--drafter` is a usage error. `Transformation.claim` carries the facts. (Step 1.)
+- **The claim row** (`warden/claimrow.py`, `claim_row(result, authorization, versions)`): the record's `claim` key with
+  the shared field names (origin, base and claimed commits and tree digests, subject, author, date, diff sha256 and size,
+  files by sha256 with a protected flag, actor, authority, authorization and transformation ids, scope, suite results,
+  Ghost counts, new and closed findings, `rules_fired`, judge, decision, held digest, held tree digest, participants,
+  finisher edits) and the Judge's whole Evidence as `evidence`; both also in the held file (`held.attach`) and the
+  receipt. `TagTeamResult` gained `held_tree_digest`, `evidence`, `finish_cycle`; each applied cycle records what landed
+  by file and the tree fingerprint after the apply. (Step 2.)
+- **`Evidence.ghost_severity`** is filled with Ghost's own severity word per finding id when the installed
+  `cns.seat.Evidence` has the field (CNS 2.1.0); under 2.0.0 nothing changes. (Step 3.)
+- **Suite reuse within a run** (`--suite-always` turns it off): a pass on a tree whose fingerprint was already measured in
+  this run reuses that result, with a note and a `suite_passes` list (`reused_from`) in the record and `pass`,
+  `reused_from` on the row's suite results. Six passes become three on a run with one change and one finishing edit.
+  (Step 4.)
+- **The chronicle** (`warden/chronicle.py`, `--chronicle DIR`, `warden keep --chronicle DIR`, `warden chronicle DIR
+  [--origin X]`): one JSON line per run keyed by (origin, base commit, claimed commit) with the promises a result opens
+  if kept; a later run on the same tree settles them (HELD, BROKEN, OPEN with the measurement) into its own line and
+  its record's notes and `chronicle` key. (Step 7.)
+
+### Changed
+
+- **A protected path is applied, measured, named and held, not refused** (the owner's ruling, borderline, reviewed by the
+  author). `guard.violation` no longer refuses tests, test or build configuration, CI, dependency lists and git hooks;
+  the edit is applied and measured, `judging_files_touched` names it (by its own name or where a link really points) and
+  the Judge decides, so the run ends held for `warden keep`. Test material and `.ghost_*` files stay refused
+  (`guard.is_ghost_file`); escapes stay escapes. The pinned Judge 0.4.8 still says REJECT on such an edit. (Step 5.)
+- An `ACCEPT` record's `reason` is never empty: it says what converged, what the Judge said and what was measured. A
+  red suite at a proposal (INCONCLUSIVE) or at the finishing change (FINISH_REJECTED) names the failing tests, ten at
+  most (`suite.PytestSuiteRun.failed_ids`). (Step 6.)
+- Version 0.14.0; README entries under WHAT WORKS, WHAT DOES NOT WORK and the ledger; docs/ARCHITECTURE.md and
+  docs/EXIT_CODES.md regenerated. (Step 8.)
+
+### Fixed
+
+- `tests/test_stale_bytecode.py`'s control plants its `.pyc` where plain Python looks even when the suite runs under a
+  bytecode cache prefix, as it does under Warden's own `suite.py` (self-hosting run 3). (Step 6.)
+
+### Tests
+
+- New: `tests/test_claim_seat.py` (Step 1), `tests/test_claim_row.py` (Step 2), `tests/test_ghost_severity.py` (Step 3),
+  `tests/test_suite_reuse.py` (Step 4), `tests/test_protected_hold.py` (Step 5), `tests/test_record_honesty.py` and one
+  test in `tests/test_stale_bytecode.py` (Step 6), `tests/test_chronicle.py` (Step 7).
+- Edited under rule 5 because the behaviour they assert is what a step changed: Step 4,
+  `tests/test_closing_false_accepts.py::test_a_suite_that_goes_red_in_a_later_cycle_puts_the_earlier_edits_back` (the red
+  third run is now the second cycle's after-pass, REJECT); Step 5,
+  `tests/test_seams.py::test_the_loop_cannot_weaken_the_tests_that_judge_it`, `::test_a_finisher_cannot_plant_a_conftest`,
+  `tests/test_round3_suite_and_guard.py::test_a_symlink_to_a_protected_file_is_not_a_way_in`,
+  `::test_a_symlinked_folder_into_a_protected_folder_is_protected`, `::test_the_folder_git_runs_hooks_from_is_protected`,
+  `tests/test_honest_exit_codes.py::test_a_proposal_that_also_touches_a_test_file_is_still_rejected`; Step 6,
+  `tests/test_honest_exit_codes.py::test_0_is_accept_and_only_accept` (an ACCEPT reason is no longer empty); Step 8,
+  `tests/test_docs.py::test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged` (the version is 0.14.0 and
+  the documents say it is not tagged). Nothing else was edited.
+
+## [0.13.10] - 2026-10-24
+
+`CONTRACT` is still `"1"`. This release sits on top of the 0.13.9 commit `b57b81e1c98333c43d422666c89a8fcf3ae6eaca` and
+answers the round-6 audit. CNS stays at the tag `v2.0.0`. No decision changed; one exit code does: a result that could not
+be delivered (below).
+
+### Fixed
+
+- **A seat's record named the pip install record, not the checkout that ran.** In the `--stack` case the checkout's code
+  runs, but `versions.seats.<seat>` reported the version and commit of an older copy pip also installed (JUDGE 0.4.8
+  beside a 0.4.10 checkout; the finisher as Burnish 0.3.11 when 0.3.12 ran). When a module's file sits in a git checkout of
+  its own, version, commit and dirty flag now come from that checkout; a checkout whose version cannot be read says
+  `null`. A seat in site-packages still reports its install record. Instrument roots already read their own checkout.
+  (Step 1.)
+- **A result nobody received was not handled.** `warden tagteam DIR | head -c0` printed a `BrokenPipeError` traceback and
+  exited 1 where the run had earned 6 (120 when buffered). Everything on stdout now goes through one function that keeps
+  the first failure: a gone reader keeps the earned exit code; a closed stdout or any other failed write (a full device) says so
+  in one line on stderr, prints no traceback and turns an earned 0 into 1; a non-zero code is kept. A receipt is still
+  written after a failed print. (Step 2.)
+- **A planted or stale `.pyc` in a seat or instrument checkout could run.** An unchecked-hash `.pyc` in an ignored
+  `__pycache__` was loaded in place of the source, invisible to `git status`, and the governed run still ended `ACCEPT`.
+  `main` now runs inside a fresh private bytecode directory (`sys.pycache_prefix`, removed afterwards) and every
+  instrument is started with the same directory in `PYTHONPYCACHEPREFIX`, so Python never reads a tree's `__pycache__`.
+  Cost: modules imported during a run compile once per run. Not covered: modules imported before `main` (Warden's own, `cns`),
+  sourceless `.pyc` files, and the rest of the ignored-or-excluded-file class, which stays a known defect. (Step 3.)
+
+### Changed
+
+- Statements made true: no pin is called "the head of" a `main` or a branch (tests.yml, STACK.md, `pyproject.toml`, README);
+  the tested set is the last set this repository's CI tested on its own, and whether the landing set works together is the CNS
+  `stack` job; the cited CI run is the previous release's; the unmeasured run time is gone; the paragraph on a seat's
+  `version` and `commit` describes the new precedence. SELF-HOSTING cites the CNS record
+  `docs/evidence/SELFHOSTING_2026-10-23.md` for this repository (ACCEPT, 4165 s, 953 passed and 2 skipped, 93 Ghost findings,
+  seven gaps, under Burnish 0.3.11) and says what it does not mean. (Step 4.)
+- The install pins moved to the wave-F final commits: ghost_tools 1.10.9 `3df51b374ed016b3f42def17c080700cd770e85a`, SWIZZLE
+  0.8.8 `6853c92cf000c5b86c6b83090ec192b2974b70aa`, ASSAY 0.11.6 `1de36ca9b56ba51b6b1f577bf046d7270b7e6c2a` (the `ghost`
+  extra, CI checkouts, `--expect` values, comments, STACK.md). The JUDGE pin (0.4.8, `e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074`)
+  and the CNS tag are unchanged. (Step 5.)
+- Version 0.13.10. README ledger entries for the new defects. (Step 6.)
+
+### Tests
+
+- New: `tests/test_versions_precedence.py` (Step 1), `tests/test_report_delivery.py` (Step 2), `tests/test_stale_bytecode.py`
+  (Step 3), and in `tests/test_readme_ledger.py` the self-hosting numbers (copied from the CNS record), no "head of" claims and
+  the seat-record wording (Step 4).
+- Edited because the behaviour they assert is what a step changed: `test_the_tested_set_is_the_same_everywhere_it_is_stated`
+  expects the versions 1.10.9, 0.8.8 and 0.11.6 next to the three moved pins (Step 5). Nothing else was edited.
+
+## [0.13.9] - 2026-10-22
+
+`CONTRACT` is still `"1"`. This release sits on top of the 0.13.8 commit `380894f0304ef40587dd29efd41b4ceccf94a5d3`. No exit
+code and no decision changed. The patch number follows this file's convention: 0.13.2 added record keys in a patch too.
+
+### Changed
+
+- The CNS pin is the tag `v2.0.0`: `cns @ git+https://github.com/wking53214/CNS.git@v2.0.0`, comment
+  `v2.0.0 = b13e5d2f9e0e4291725f82794b89117c3d840ac1`, in `pyproject.toml`, the CI header, README and STACK.md. The suite
+  passes against the installed `cns` 2.0.0 (its `direct_url.json` names the tag and that commit). Warden imports none of
+  the one breaking item (`cns.stack.StackPin`). (Step 1.)
+- The tested set moved to the stage-1 heads of three siblings: ghost_tools 1.10.8 `5a9154d3c76670f5bf1f46d845acadfed46d7bc8`,
+  SWIZZLE 0.8.7 `3f35dad5568b590c2ee36e60533d50a35db94aa2`, ASSAY 0.11.5 `184679c06e0a636a9a08a8403efa410b375c9429` (CI
+  checkouts, the `--expect` values, the `ghost` extra, comments and the STACK.md table). The JUDGE pin is unchanged
+  (0.4.8, `e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074`). `pip install -e ".[ghost,dev]"` resolves with no conflict and
+  `pip check` is clean. (Step 2.)
+- Version 0.13.9. (Step 5.)
+
+### Added
+
+- `Evidence.finisher_ran` (new in CNS 2.0.0) is filled. It is True when the Finisher's `finish` was called after the loop
+  converged (even if it had nothing to finish) and False when no Finisher was seated. Warden never sends None: Evidence is
+  built only on those two paths, and a run that ends before the finishing step builds none. Before, the Judge always
+  received None. (Step 3.)
+
+### Fixed
+
+- `warden[ghost]` was written as an install line in the README and in a `pyproject.toml` comment, but `warden` on PyPI is
+  another project. Both now say `pip install -e '.[ghost]'` from a checkout. (Step 4.)
+
+### Documentation
+
+- README rewritten: WHAT THIS IS, HOW TO INSTALL AND RUN, WHAT WORKS, WHAT DOES NOT WORK / NOT PROVEN, KNOWN DEFECTS,
+  WHAT BROKE AND HOW IT WAS FIXED, SELF-HOSTING, CEILINGS CODE CANNOT FIX, then the behaviour description under REFERENCE.
+  New open defects recorded with how each was reproduced: `.git/info/exclude` can hide an untracked file from the dirty
+  check; the neutral git configuration refuses a folder owned by another user; the Ghost scan summary is cut at 10 gaps
+  and 20 declined checks; the printed record does not say whether the Finisher was called. Two statements nothing records
+  were dropped (a hand check dated 2026-10-09, and "live on CNS"). (Step 4.)
+
+### Tests
+
+- New: `tests/test_finisher_ran.py` (Step 3); `tests/test_readme_ledger.py` and
+  `tests/test_docs.py::test_no_document_tells_a_reader_to_install_a_bare_name_from_pypi` (Step 4).
+- Edited because the behaviour they assert is what a step changed (the step that caused it):
+  `tests/test_docs.py::test_the_cns_pin_is_the_v1_9_0_tag_and_is_stated_in_stack` is renamed `..._v2_0_0_...` and asserts the
+  `v2.0.0` pin text and its row in STACK.md (Step 1); `test_the_tested_set_is_the_same_everywhere_it_is_stated` reads the
+  new versions of the three pins (Step 2); a comment in `test_dependencies_and_ci_siblings_are_pinned_to_full_commits` that
+  named the renamed test now names the new name, no assertion changed (Step 1, committed with Step 4).
 
 ## [0.13.8] - 2026-10-22
 

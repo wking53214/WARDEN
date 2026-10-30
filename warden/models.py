@@ -19,7 +19,7 @@ from typing import Any, Mapping, Optional, Sequence
 from . import textio
 from .authorization import Authorization, Unauthorized, canonical, is_stack_actor
 from .epistemic import EpistemicState
-from cns.defect import Defect, DefectLifecycle, DefectSeverity  # the shared rows: cns 1.9.0
+from cns.defect import Defect, DefectLifecycle, DefectSeverity  # the shared rows: cns 2.0.0
 from cns.seat import FileEdit
 
 _UNSAFE_ID = re.compile(r"[^A-Za-z0-9_.:-]")
@@ -138,6 +138,9 @@ class Transformation:
     status: TransformationStatus = TransformationStatus.PROPOSED
     authorization: Optional[Authorization] = None
     result: Optional[str] = None
+    #: Set by the claim seat (`warden.claim`): the real change this proposal is, as facts (commit, parent,
+    #: tree, diff sha256 and size, each file's sha256 before and after). None for every other proposer.
+    claim: Optional[Mapping[str, Any]] = None
 
     def authorize(self, auth: Authorization) -> "Transformation":
         _require_external_actor(auth)
@@ -189,7 +192,13 @@ class Transformation:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 if path.is_file() and not textio.is_decodable(path):
                     raise textio.Undecodable(f"{edit.path} is not valid UTF-8, so it will not be edited")
-                textio.write_text(path, edit.new)
+                if self.claim is not None:
+                    # The claim seat: the actor's bytes are the thing governed, so they land exactly, with no
+                    # adaptation to the line endings of the file they replace (a Drafter's or Finisher's write
+                    # keeps them).
+                    path.write_bytes(edit.new.encode("utf-8"))
+                else:
+                    textio.write_text(path, edit.new)
             elif edit.kind == "delete":
                 if not path.is_file():
                     raise FileNotFoundError(edit.path)

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import ast
+import stat
 import fnmatch
 import unicodedata
 from contextlib import contextmanager
@@ -156,10 +157,13 @@ class Snapshot:
     def __init__(self, target: Path) -> None:
         self.target = Path(target)
         self.files: Dict[str, bytes] = {}
+        #: Each file's permission bits (executable bit included), so a file that is put back is put back as it was.
+        self.modes: Dict[str, int] = {}
         self.restorable = True
         total = 0
         for path in _walk(self.target):
             data = path.read_bytes()
+            self.modes[str(path.relative_to(self.target))] = stat.S_IMODE(path.stat().st_mode)
             total += len(data)
             self.restorable = self.restorable and total <= _RESTORE_LIMIT
             self.files[str(path.relative_to(self.target))] = data if self.restorable else b""
@@ -225,7 +229,7 @@ class Snapshot:
             path = self.target / rel
             if not path.is_file() or path.read_bytes() != data:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(data)
+                textio.write_bytes_with_mode(path, data, getattr(self, "modes", {}).get(rel))
         # Folders that did not exist at the start and are now empty (an apply made them) go too.
         for rel in sorted(self._dirs() - self.dirs, key=lambda r: r.count("/"), reverse=True):
             try:
@@ -290,6 +294,13 @@ def is_protected(rel: str, extra_dirs: Iterable[str] = ()) -> bool:
             or any(_matches(d, _PROTECTED_DIR_PATTERNS) for d in dirs)
             or (bool(_NONPROSE_DIRS.intersection(dirs)) and PurePosixPath(name).suffix in {".txt", ".in", ".pip"})
             or any(e and parts[:len(e)] == e for e in extra))
+
+
+def is_ghost_file(rel: str) -> bool:
+    """True for Ghost's own bookkeeping: a `.ghost_*` file, or anything under a `.ghost_*` folder."""
+    parts = _name_parts(rel)
+    return bool(parts) and (_matches(parts[-1], _PROTECTED_DIR_PATTERNS)
+                            or any(_matches(d, _PROTECTED_DIR_PATTERNS) for d in parts[:-1]))
 
 
 def is_test_code(rel: str) -> bool:
@@ -406,7 +417,7 @@ def violation(target: Path, proposal: Transformation, auth: Authorization) -> Op
 
     kind is "escape" (outside the target, or inside version control, an
     environment or a cache: hostile or broken, stop everything) or "refused"
-    (a judging file, a file that is not UTF-8, vendored or generated code:
+    (test material, a .ghost_* file, a file that is not UTF-8, vendored or generated code:
     decline this one change) or "scope" (the only thing wrong is that an edit is
     outside the grant's scope: nothing else about the proposal is objectionable).
     """
@@ -418,7 +429,6 @@ def violation(target: Path, proposal: Transformation, auth: Authorization) -> Op
             return "escape", (f"edit path {edit.path!r} is inside version control, an environment or a "
                               "cache, which no change may touch")
     code_scope = auth.scope.strip().lower() in {"code", "all"}
-    hooks = hooks_dirs(target)
     out_of_scope: Optional[tuple[str, str]] = None
     for edit in proposal.edits:
         path = Path(target) / edit.path
@@ -435,10 +445,13 @@ def violation(target: Path, proposal: Transformation, auth: Authorization) -> Op
             return "refused", (f"{edit.path} is test material (a fixture, specimen, golden file, snapshot or "
                                "corpus folder); the loop never edits what the tests compare against, not even "
                                "its whitespace")
-        if (is_protected(edit.path, hooks) or is_protected(real, hooks)) and not format_only(target, edit):
-            return "refused", (f"{edit.path} decides whether a change is acceptable or how the project is built "
-                               "and run (tests, test or build configuration, CI, dependency lists, git hooks); "
-                               "the loop may not edit it")
+        # A protected path (tests, test or build configuration, CI, dependency lists, git hooks) is not refused
+        # here. The edit is applied and measured like any other, `judging_files_touched` names every such path for
+        # the Judge, and the Judge decides; the machine does not approve it, so the run ends held for a named
+        # human (`warden keep`). Ghost's own .ghost_* files stay refused: they are what the scanner compares against.
+        if is_ghost_file(edit.path) or is_ghost_file(real):
+            return "refused", (f"{edit.path} is Ghost's own bookkeeping (a .ghost_* file or folder); the loop never "
+                               "edits what the scanner compares against")
         if not (scope_allows(auth, edit.path) and scope_allows(auth, real)) and out_of_scope is None:
             out_of_scope = ("scope", f"{edit.path} is outside the grant's scope {auth.scope!r} "
                                      "(a documentation grant covers prose only)")

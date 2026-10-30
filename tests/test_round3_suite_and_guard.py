@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from warden.authorization import grant
-from warden.guard import is_prose, is_protected, scope_allows, violation
+from warden.guard import hooks_dirs, is_prose, is_protected, real_rel, scope_allows, violation
 from warden.models import FileEdit, Transformation, TransformationStatus
 from warden.suite import run_suite
 
@@ -146,7 +146,9 @@ def test_a_symlink_to_a_protected_file_is_not_a_way_in(tmp_path):
     (tmp_path / "notes.md").symlink_to("tox.ini")
     auth = grant("william", "transform", str(tmp_path), "documentation", "t")
     kind, why = violation(tmp_path, _proposal(tmp_path, "notes.md"), auth)
-    assert kind == "refused" and "notes.md" in why
+    # Since 0.14.0 a protected file is named, not refused; the link still resolves to a non-prose file, so under
+    # a documentation grant the edit is out of scope and nothing is written.
+    assert kind == "scope" and "notes.md" in why
 
 
 def test_a_symlink_to_a_code_file_is_out_of_a_documentation_scope(tmp_path):
@@ -171,7 +173,9 @@ def test_a_symlinked_folder_into_a_protected_folder_is_protected(tmp_path):
     (tmp_path / "tests" / "test_a.py").write_text("def test_a():\n    pass\n", encoding="utf-8")
     (tmp_path / "docs").symlink_to("tests")
     auth = grant("william", "transform", str(tmp_path), "code", "t")
-    assert violation(tmp_path, _proposal(tmp_path, "docs/test_a.py"), auth)[0] == "refused"
+    # Since 0.14.0 the edit is applied and named to the Judge; where the link really points is what is named.
+    assert violation(tmp_path, _proposal(tmp_path, "docs/test_a.py"), auth) is None
+    assert is_protected(real_rel(tmp_path, "docs/test_a.py"))
 
 
 def test_the_folder_git_runs_hooks_from_is_protected(tmp_path):
@@ -183,4 +187,5 @@ def test_the_folder_git_runs_hooks_from_is_protected(tmp_path):
     git(tmp_path, "config", "core.hooksPath", "myhooks")
     auth = grant("william", "transform", str(tmp_path), "code", "t")
     got = violation(tmp_path, _proposal(tmp_path, "myhooks/pre-commit"), auth)
-    assert got is not None and got[0] == "refused"
+    # Since 0.14.0 the hook is applied and named to the Judge, not refused at the guard.
+    assert got is None and is_protected("myhooks/pre-commit", hooks_dirs(tmp_path))

@@ -31,15 +31,17 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 import secrets
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from cns.suite import SuiteRun  # the shared row: cns 1.9.0
+from cns.suite import SuiteRun  # the shared row: cns 2.0.0
 
 from .isolation import suite_env
 from .textio import clip
@@ -59,6 +61,12 @@ import json, os
 
 _COUNTS = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0, "xfailed": 0, "xpassed": 0}
 _STATE = {"collected": 0}
+_FAILED = []  # the ids of the first tests that failed or errored, so the record can name them
+
+
+def _note_failed(report):
+    if len(_FAILED) < 10:
+        _FAILED.append(str(report.nodeid))
 
 
 def pytest_collection_finish(session):
@@ -79,15 +87,18 @@ def pytest_runtest_logreport(report):
             _COUNTS["xpassed" if wasxfail else "passed"] += 1
         elif report.failed:
             _COUNTS["failed"] += 1
+            _note_failed(report)
         elif report.skipped:
             _COUNTS["xfailed" if wasxfail else "skipped"] += 1
     elif report.when == "setup":
         if report.failed:
             _COUNTS["errors"] += 1
+            _note_failed(report)
         elif report.skipped:
             _COUNTS["skipped"] += 1
     elif report.when == "teardown" and report.failed:
         _COUNTS["errors"] += 1
+        _note_failed(report)
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -95,7 +106,7 @@ def pytest_sessionfinish(session, exitstatus):
     if not path:
         return
     body = {"nonce": os.environ.get("WARDEN_SUITE_NONCE"), "exitstatus": int(exitstatus),
-            "collected": _STATE["collected"], **_COUNTS}
+            "collected": _STATE["collected"], "failed_ids": _FAILED, **_COUNTS}
     tmp = path + ".part"
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(body, handle)
@@ -103,6 +114,47 @@ def pytest_sessionfinish(session, exitstatus):
 '''
 
 
+
+
+#: The command `_run_pytest` runs, as the environment key names it. Change it together with that argv.
+PYTEST_COMMAND = "python -m pytest -q -p no:cacheprovider -p <warden count plugin>"
+
+_PROBE = ("import sys\n"
+          "try:\n"
+          "    import pytest\n"
+          "    found = pytest.__version__\n"
+          "except Exception:\n"
+          "    found = ''\n"
+          "print(sys.implementation.name + ' ' + sys.version.split()[0] + '|' + found)\n")
+_PROBED: dict = {}
+
+
+def suite_environment(python: str, runner: str) -> Optional[dict]:
+    """What makes one measurement of a suite comparable with another: the Python and pytest versions of the
+    interpreter that runs the suite, Warden's version, the platform, the runner and the command. None when any of it
+    cannot be told (an interpreter that does not answer, no pytest in it, a runner other than pytest): a result with
+    no environment key is never matched, so it is never reused. The interpreter is asked from an empty folder, with the
+    environment the suite is given, so the target's own files cannot answer for it."""
+    if runner != "pytest":
+        return None
+    if python not in _PROBED:
+        found: Optional[tuple[str, str]] = None
+        try:
+            with tempfile.TemporaryDirectory(prefix="warden-env-") as neutral:
+                done = subprocess.run([python, "-c", _PROBE], cwd=neutral, capture_output=True, text=True, input="",
+                                      timeout=60, env=suite_env())
+            interpreter, _, pytest_version = done.stdout.strip().partition("|")
+            if done.returncode == 0 and interpreter.strip() and pytest_version.strip():
+                found = (interpreter.strip(), pytest_version.strip())
+        except (OSError, subprocess.SubprocessError):
+            found = None
+        _PROBED[python] = found
+    seen = _PROBED[python]
+    if seen is None:
+        return None
+    from . import __version__
+    return {"python_version": seen[0], "pytest_version": seen[1], "warden_version": __version__,
+            "platform": f"{sys.platform}-{platform.machine()}", "suite_runner": runner, "suite_command": PYTEST_COMMAND}
 
 
 def _kill_group(proc: subprocess.Popen) -> None:
@@ -128,7 +180,32 @@ def _read_report(path: Path, nonce: str) -> Optional[dict]:
     keys = ("exitstatus", "collected", "passed", "failed", "errors", "skipped", "xfailed", "xpassed")
     if not all(isinstance(data.get(k), int) and not isinstance(data.get(k), bool) and data[k] >= 0 for k in keys):
         return None
+    ids = data.get("failed_ids", [])
+    if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+        ids = []  # an older or garbled plugin file: the counts still stand, the names are simply not known
+    data["failed_ids"] = [_plain(i) for i in ids[:MAX_FAILED_IDS]]
     return data
+
+
+#: At most this many failing test ids are kept from one suite run.
+MAX_FAILED_IDS = 10
+
+
+def _plain(text: str, limit: int = 160) -> str:
+    """One line of printable text, capped: a test id is data from the target, never markup."""
+    return clip(" ".join("".join(ch if ch.isprintable() else " " for ch in text).split()), limit)
+
+
+@dataclass(frozen=True)
+class PytestSuiteRun(SuiteRun):
+    """A SuiteRun measured by pytest, with the ids of the tests that failed or errored (the first ten), so a
+    record that says the suite went red can say which tests."""
+
+    failed_ids: tuple[str, ...] = ()
+
+    def describe(self) -> str:
+        text = super().describe()
+        return text + (f"; failed: {', '.join(self.failed_ids)}" if self.failed_ids else "")
 
 
 RUNNERS = ("auto", "pytest", "cargo")
@@ -236,9 +313,9 @@ def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> 
         reason = "the exit status says the run failed but no test is reported as failing"
     elif code == 0 and (report["failed"] or report["errors"]):
         reason = "the exit status says the run passed but the report lists failures"
-    return SuiteRun(ran=True, passed=report["passed"], failed=report["failed"], errors=report["errors"],
-                    skipped=report["skipped"], xfailed=report["xfailed"], xpassed=report["xpassed"],
-                    exit_code=code, reason=reason)
+    return PytestSuiteRun(ran=True, passed=report["passed"], failed=report["failed"], errors=report["errors"],
+                          skipped=report["skipped"], xfailed=report["xfailed"], xpassed=report["xpassed"],
+                          exit_code=code, reason=reason, failed_ids=tuple(report["failed_ids"]))
 
 
 @dataclass(frozen=True)
