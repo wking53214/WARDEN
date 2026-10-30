@@ -35,6 +35,7 @@ from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 from . import gitstate, held, runstate, textio
 from .authorization import Authorization, Unauthorized, is_stack_actor
+from . import chronicle
 from .claim import ClaimDrafter
 from .deletion import commented_variant, is_deletion, keep_variant, removal_rows, stamp_now
 from .ghost import GhostCrashed, GhostRefused, _clean as _plain, defects_from_ghost, scan as ghost_scan
@@ -44,7 +45,8 @@ from .guard import (FORBIDDEN_DIRS, iter_tree, SeatBrokeCharter, Snapshot, _REST
 from .isolation import InstrumentRootError
 from .models import Defect, FileEdit, Transformation, TransformationStatus, safe_id
 from .roles import Evidence, Facts, Finisher, Drafter, Judge, Verdict
-from .suite import DEFAULT_TIMEOUT as DEFAULT_SUITE_TIMEOUT, CargoSuiteRun, SuiteRun, preserved, run_suite
+from .suite import (DEFAULT_TIMEOUT as DEFAULT_SUITE_TIMEOUT, CargoSuiteRun, SuiteRun, detect_runner, preserved,
+                    run_suite, suite_environment)
 from .swizzle import assay_score, governor_attacks, swizzle_contract_holds, swizzle_proofs_hold
 from cns.finding import Finding
 
@@ -209,6 +211,9 @@ class TagTeam:
         joins: Sequence[Path] = (),
         allow_uncommitted_instruments: bool = False,
         suite_always: bool = False,
+        chronicle_entries: Sequence[Mapping[str, Any]] = (),
+        reuse_chronicle_suite: bool = False,
+        record_suite_environment: bool = False,
     ) -> None:
         #: Let an instrument root that is not a git checkout with a readable version run (see
         #: `isolation.verify_root`). Off: such a root is refused. On: it runs, the run record says so, and the run
@@ -243,6 +248,13 @@ class TagTeam:
         #: Run the suite at every pass. Off: a pass on a tree whose fingerprint this run already measured reuses
         #: that result (six passes become three on a run with one change and one finishing edit). Never across runs.
         self.suite_always = suite_always
+        #: The lines of the chronicle read before this run (see `warden.chronicle`), and whether the first suite pass
+        #: may take a green result a line recorded for this very tree under the same environment. Off by default; the
+        #: chronicle is an unsigned file, so this trusts whoever can edit it. `record_suite_environment` has every
+        #: measured pass carry the environment key the chronicle line needs; reuse implies it.
+        self.chronicle_entries = tuple(chronicle_entries)
+        self.reuse_chronicle_suite = reuse_chronicle_suite
+        self.record_suite_environment = record_suite_environment or reuse_chronicle_suite
 
     def run(
         self,
@@ -1149,18 +1161,46 @@ class TagTeam:
             self._suite_passes.append({"pass": number, "when": when, "tree_digest": digest, "reused_from": earlier,
                                        "result": result})
             return result
+        environment = self._environment(target, python)
+        if (self.reuse_chronicle_suite and not self.suite_always and when == "cycle 1 before" and number == 1
+                and digest == self._baseline_fp):
+            # Opt-in (--reuse-chronicle-suite): an earlier run of this chronicle measured these very bytes, green, under
+            # this very environment. The chronicle is an unsigned file; this trusts whoever can edit it.
+            found = chronicle.reusable_suite(self.chronicle_entries, digest, environment)
+            if found is not None:
+                run_id, recorded = found
+                known = {f.name for f in dataclasses.fields(SuiteRun)}
+                result = SuiteRun(**{k: v for k, v in recorded.items() if k in known})
+                self._suite_ran = True
+                notes.append(f"Rule 7 suite pass {when}: reused the result of chronicle run {run_id}, tree digest "
+                             f"{digest} identical.")
+                self._suite_passes.append({"pass": number, "when": when, "tree_digest": digest,
+                                           "reused_from": f"chronicle:{run_id}", "result": result,
+                                           "environment": environment})
+                self._suite_seen.setdefault(digest, number)
+                return result
+            notes.append(f"Rule 7 suite pass {when}: no chronicle run recorded a green result for this tree under this "
+                         "environment, so the suite was run.")
         source_before = _source_hash(target)
         self._suite_ran = True
         result = run_suite(target, python, self.suite_timeout, self.suite_runner)
         runner = " (cargo)" if isinstance(result, CargoSuiteRun) else ""
         notes.append(f"Rule 7 suite{runner} {when}: {result.describe()}.")
         self._suite_passes.append({"pass": number, "when": when, "tree_digest": digest, "reused_from": None,
-                                   "result": result})
+                                   "result": result, "environment": environment})
         self._suite_seen.setdefault(digest, number)
         if _source_hash(target) != source_before:
             notes.append(f"Rule 7: {SOURCE_CHANGED_NOTE}.")
             raise SuiteChangedSource(SOURCE_CHANGED_NOTE)
         return result
+
+    def _environment(self, target: Path, python: str) -> Optional[dict]:
+        """The environment key of the suite about to run (see `suite.suite_environment`), or None when it is not asked
+        for or cannot be told."""
+        if not self.record_suite_environment:
+            return None
+        runner = detect_runner(target) if self.suite_runner == "auto" else self.suite_runner
+        return suite_environment(python, runner)
 
     def _reinspect(self, target: Path, observed: tuple[Defect, ...], python: str,
                    notes: list[str]) -> tuple[Defect, ...]:

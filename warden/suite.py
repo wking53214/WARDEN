@@ -31,9 +31,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 import secrets
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -112,6 +114,47 @@ def pytest_sessionfinish(session, exitstatus):
 '''
 
 
+
+
+#: The command `_run_pytest` runs, as the environment key names it. Change it together with that argv.
+PYTEST_COMMAND = "python -m pytest -q -p no:cacheprovider -p <warden count plugin>"
+
+_PROBE = ("import sys\n"
+          "try:\n"
+          "    import pytest\n"
+          "    found = pytest.__version__\n"
+          "except Exception:\n"
+          "    found = ''\n"
+          "print(sys.implementation.name + ' ' + sys.version.split()[0] + '|' + found)\n")
+_PROBED: dict = {}
+
+
+def suite_environment(python: str, runner: str) -> Optional[dict]:
+    """What makes one measurement of a suite comparable with another: the Python and pytest versions of the
+    interpreter that runs the suite, Warden's version, the platform, the runner and the command. None when any of it
+    cannot be told (an interpreter that does not answer, no pytest in it, a runner other than pytest): a result with
+    no environment key is never matched, so it is never reused. The interpreter is asked from an empty folder, with the
+    environment the suite is given, so the target's own files cannot answer for it."""
+    if runner != "pytest":
+        return None
+    if python not in _PROBED:
+        found: Optional[tuple[str, str]] = None
+        try:
+            with tempfile.TemporaryDirectory(prefix="warden-env-") as neutral:
+                done = subprocess.run([python, "-c", _PROBE], cwd=neutral, capture_output=True, text=True, input="",
+                                      timeout=60, env=suite_env())
+            interpreter, _, pytest_version = done.stdout.strip().partition("|")
+            if done.returncode == 0 and interpreter.strip() and pytest_version.strip():
+                found = (interpreter.strip(), pytest_version.strip())
+        except (OSError, subprocess.SubprocessError):
+            found = None
+        _PROBED[python] = found
+    seen = _PROBED[python]
+    if seen is None:
+        return None
+    from . import __version__
+    return {"python_version": seen[0], "pytest_version": seen[1], "warden_version": __version__,
+            "platform": f"{sys.platform}-{platform.machine()}", "suite_runner": runner, "suite_command": PYTEST_COMMAND}
 
 
 def _kill_group(proc: subprocess.Popen) -> None:

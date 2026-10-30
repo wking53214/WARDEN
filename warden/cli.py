@@ -589,6 +589,14 @@ def _main(argv: list[str] | None) -> int:
                           "earlier run whose claimed or held tree is this run's base tree (HELD or BROKEN, with the "
                           "measurement) and write the settlement into the line and the record's notes")
 
+    p_t.add_argument("--reuse-chronicle-suite", action="store_true",
+                     help="needs --chronicle. At the first suite pass, take the result an earlier run of the "
+                          "chronicle recorded for this very tree (its claimed or held tree digest equals this run's "
+                          "base tree digest) when that result is green and the environment matches on Python, pytest "
+                          "and Warden versions, platform, suite runner and suite command; otherwise run the suite. "
+                          "Off by default. The chronicle is an unsigned file: whoever can edit it can make this skip "
+                          "a suite run, so use it only where that person is trusted")
+
     p_k = sub.add_parser("keep", parents=[common],
                          help="apply one held unverified result, only with a human grant for its digest")
     p_k.add_argument("path", type=Path)
@@ -760,6 +768,9 @@ def _tagteam(args) -> int:
             return _stop("USAGE_ERROR", f"--receipt {str(args.receipt)!r} is {kind}, not a regular file, and Warden "
                                         "replaces the receipt file whole, so it would swap that for a plain file. "
                                         "Name a regular file or a path that does not exist yet. Nothing was run.")
+    problem = _reuse_problem(args)
+    if problem:
+        return _stop("USAGE_ERROR", f"usage error: {problem}. Nothing was run.")
     problem = _claim_problem(args)
     if problem:
         return _stop("USAGE_ERROR", f"usage error: {problem}. Nothing was run.")
@@ -857,6 +868,17 @@ def _tagteam(args) -> int:
         sys.path[:] = saved_path
 
 
+def _reuse_problem(args) -> str:
+    """Why --reuse-chronicle-suite cannot be honoured as given, else an empty string."""
+    if not getattr(args, "reuse_chronicle_suite", False):
+        return ""
+    if getattr(args, "chronicle", None) is None:
+        return "--reuse-chronicle-suite takes its result from the chronicle, so it needs --chronicle DIR"
+    if getattr(args, "suite_always", False):
+        return "--reuse-chronicle-suite and --suite-always contradict each other"
+    return ""
+
+
 def _claim_problem(args) -> str:
     """The reason the --claim-* options cannot be used as given, or empty. The claim seat and --drafter both fill
     the Drafter seat, so naming both is a usage error; so is naming the change twice or half."""
@@ -899,16 +921,18 @@ def _findings_problem(path, err: Exception) -> str:
 
 
 def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> int:
+    chronicle_dir = getattr(args, "chronicle", None)
+    origin = origin_of(Path(args.path).resolve()) if chronicle_dir is not None else None
+    earlier = chronicle.read(chronicle_dir, origin) if chronicle_dir is not None else []
     team = TagTeam(ghost_tools_root=args.ghost_root, swizzle_root=args.swizzle_root,
                    assay_root=args.assay_root, assay_floor=args.assay_floor,
                    drafter=drafter, finisher=finisher, judge=judge, max_cycles=args.max_cycles,
                    ghost_timeout=args.ghost_timeout, suite_timeout=args.suite_timeout, suite_runner=args.suite_runner,
                    seat_timeout=args.seat_timeout, joins=getattr(args, "joins", ()),
                    allow_uncommitted_instruments=getattr(args, "allow_uncommitted_instruments", False),
-                   suite_always=bool(getattr(args, "suite_always", False)))
-    chronicle_dir = getattr(args, "chronicle", None)
-    origin = origin_of(Path(args.path).resolve()) if chronicle_dir is not None else None
-    earlier = chronicle.read(chronicle_dir, origin) if chronicle_dir is not None else []
+                   suite_always=bool(getattr(args, "suite_always", False)),
+                   chronicle_entries=earlier, reuse_chronicle_suite=bool(getattr(args, "reuse_chronicle_suite", False)),
+                   record_suite_environment=chronicle_dir is not None)
     # A seat that print()s, or writes straight to file descriptor 1, must not corrupt the JSON on stdout.
     with runstate.stdout_to_stderr():
         result = team.run(args.path, authorization=auth, findings=findings)
@@ -992,7 +1016,8 @@ def _chronicle_run(directory: Path, origin: Optional[str], earlier: list, row: d
     observed = [d.identity for d in result.observed] if ghost_ran else None
     declined = list((result.ghost_scan or {}).get("declined") or [])
     settled = chronicle.settle(earlier, row["base_tree_digest"], row["suite_before"], observed, declined)
-    line = chronicle.entry(row, [d.identity for d in result.reobserved], declined, settled)
+    line = chronicle.entry(row, [d.identity for d in result.reobserved], declined, settled,
+                           trees=chronicle.suite_trees(result.suite_passes), number=len(earlier) + 1)
     notes = chronicle.notes_for(settled)
     try:
         where = chronicle.append(directory, origin, line)

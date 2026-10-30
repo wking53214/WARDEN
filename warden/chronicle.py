@@ -15,6 +15,11 @@ run's line and the record's notes. `warden keep --chronicle DIR` appends a human
 
 Keyed by origin and commits, never by the path of a clone: twenty clones of one repository are one history, and a
 chronicle keyed by path reads a scan of another commit as a finding that "returned" (sim9/C_CHRONICLE.md).
+
+Each line also records, per tree, the suite result a run really measured (`suite_trees`: tree digest, counts, the green
+flag, and the environment key), so that `warden tagteam --reuse-chronicle-suite` can take it as the next run's first
+suite pass when the tree and the environment are identical (`reusable_suite`). The file is an ordinary unsigned text
+file: whoever can edit it can make that flag skip a suite run.
 """
 
 from __future__ import annotations
@@ -92,10 +97,77 @@ def promises(row: Mapping[str, Any], declined: Sequence[str]) -> list[dict]:
     return out
 
 
+#: The fields of a suite environment key (see `warden.suite.suite_environment`). A key missing one never matches.
+ENVIRONMENT_FIELDS = ("python_version", "pytest_version", "warden_version", "platform", "suite_runner", "suite_command")
+
+
+def suite_trees(passes: Sequence[Mapping[str, Any]]) -> list[dict]:
+    """The suite results a run really measured, one per tree digest: each pass that ran the suite (not one that
+    reused another pass), with its counts, its green flag and the environment key recorded with it. A pass with no
+    environment key is left out, so a line written without one can never match."""
+    out: list[dict] = []
+    seen: set[str] = set()
+    for item in passes:
+        result, env, digest = item.get("result"), item.get("environment"), item.get("tree_digest")
+        if item.get("reused_from") is not None or not digest or digest in seen or not isinstance(env, Mapping):
+            continue
+        counts = {k: getattr(result, k, None) for k in ("ran", "passed", "failed", "errors", "skipped", "xfailed",
+                                                         "xpassed", "exit_code", "reason")}
+        if not counts["ran"]:
+            continue
+        seen.add(digest)
+        out.append({"tree_digest": digest, "when": item.get("when"), "result": counts,
+                    "green": bool(getattr(result, "green", False)), "environment": dict(env)})
+    return out
+
+
+def run_id(line: Mapping[str, Any], number: int) -> str:
+    """A short name for one run's line: a digest of what identifies it, and its place in the file."""
+    body = json.dumps([line.get("when"), line.get("key"), line.get("decision"), line.get("held_tree_digest"),
+                       line.get("claimed_tree_digest"), number], sort_keys=True)
+    return "run_" + hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
+
+
+def reusable_suite(entries: Sequence[Mapping[str, Any]], base_tree_digest: Optional[str],
+                   environment: Optional[Mapping[str, Any]]) -> Optional[tuple[str, dict]]:
+    """(run id, recorded result) of the suite measurement this run may take as its first pass, else None.
+
+    An earlier run's line qualifies only when its claimed or held tree digest equals this run's base tree digest
+    and it recorded a suite result for that same tree, green (no failures, no errors, at least one pass, recorded
+    green), under an environment key equal to this run's on every field. If any line recorded a red result for that
+    tree and environment, nothing is reused. A line written before these fields existed has no run id, no trees and no
+    environment, and never matches.
+    Nothing here proves the file was not edited."""
+    if not base_tree_digest or not isinstance(environment, Mapping) or not all(
+            isinstance(environment.get(k), str) and environment.get(k) for k in ENVIRONMENT_FIELDS):
+        return None
+    found: Optional[tuple[str, dict]] = None
+    for item in entries:
+        if (item.get("kind") != "run" or not isinstance(item.get("run_id"), str)
+                or base_tree_digest not in (item.get("claimed_tree_digest"), item.get("held_tree_digest"))):
+            continue
+        for tree in item.get("suite_trees") or ():
+            if not isinstance(tree, Mapping) or tree.get("tree_digest") != base_tree_digest:
+                continue
+            if not isinstance(tree.get("environment"), Mapping) or any(
+                    tree["environment"].get(k) != environment.get(k) for k in ENVIRONMENT_FIELDS):
+                continue
+            result = tree.get("result")
+            counts_ok = (isinstance(result, Mapping) and result.get("ran") is True and result.get("failed") == 0
+                         and result.get("errors") == 0 and isinstance(result.get("passed"), int)
+                         and not isinstance(result.get("passed"), bool) and result["passed"] > 0
+                         and result.get("exit_code") in (None, 0))
+            if tree.get("green") is not True or not counts_ok or not isinstance(result, Mapping):
+                return None  # a red or doubtful record for this very tree and environment: run the suite
+            found = (item["run_id"], dict(result))
+    return found
+
+
 def entry(row: Mapping[str, Any], standing: Sequence[str], declined: Sequence[str], settled: Sequence[dict],
-          when: Optional[str] = None) -> dict:
-    """This run's line."""
-    return {
+          when: Optional[str] = None, trees: Sequence[Mapping[str, Any]] = (), number: int = 0) -> dict:
+    """This run's line. `trees` are the suite results the run measured (`suite_trees`); `number` is the line's place
+    in its file, which names the run (`run_id`)."""
+    line = {
         "kind": "run", "when": when or now_iso(),
         "key": {"origin": row["origin"], "base_commit": row["base_commit"], "claimed_commit": row["claimed_commit"]},
         "claim": dict(row), "decision": row["decision"],
@@ -106,7 +178,10 @@ def entry(row: Mapping[str, Any], standing: Sequence[str], declined: Sequence[st
         "held_digest": row["held_digest"], "held_tree_digest": row["held_tree_digest"],
         "claimed_tree_digest": row["claimed_tree_digest"], "participants": row["participants"],
         "promises": promises(row, declined), "settled": list(settled),
+        "suite_trees": [dict(t) for t in trees],
     }
+    line["run_id"] = run_id(line, number)
+    return line
 
 
 def keep_line(origin: Optional[str], digest: str, who: str, reason: str, key: Optional[Mapping[str, Any]]) -> dict:
@@ -125,6 +200,9 @@ def _settle_one(promise: Mapping[str, Any], suite_before: Optional[Mapping[str, 
                 observed: Optional[Sequence[str]], declined: Sequence[str], opened: str, now: str) -> tuple[str, str]:
     name, expect = str(promise.get("promise", "")), promise.get("expect")
     if name == "suite_green":
+        if str((suite_before or {}).get("reused_from") or "").startswith("chronicle:"):
+            # The chronicle cannot settle its own promise: a result taken from it measures nothing new.
+            return "OPEN", "the suite result at the start of this run was reused from the chronicle, not measured"
         counts = _counts(suite_before)
         if counts is None:
             return "OPEN", "the suite was not measured at the start of this run"
