@@ -35,7 +35,7 @@ KEYS = ("origin", "base_commit", "base_tree_digest", "claimed_commit", "claimed_
         "claimed_author", "claimed_date", "diff_sha256", "diff_bytes", "files", "actor", "authority",
         "authorization_id", "scope", "transformation_id", "suite_before", "suite_after", "ghost_before_count",
         "ghost_after_count", "new_findings", "closed_findings", "rules_fired", "judge", "decision", "held_digest",
-        "held_tree_digest", "participants", "finisher_edits", "removals")
+        "held_tree_digest", "participants", "finisher_edits", "removals", "target_tree_digest", "base_matches_parent")
 
 #: The authority a `warden tagteam --authorize` grant carries (the same word the horsemen receipt uses).
 HUMAN_AUTHORITY = "human_operator"
@@ -225,6 +225,15 @@ def _transformation_id(proposal: Any) -> Optional[str]:
     return "xform_" + hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
 
 
+def _base_matches_parent(target_digest: Optional[str], parent_digest: Optional[str]) -> Optional[bool]:
+    """True iff the whole target (as fingerprinted before the run) equals the claimed commit's parent tree, False when
+    it differs, null when either side could not be computed. Record only: `check_base` still compares only the
+    touched files."""
+    if not target_digest or not parent_digest:
+        return None
+    return target_digest == parent_digest
+
+
 def claim_row(result: Any, authorization: Any, versions_report: Optional[Mapping[str, Any]] = None) -> dict:
     """The row for one finished `TagTeamResult`. Every key in `KEYS`, in that order; a fact the run did not
     have is null, never guessed. `versions_report` is the record's `versions` object (the participants)."""
@@ -275,6 +284,8 @@ def claim_row(result: Any, authorization: Any, versions_report: Optional[Mapping
         "participants": _participants(versions_report),
         "finisher_edits": _finisher_edits(result),
         "removals": [dict(r) for r in getattr(result, "removals", ())],
+        "target_tree_digest": result.baseline or None,
+        "base_matches_parent": _base_matches_parent(result.baseline or None, claim.get("parent_tree_digest")),
     }
     assert tuple(row) == KEYS
     return row

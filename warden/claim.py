@@ -11,8 +11,9 @@ before and after, Ghost re-inspection, the Judge). Two ways to name it:
 The proposal is expressed as the only edits Warden makes: a `write` of a whole UTF-8 text file, or a
 `delete`. Whatever cannot be said that way is refused with a reason before anything runs: a binary
 file, a symbolic link, a submodule, a rename or copy header, a mode change with no content, a path git
-had to quote. Nothing is guessed. The target must stand at the base the change was made against
-(every touched file byte for byte as the parent has it), or the claim is refused too.
+had to quote. Nothing is guessed. The touched files of the target must be byte for byte as the parent has them, or
+the claim is refused too; the rest of the tree is not compared, and the claim row's `base_matches_parent` says whether
+the whole tree equals the parent's (true, false, or null when it cannot be computed).
 
 The Transformation carries the facts as evidence: commit, parent, tree, the diff's sha256 and size,
 and each file with its sha256 before and after. `warden.claimrow` turns those into the record's claim
@@ -27,6 +28,7 @@ import os
 import re
 import stat
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence
@@ -79,6 +81,8 @@ class Claim:
     parent: Optional[str] = None
     tree: Optional[str] = None
     date: Optional[str] = None
+    #: The repository the commit was read from (None for a diff file). Not part of the recorded facts.
+    repo: Optional[Path] = None
 
     @property
     def diff_sha256(self) -> str:
@@ -173,7 +177,40 @@ def from_commit(target: Path, sha: str, repo: Optional[Path] = None) -> Claim:
     shown = _git(repo, "show", "-s", "--format=%s%x00%an <%ae>%x00%aI", full).decode("utf-8", "replace")
     subject, author, date = (shown.rstrip("\n").split("\0") + ["", "", ""])[:3]
     return Claim(subject=subject, author=author, diff=diff, files=tuple(files), commit=full, parent=parent,
-                 tree=tree, date=date)
+                 tree=tree, date=date, repo=repo)
+
+
+def parent_tree_digest(claim: Claim) -> Optional[str]:
+    """Warden's fingerprint of the claimed commit's parent tree, materialised from the claimed repository into a
+    temporary folder (files with their recorded executable bit; links as links; submodules left out). None when it
+    cannot be computed: a diff file has no parent tree, and a repository that cannot be read gives no answer.
+    The row compares it with the fingerprint of the target before the run (`base_matches_parent`)."""
+    if claim.repo is None or not claim.parent:
+        return None
+    from .tagteam import _fingerprint  # local import: tagteam imports this module
+    try:
+        listing = _git(claim.repo, "ls-tree", "-r", "-z", "--full-tree", claim.parent)
+        with tempfile.TemporaryDirectory(prefix="warden-parent-") as scratch:
+            root = Path(scratch)
+            for item in listing.split(b"\0"):
+                if not item:
+                    continue
+                meta, _, raw_name = item.partition(b"\t")
+                mode, kind, sha = meta.decode("ascii").split(" ")
+                if kind != "blob":
+                    continue  # a submodule is a commit, not content
+                name = os.fsdecode(raw_name)
+                dest = root / name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                data = _git(claim.repo, "cat-file", "blob", sha)
+                if mode == "120000":
+                    os.symlink(os.fsdecode(data), dest)
+                else:
+                    dest.write_bytes(data)
+                    dest.chmod(0o755 if mode == "100755" else 0o644)
+            return _fingerprint(root)
+    except (ClaimError, OSError, ValueError):
+        return None
 
 
 def _git_header_path(line: str) -> str:
@@ -410,6 +447,6 @@ class ClaimDrafter:
             evidence=tuple(evidence),
             edits=edits,
             status=TransformationStatus.PROPOSED,
-            claim=claim.to_dict(),
+            claim={**claim.to_dict(), "parent_tree_digest": parent_tree_digest(claim)},
         )
         return proposal

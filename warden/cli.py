@@ -520,7 +520,8 @@ def _main(argv: list[str] | None) -> int:
     p_t.add_argument("--claim-commit", default=None, metavar="SHA",
                      help="take the Drafter seat with a real change: the diff of SHA against its first parent, read "
                           "from the target's own git (or from --claim-repo), proposed once and then nothing. The "
-                          "target must stand at the parent. Cannot be combined with --drafter")
+                          "touched files must match the parent (the claim row's base_matches_parent says whether "
+                          "the whole tree did). Cannot be combined with --drafter")
     p_t.add_argument("--claim-repo", type=Path, default=None, metavar="PATH",
                      help="with --claim-commit: the git repository that holds the commit, when the target does not")
     p_t.add_argument("--claim-diff", type=Path, default=None, metavar="FILE",
