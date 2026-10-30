@@ -9,7 +9,9 @@ crashing on it or guessing.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from typing import Optional
 
 
 ELLIPSIS = " ..."
@@ -69,6 +71,19 @@ def encode_like(path: Path, text: str) -> bytes:
     if path.is_file() and _is_crlf(path.read_bytes()):
         text = text.replace("\r\n", "\n").replace("\n", "\r\n")
     return text.encode("utf-8")
+
+
+def write_bytes_with_mode(path: Path, data: bytes, mode: Optional[int]) -> None:
+    """Write `data`; when `mode` is given the file is created with it and chmod-ed to it after the write (the
+    process umask must not change what was recorded). Used to put a file back as it was, executable bit included."""
+    path = Path(path)
+    if mode is None:
+        path.write_bytes(data)
+        return
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
+    os.chmod(path, mode)
 
 
 def write_text(path: Path, text: str) -> None:

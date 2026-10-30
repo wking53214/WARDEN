@@ -1427,6 +1427,8 @@ class _Snap(dict):
     def __init__(self) -> None:
         super().__init__()
         self.new_dirs: list = []
+        #: Each existing file's permission bits, so a deleted executable comes back executable.
+        self.modes: Dict[str, int] = {}
 
 
 def _snapshot(target: Path, proposal: Transformation) -> Dict[str, Optional[bytes]]:
@@ -1435,6 +1437,8 @@ def _snapshot(target: Path, proposal: Transformation) -> Dict[str, Optional[byte
     for edit in proposal.edits:
         path = target / edit.path
         out[edit.path] = path.read_bytes() if path.is_file() else None
+        if path.is_file():
+            out.modes[edit.path] = stat.S_IMODE(path.stat().st_mode)
         parent = path.parent
         while parent != target and target in parent.parents and not parent.exists():
             if parent not in out.new_dirs:
@@ -1450,7 +1454,7 @@ def _restore(target: Path, snapshot: Mapping[str, Optional[bytes]]) -> None:
             path.unlink(missing_ok=True)
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
+            textio.write_bytes_with_mode(path, data, getattr(snapshot, "modes", {}).get(rel))
     # Folders the apply made, now empty again, go too (deepest first).
     for folder in sorted(getattr(snapshot, "new_dirs", ()), key=lambda d: len(d.parts), reverse=True):
         try:

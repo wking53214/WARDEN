@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import ast
+import stat
 import fnmatch
 import unicodedata
 from contextlib import contextmanager
@@ -156,10 +157,13 @@ class Snapshot:
     def __init__(self, target: Path) -> None:
         self.target = Path(target)
         self.files: Dict[str, bytes] = {}
+        #: Each file's permission bits (executable bit included), so a file that is put back is put back as it was.
+        self.modes: Dict[str, int] = {}
         self.restorable = True
         total = 0
         for path in _walk(self.target):
             data = path.read_bytes()
+            self.modes[str(path.relative_to(self.target))] = stat.S_IMODE(path.stat().st_mode)
             total += len(data)
             self.restorable = self.restorable and total <= _RESTORE_LIMIT
             self.files[str(path.relative_to(self.target))] = data if self.restorable else b""
@@ -225,7 +229,7 @@ class Snapshot:
             path = self.target / rel
             if not path.is_file() or path.read_bytes() != data:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(data)
+                textio.write_bytes_with_mode(path, data, getattr(self, "modes", {}).get(rel))
         # Folders that did not exist at the start and are now empty (an apply made them) go too.
         for rel in sorted(self._dirs() - self.dirs, key=lambda r: r.count("/"), reverse=True):
             try:
