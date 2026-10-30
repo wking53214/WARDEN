@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 
 from . import textio
-from .guard import is_prose
+from .guard import hooks_dirs, is_prose, is_protected, real_rel
 from .models import Transformation, safe_id
 
 _MESSAGE = "warden keep-test: this code is a deletion candidate and was still executed"
@@ -57,6 +57,34 @@ def is_deletion(target: Path, proposal: Transformation) -> bool:
             if path.is_file() and _lines(textio.read_text(path)) > _lines(edit.new):
                 return True
     return False
+
+
+def removal_rows(target: Path, proposal: Transformation) -> list[dict]:
+    """The facts of each removal in a proposal, for the claim row: one entry per file that is deleted or whose
+    code shrinks, with its path, `kind` ("deleted" or "shrunk"), `lines_before`, `lines_after` (non-blank lines,
+    the count `is_deletion` uses) and whether the path is protected. Read before the proposal is applied. Warden
+    applies these only for a claim-seat commit (see `tagteam`); for any other actor the gate in this module stands."""
+    target = Path(target)
+    hooks = hooks_dirs(target)
+    rows: list[dict] = []
+    for edit in proposal.edits:
+        path = target / edit.path
+        current = textio.read_text(path) if path.is_file() else ""
+        if edit.kind == "delete":
+            kind, after = "deleted", ""
+        elif is_prose(edit.path):
+            continue
+        elif edit.kind == "replace" and _lines(edit.old) > _lines(edit.new):
+            kind, after = "shrunk", current.replace(edit.old, edit.new, 1) if current else edit.new
+        elif edit.kind == "write" and path.is_file() and _lines(current) > _lines(edit.new):
+            kind, after = "shrunk", edit.new
+        else:
+            continue
+        real = real_rel(target, edit.path)
+        rows.append({"path": edit.path, "kind": kind, "lines_before": _lines(current) if current else _lines(edit.old),
+                     "lines_after": _lines(after),
+                     "protected": is_protected(edit.path, hooks) or (real is not None and is_protected(real, hooks))})
+    return rows
 
 
 _Def = Union[ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef]

@@ -9,7 +9,8 @@ the repository could not name the commit that was held.
 (commit, parent, tree, diff sha256, each file's sha256 before and after), the grant, the structured
 suite results, Ghost's findings before and after, the Judge's sentences, the decision, the held digest
 and the digest of the held tree. Nothing in it is invented after the fact. The key set is fixed and
-shared with the hub (`cns.run.RunRecord.claim` from CNS 2.1.0): `KEYS`.
+shared with the hub (`cns.run.RunRecord.claim` from CNS 2.1.0): `KEYS`. `removals` (0.16.0) lists what a claim-seat
+commit deleted or shrank, each with its path, kind, lines before and after and whether the path is protected.
 
 An ordinary Drafter run gets a row too, with `claimed_commit` null and `files` from the Transformation
 that was applied, so every record names its files by digest.
@@ -32,7 +33,7 @@ KEYS = ("origin", "base_commit", "base_tree_digest", "claimed_commit", "claimed_
         "claimed_author", "claimed_date", "diff_sha256", "diff_bytes", "files", "actor", "authority",
         "authorization_id", "scope", "transformation_id", "suite_before", "suite_after", "ghost_before_count",
         "ghost_after_count", "new_findings", "closed_findings", "rules_fired", "judge", "decision", "held_digest",
-        "held_tree_digest", "participants", "finisher_edits")
+        "held_tree_digest", "participants", "finisher_edits", "removals")
 
 #: The authority a `warden tagteam --authorize` grant carries (the same word the horsemen receipt uses).
 HUMAN_AUTHORITY = "human_operator"
@@ -237,6 +238,7 @@ def claim_row(result: Any, authorization: Any, versions_report: Optional[Mapping
         "held_tree_digest": getattr(result, "held_tree_digest", None),
         "participants": _participants(versions_report),
         "finisher_edits": _finisher_edits(result),
+        "removals": [dict(r) for r in getattr(result, "removals", ())],
     }
     assert tuple(row) == KEYS
     return row

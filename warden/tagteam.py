@@ -35,7 +35,8 @@ from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 from . import gitstate, held, runstate, textio
 from .authorization import Authorization, Unauthorized, is_stack_actor
-from .deletion import commented_variant, is_deletion, keep_variant, stamp_now
+from .claim import ClaimDrafter
+from .deletion import commented_variant, is_deletion, keep_variant, removal_rows, stamp_now
 from .ghost import GhostCrashed, GhostRefused, _clean as _plain, defects_from_ghost, scan as ghost_scan
 from .textio import clip as _clip
 from .guard import (FORBIDDEN_DIRS, iter_tree, SeatBrokeCharter, Snapshot, _RESTORE_LIMIT, hooks_dirs, is_protected,
@@ -168,6 +169,9 @@ class TagTeamResult:
     #: Ghost's own severity word (critical, major, minor, informational) per finding id, as Ghost said it. The claim
     #: row carries it as `severity`, the same word the Judge gets in `evidence.ghost_severity` when that field exists.
     ghost_words: Optional[dict] = None
+    #: What a claim-seat commit removed (a file deleted, a code file shrunk), as `deletion.removal_rows` reads it. The
+    #: claim row carries it as `removals`. Empty for every other run: only the claim seat's removals are applied.
+    removals: tuple[dict, ...] = ()
 
     @property
     def suite_before(self) -> Optional[SuiteRun]:
@@ -289,6 +293,8 @@ class TagTeam:
         #: informational), as the scanner said it, apart from Warden's remapped `Defect.severity`.
         self._ghost_words: dict[str, str] = {}
         self._suite_passes: list[dict] = []
+        #: The removals a claim-seat commit makes, read before they are applied (see `deletion.removal_rows`).
+        self._removals: list[dict] = []
         #: Tree fingerprint -> the number of the pass that measured it, within this run only.
         self._suite_seen: dict[str, int] = {}
         lock = runstate.TargetLock(target)
@@ -660,6 +666,13 @@ class TagTeam:
                 gaps = tuple(m for m in missing if m != "judge")
                 # Whatever the Judge says, a run with gaps in its measurements is not a plain ACCEPT.
                 decision = "ACCEPT_UNVERIFIED" if judged == "ACCEPT" and gaps else judged
+            if self._removals and decision == "ACCEPT":
+                # The owner's ruling of 2026-10-30: a claimed commit that deletes a file or shrinks code is applied
+                # and measured, and the machine does not approve it. Whatever the Judge says, it ends held for a
+                # named human.
+                decision = "ACCEPT_UNVERIFIED"
+                why += (f" Held for a named human: the claimed commit removes code ({_removal_words(self._removals)}); "
+                        "the removal was applied and measured, and the machine does not approve it.")
             if candidate and decision in {"ACCEPT", "ACCEPT_UNVERIFIED"}:
                 # The floor is Warden's to enforce: a Judge's ACCEPT (or none at all) does not waive it.
                 below = self._below_floor()
@@ -677,7 +690,8 @@ class TagTeam:
                 ghost_baseline=self._baseline_report(),
                 drafter_skipped=self._skipped_lines(), informational=tuple(self._info),
                 attacks=self._attacks, evidence=self._evidence, finish_cycle=finish_cycle,
-                suite_passes=tuple(self._suite_passes), ghost_words=dict(self._ghost_words))
+                suite_passes=tuple(self._suite_passes), ghost_words=dict(self._ghost_words),
+                removals=tuple(self._removals))
 
         if self._stale_baseline:
             return stop("REJECT", f"Ghost's baseline has {self._stale_baseline} entr"
@@ -758,7 +772,15 @@ class TagTeam:
                 notes.append(f"Cycle {number}: change declined. {why}.")
                 continue
             removes = is_deletion(target, proposal)
-            if removes:
+            # A commit the operator named (the claim seat) is governed whole: its removals are applied, measured and
+            # held for a named human, not run through the keep test and commented out. Any other actor's removal
+            # meets the gate below exactly as it always did.
+            claimed = removes and isinstance(self.drafter, ClaimDrafter) and proposal.claim is not None
+            if claimed:
+                self._removals = removal_rows(target, proposal)
+                notes.append(f"Cycle {number}: the claimed commit removes code ({_removal_words(self._removals)}); "
+                             "it is applied and measured, and the run will end held for a named human.")
+            elif removes:
                 scope, why = self._keep_test(target, proposal, observed, python, notes, number)
                 if scope == "systemic":
                     cycles.append(Cycle(number, len(observed), proposal, False, "REFUSED"))
@@ -780,7 +802,7 @@ class TagTeam:
             seen.add(key)
             attempts += 1
             cycle = self._apply(target, proposal, authorization, python, notes, number,
-                                len(observed))
+                                len(observed), validated=claimed)
             cycles.append(cycle)
             if cycle.outcome == "SUITE_RED":
                 return stop("INCONCLUSIVE", f"Cycle {number}: the suite is not green ({_red(cycle)}); nothing was "
@@ -790,7 +812,7 @@ class TagTeam:
                             "the loop stopped.", cycles)
             after = self._reinspect(target, observed, python, notes)
             new = {d.ghost_id for d in after if d.ghost_id} - {d.ghost_id for d in observed if d.ghost_id}
-            if removes and new:
+            if removes and not claimed and new:
                 _restore(target, cycle.restore)
                 proposal.status = TransformationStatus.REJECTED
                 cycle.applied, cycle.outcome = False, "DECLINED"
@@ -1180,6 +1202,13 @@ def _commented(target: Path, proposal: Transformation) -> Optional[Transformatio
                            for rel, text in files.items())
     proposal.intent = "comment out unused code (not deleted): " + proposal.intent
     return proposal
+
+
+def _removal_words(removals: Sequence[dict]) -> str:
+    """The removals as a short phrase: "deleted a.py (4 lines), shrunk b.py (9 to 3 lines)"."""
+    parts = [f"deleted {r['path']} ({r['lines_before']} lines)" if r["kind"] == "deleted"
+             else f"shrunk {r['path']} ({r['lines_before']} to {r['lines_after']} lines)" for r in removals[:5]]
+    return ", ".join(parts) + (f", and {len(removals) - 5} more" if len(removals) > 5 else "")
 
 
 def _red(cycle: Cycle) -> str:
