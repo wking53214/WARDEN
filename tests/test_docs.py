@@ -171,21 +171,21 @@ def test_the_tested_set_is_the_same_everywhere_it_is_stated():
     assert len(re.findall(r"wking53214/JUDGE@", workflow)) == 2
     assert workflow.count("repository: wking53214/ASSAY\n          ref:") == 2
     # The version written next to each pin is the version the repository declares at that commit (kept by hand).
-    for repo, version in (("ghost_tools", "1.10.10"), ("SWIZZLE", "0.8.10"), ("ASSAY", "0.11.7"), ("JUDGE", "0.5.1")):
+    for repo, version in (("ghost_tools", "1.10.12"), ("SWIZZLE", "0.8.11"), ("ASSAY", "0.11.8"), ("JUDGE", "0.5.1")):
         assert re.search(rf"^\| {repo} \| {re.escape(version)} \|", stack, re.MULTILINE), (repo, version)
         assert re.search(rf"^#\s+{repo}\s+{re.escape(version)}\s", workflow, re.MULTILINE), (repo, version)
 
 
-def test_the_cns_pin_is_the_v2_1_0_tag_and_is_stated_in_stack():
+def test_the_cns_pin_is_the_v2_2_0_tag_and_is_stated_in_stack():
     """CNS is pinned by tag, spelled the same way in every repository of the circuit (CNS's seat_pins check compares
     the text, and pip treats a tag URL and a commit URL as two sources). STACK.md names the tag and the commit it
     peels to."""
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     stack = (ROOT / "STACK.md").read_text(encoding="utf-8")
-    assert pyproject.count("cns @ git+https://github.com/wking53214/CNS.git@v2.1.0") == 1
-    assert 'dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v2.1.0"]' in pyproject
-    peeled = "fde931ffa89aebec95647742256ad53033bd3d02"
-    assert re.search(rf"^\| CNS \| v2\.1\.0 \| `{peeled}` \|", stack, re.MULTILINE)
+    assert pyproject.count("cns @ git+https://github.com/wking53214/CNS.git@v2.2.0") == 1
+    assert 'dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v2.2.0"]' in pyproject
+    peeled = "ce6bd05578a7a3e3cafa0cfa1e9a2cca8a5f171f"
+    assert re.search(rf"^\| CNS \| v2\.2\.0 \| `{peeled}` \|", stack, re.MULTILINE)
 
 
 def test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged():

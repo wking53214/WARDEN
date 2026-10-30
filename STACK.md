@@ -70,19 +70,19 @@ changes. The manifest is the shape CNS is meant to hold for the circuit.
 Warden's CI runs against these sibling commits, each a full SHA. They are the last set this repository's CI tested on its
 own; none is claimed to be the head of any repository's `main`, none is tagged, and a sibling may have moved on. Whether the
 set that lands works together is checked by the `stack` job in the CNS repository, not here.
-CNS is the exception: `pyproject.toml` pins it by the tag `v2.1.0`, spelled the same way in every repository of the
-circuit, and its row gives the commit the tag peels to.
-The ASSAY commit (`8f6ef85`, 0.11.7) has its cns extra at the CNS v2.1.0 tag, and the JUDGE commit (`ad3d66f`, 0.5.1) depends on CNS at that tag.
+CNS is the exception: `pyproject.toml` pins it by the tag `v2.2.0`, spelled the same way in every repository of the
+circuit, and its row gives the commit the tag is (a lightweight tag, so the tag is the commit).
+The ASSAY commit (`fe0179d`, 0.11.8) has its cns extra at the CNS v2.2.0 tag. The JUDGE commit (`ad3d66f`, 0.5.1) still depends on CNS at the v2.1.0 tag; Judge is installed with `--no-deps`, so CNS there is this repository's pin.
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
 place that states one of them disagrees with the others.
 
 | Repository | Version | Commit |
 |---|---|---|
-| ghost_tools | 1.10.10 | `99f3d5209bc98657db91eea1c25e833136ea61ab` |
-| SWIZZLE | 0.8.10 | `b7451ad417cd166d10d4897a6b7dbe076ec02029` |
-| ASSAY | 0.11.7 | `8f6ef8599d9acb2a2672a5a78c36ec0e276fa78c` |
+| ghost_tools | 1.10.12 | `e77f1bc65c91c48703bf767985cbb211df9c6d0e` |
+| SWIZZLE | 0.8.11 | `dfef358d542da3488a27b85a703f7e4eb33312f6` |
+| ASSAY | 0.11.8 | `fe0179d752835f89e620f871719cfd25ed7cb9a9` |
 | JUDGE | 0.5.1 | `ad3d66f84a15ad7c320285e4d9ab006de90bdfdd` |
-| CNS | v2.1.0 | `fde931ffa89aebec95647742256ad53033bd3d02` |
+| CNS | v2.2.0 | `ce6bd05578a7a3e3cafa0cfa1e9a2cca8a5f171f` |
 
 ASSAY's answer key needs numpy and matplotlib installed normally, with matplotlib's own dependencies (Pillow,
 `packaging` and the rest). Installing them with `--no-deps` leaves 56 of the 60 claims proven, so the key is NOT PROVEN

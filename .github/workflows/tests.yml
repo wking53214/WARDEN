@@ -15,16 +15,16 @@ permissions:
 # (in every job that checks it out, and the matching `--expect` in the `circuit` job, `pyproject.toml` for
 # ghost_tools, and STACK.md), read the sibling's CHANGELOG for what moved, and run the whole job set once.
 # `tests/test_docs.py` fails if the pins disagree with each other.
-#   ghost_tools 1.10.10 99f3d5209bc98657db91eea1c25e833136ea61ab
-#   SWIZZLE     0.8.10  b7451ad417cd166d10d4897a6b7dbe076ec02029
-#   ASSAY       0.11.7  8f6ef8599d9acb2a2672a5a78c36ec0e276fa78c
+#   ghost_tools 1.10.12 e77f1bc65c91c48703bf767985cbb211df9c6d0e
+#   SWIZZLE     0.8.11  dfef358d542da3488a27b85a703f7e4eb33312f6
+#   ASSAY       0.11.8  fe0179d752835f89e620f871719cfd25ed7cb9a9
 #   JUDGE       0.5.1   ad3d66f84a15ad7c320285e4d9ab006de90bdfdd
 # These four are the last set this repository's CI tested on its own. None of them is claimed to be the head of any
 # repository's `main`, and a sibling may have moved on. Whether the set that lands works together is checked by the
 # `stack` job in the CNS repository (github.com/wking53214/CNS), not here. The cns extras of the ghost_tools, SWIZZLE and ASSAY commits
-# and the CNS dependency of the JUDGE commit are at the CNS v2.1.0 tag, like the pin here; Judge is installed with
-# --no-deps, so CNS there is the pin of this repository.
-# CNS is pinned by the tag `v2.1.0` in `pyproject.toml` (it peels to fde931f).
+# are at the CNS v2.2.0 tag, like the pin here. The CNS dependency of the JUDGE commit is still the v2.1.0 tag; Judge is
+# installed with --no-deps, so CNS there is the pin of this repository.
+# CNS is pinned by the tag `v2.2.0` in `pyproject.toml` (a lightweight tag: the tag is the commit ce6bd05).
 # The `assay-latest` job is the one place a sibling is taken at its newest commit, on purpose, and it cannot
 # fail the build.
 #
@@ -62,11 +62,11 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       # ASSAY is public; checking it out makes test_live_assay_registry run here instead of skipping, so a
-      # broken ASSAY link turns CI red. ASSAY 0.11.7 (8f6ef85).
+      # broken ASSAY link turns CI red. ASSAY 0.11.8 (fe0179d).
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ASSAY
-          ref: 8f6ef8599d9acb2a2672a5a78c36ec0e276fa78c
+          ref: fe0179d752835f89e620f871719cfd25ed7cb9a9
           path: _assay
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
@@ -87,23 +87,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      # ASSAY 0.11.7 (8f6ef85)
+      # ASSAY 0.11.8 (fe0179d)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ASSAY
-          ref: 8f6ef8599d9acb2a2672a5a78c36ec0e276fa78c
+          ref: fe0179d752835f89e620f871719cfd25ed7cb9a9
           path: _circuit/ASSAY
-      # ghost_tools 1.10.10 (99f3d52)
+      # ghost_tools 1.10.12 (e77f1bc)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ghost_tools
-          ref: 99f3d5209bc98657db91eea1c25e833136ea61ab
+          ref: e77f1bc65c91c48703bf767985cbb211df9c6d0e
           path: _circuit/ghost_tools
-      # SWIZZLE 0.8.10 (b7451ad)
+      # SWIZZLE 0.8.11 (dfef358)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/SWIZZLE
-          ref: b7451ad417cd166d10d4897a6b7dbe076ec02029
+          ref: dfef358d542da3488a27b85a703f7e4eb33312f6
           path: _circuit/SWIZZLE
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
@@ -118,9 +118,9 @@ jobs:
       - run: >
           python tools/circuit_smoke.py
           --ghost-tools _circuit/ghost_tools --swizzle _circuit/SWIZZLE --assay _circuit/ASSAY --real-judge
-          --expect ghost_tools=99f3d5209bc98657db91eea1c25e833136ea61ab
-          --expect swizzle=b7451ad417cd166d10d4897a6b7dbe076ec02029
-          --expect assay=8f6ef8599d9acb2a2672a5a78c36ec0e276fa78c
+          --expect ghost_tools=e77f1bc65c91c48703bf767985cbb211df9c6d0e
+          --expect swizzle=dfef358d542da3488a27b85a703f7e4eb33312f6
+          --expect assay=fe0179d752835f89e620f871719cfd25ed7cb9a9
 
   # Newest ASSAY, on purpose, to learn early when ASSAY's published answer key drifts from what Warden reads.
   # Never blocks a merge.
