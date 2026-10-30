@@ -81,10 +81,19 @@ def _protected(target: Path, path: str, hooks: tuple) -> bool:
     return is_protected(path, hooks) or (real is not None and is_protected(real, hooks))
 
 
-def _files(result: Any, target: Path, claim: Mapping[str, Any]) -> list[dict]:
+def _files(result: Any, target: Path, claim: Mapping[str, Any], cycle: Any = None) -> list[dict]:
     hooks = hooks_dirs(target)
     if claim.get("files"):
-        return [{**dict(f), "protected": _protected(target, str(f["path"]), hooks)} for f in claim["files"]]
+        # `after_sha256` is the digest of the bytes that landed (the cycle's applied bytes), not of the claimed blob:
+        # a claimed file that did not land as claimed refuses the run, so the two agree whenever a run ends.
+        landed = getattr(cycle, "applied_bytes", None) or {}
+        rows = []
+        for f in claim["files"]:
+            row = dict(f)
+            if row["path"] in landed:
+                row["after_sha256"] = _sha256(landed[row["path"]])
+            rows.append({**row, "protected": _protected(target, str(row["path"]), hooks)})
+        return rows
     out: dict[str, dict] = {}
     for cycle in result.cycles:
         if not (cycle.applied and cycle.proposal is not None):
@@ -219,7 +228,7 @@ def claim_row(result: Any, authorization: Any, versions_report: Optional[Mapping
         "claimed_date": claim.get("date"),
         "diff_sha256": claim.get("diff_sha256"),
         "diff_bytes": claim.get("diff_bytes"),
-        "files": _files(result, target, claim),
+        "files": _files(result, target, claim, cycle),
         "actor": None if authorization is None else authorization.actor,
         "authority": None if authorization is None else HUMAN_AUTHORITY,
         "authorization_id": _authorization_id(authorization),

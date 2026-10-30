@@ -97,6 +97,10 @@ class SuiteChangedSource(RuntimeError):
     """Running the target's suite changed its source files."""
 
 
+class ClaimNotLanded(RuntimeError):
+    """The bytes a claimed change left on disk are not the bytes of the claimed commit. The run is refused."""
+
+
 class WrongAnswer(RuntimeError):
     """A seat returned the wrong kind of thing."""
 
@@ -372,6 +376,8 @@ class TagTeam:
             decision, said = "INTERRUPTED", f"Warden received {err.signal_name} and stopped."
         elif isinstance(err, SeatBrokeCharter):
             decision, said = "REJECT", str(err)
+        elif isinstance(err, ClaimNotLanded):
+            decision, said = "USAGE_ERROR", f"{err} Nothing was measured and everything was put back."
         elif isinstance(err, GhostUnavailable):
             decision, said = "INCONCLUSIVE", str(err)
             self._down.add("ghost")
@@ -956,6 +962,12 @@ class TagTeam:
         landed = {e.path: ((target / e.path).read_bytes() if (target / e.path).is_file() else None)
                   for e in proposal.edits}
         tree_after = _fingerprint(target)
+        off = _landing_problem(proposal, landed)
+        if off:
+            # Refused before anything is measured: the row would name bytes that did not land.
+            _restore(target, snapshot)
+            proposal.status = TransformationStatus.REJECTED
+            raise ClaimNotLanded(off)
         try:
             after = self._suite(target, python, notes, f"cycle {number} after")
         except SuiteChangedSource:
@@ -1245,6 +1257,21 @@ def _commented(target: Path, proposal: Transformation) -> Optional[Transformatio
     return proposal
 
 
+def _landing_problem(proposal: Transformation, landed: Mapping[str, Optional[bytes]]) -> str:
+    """For a claimed change, why the bytes now on disk are not the claimed commit's, naming the file and both digests;
+    "" when every file landed as claimed (or the proposal is not a claim)."""
+    if proposal.claim is None:
+        return ""
+    for entry in proposal.claim.get("files") or ():
+        path = entry["path"]
+        data = landed.get(path)
+        digest = None if data is None else hashlib.sha256(data).hexdigest()
+        if digest != entry.get("after_sha256"):
+            return (f"{path}: the bytes that landed (sha256 {digest}) are not the bytes of the claimed change "
+                    f"(sha256 {entry.get('after_sha256')}), so the claim cannot be governed as named.")
+    return ""
+
+
 def _removal_words(removals: Sequence[dict]) -> str:
     """The removals as a short phrase: "deleted a.py (4 lines), shrunk b.py (9 to 3 lines)"."""
     parts = [f"deleted {r['path']} ({r['lines_before']} lines)" if r["kind"] == "deleted"
@@ -1311,7 +1338,10 @@ def _changes_nothing(target: Path, proposal: Transformation) -> bool:
             if edit.kind == "delete" or not path.is_file():
                 return False
             current = textio.read_text(path, edit.path)
-            if edit.kind == "write":
+            if edit.kind == "write" and proposal.claim is not None:
+                # A claimed commit is its bytes: a change of line endings alone is a change.
+                same = edit.new.encode("utf-8") == path.read_bytes()
+            elif edit.kind == "write":
                 same = _lf(edit.new) == _lf(current)
             elif edit.kind == "replace":
                 same = _lf(edit.old) == _lf(edit.new)
