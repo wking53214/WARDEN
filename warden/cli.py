@@ -27,7 +27,7 @@ from . import audit as audit_file, gitstate, held, isolation, runstate, textio, 
 from . import chronicle
 from . import claim as claimseat
 from . import log as warden_log
-from .claimrow import claim_row, origin_of
+from .claimrow import claim_row, origin_of, strip_credentials
 from .ghost import load_report, scan as ghost_scan
 from .tagteam import TagTeam
 
@@ -755,7 +755,7 @@ def _chronicle(args) -> int:
         return 2
     entries: list[dict] = []
     for path in sorted(directory.glob("*.jsonl")):
-        if args.origin is not None and path.name != chronicle.path_for(directory, args.origin).name:
+        if args.origin is not None and path.name != chronicle.path_for(directory, strip_credentials(args.origin)).name:
             continue
         for line in path.read_text(encoding="utf-8").splitlines():
             try:

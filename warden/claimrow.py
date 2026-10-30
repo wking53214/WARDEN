@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import difflib
 import hashlib
+import re
 from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Mapping, Optional
+from urllib.parse import urlsplit, urlunsplit
 
 from . import gitstate, versions
 from .guard import hooks_dirs, is_protected, real_rel
@@ -39,8 +41,33 @@ KEYS = ("origin", "base_commit", "base_tree_digest", "claimed_commit", "claimed_
 HUMAN_AUTHORITY = "human_operator"
 
 
+_SECRET_PARAM = re.compile(r"token|secret|passw|pwd|key|auth|sig|credential", re.IGNORECASE)
+_SCP = re.compile(r"^(?P<user>[^/@:\s]+)@(?P<host>[^/:\s]+):(?P<path>.*)$")
+
+
+def _without_secret_params(text: str) -> str:
+    """`a=1&token=x&b=2` without the parameters whose name looks like a credential (the others are kept verbatim)."""
+    return "&".join(part for part in text.split("&") if not _SECRET_PARAM.search(part.partition("=")[0]))
+
+
+def strip_credentials(url: str) -> str:
+    """`url` without anything that is a secret: the user (and password) before an `@`, in a URL or scp-style address,
+    and a query or fragment parameter whose name looks like a token. A URL with none of these is returned unchanged."""
+    if "://" in url:
+        parts = urlsplit(url)
+        netloc = parts.netloc.rpartition("@")[2]
+        query = _without_secret_params(parts.query) if "=" in parts.query else parts.query
+        fragment = _without_secret_params(parts.fragment) if "=" in parts.fragment else parts.fragment
+        return urlunsplit((parts.scheme, netloc, parts.path, query, fragment))
+    scp = _SCP.match(url)
+    if scp:
+        return f"{scp.group('host')}:{scp.group('path')}"
+    return url
+
+
 def origin_of(target: Path) -> Optional[str]:
-    """Where the target's history comes from: its `remote.origin.url`, or None when it has no remote.
+    """Where the target's history comes from: its `remote.origin.url` with any credential removed (see
+    `strip_credentials`), or None when it has no remote.
 
     A row is keyed by origin and commits, never by the path of the clone the run happened in: twenty
     clones of one repository are one history, and one path reused for twenty repositories is not."""
@@ -48,7 +75,7 @@ def origin_of(target: Path) -> Optional[str]:
     if done is None or done.returncode != 0:
         return None
     url = done.stdout.strip()
-    return url or None
+    return strip_credentials(url) or None
 
 
 def _sha256(data: Optional[bytes]) -> Optional[str]:
