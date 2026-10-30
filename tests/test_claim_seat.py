@@ -269,3 +269,77 @@ def test_a_claimed_commit_is_governed_once_and_the_seat_is_named_in_the_record(t
     assert [c["outcome"] for c in payload["cycles"]] == ["APPLIED", "NOTHING_TO_PROPOSE"]
     assert payload["versions"]["seats"]["drafter"]["spec"] == "warden.claim:ClaimDrafter"
     assert payload["held_digest"] and not (target / "NEW.md").exists()  # held, so the tree was put back
+
+
+# -- modes: a write of text sets no executable bit, so a change that needs one is refused with the path and modes ------
+
+def test_a_commit_whose_only_change_is_a_mode_change_is_refused_naming_the_path_and_both_modes(tmp_path):
+    _repo_with_a_change(tmp_path)
+    (tmp_path / "NOTE.md").chmod(0o755)
+    git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "make the note executable")
+    with pytest.raises(claim.ClaimError) as raised:
+        claim.from_commit(tmp_path, "HEAD")
+    said = str(raised.value)
+    assert "NOTE.md" in said and "100644" in said and "100755" in said and "mode" in said
+
+
+def test_a_commit_that_adds_an_executable_file_is_refused_not_written_without_the_bit(tmp_path):
+    _repo_with_a_change(tmp_path)
+    script = tmp_path / "run.sh"
+    script.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+    script.chmod(0o755)
+    git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "add a script")
+    with pytest.raises(claim.ClaimError) as raised:
+        claim.from_commit(tmp_path, "HEAD")
+    assert "run.sh" in str(raised.value) and "100755" in str(raised.value)
+
+
+def test_a_commit_that_changes_content_and_mode_together_is_refused(tmp_path):
+    _repo_with_a_change(tmp_path)
+    (tmp_path / "NOTE.md").write_text("changed note\n", encoding="utf-8")
+    (tmp_path / "NOTE.md").chmod(0o755)
+    git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "edit and chmod")
+    with pytest.raises(claim.ClaimError, match="100644 to 100755"):
+        claim.from_commit(tmp_path, "HEAD")
+
+
+def test_a_diff_file_that_only_changes_a_mode_is_refused_naming_the_path_and_both_modes(tmp_path):
+    (tmp_path / "x.txt").write_text("x\n", encoding="utf-8")
+    patch = tmp_path.parent / "mode_only.diff"
+    patch.write_text("diff --git a/x.txt b/x.txt\nold mode 100644\nnew mode 100755\n", encoding="utf-8")
+    with pytest.raises(claim.ClaimError) as raised:
+        claim.from_diff(tmp_path, patch, "s", "a")
+    said = str(raised.value)
+    assert "x.txt" in said and "100644" in said and "100755" in said
+
+
+def test_a_diff_file_that_adds_an_executable_file_is_refused(tmp_path):
+    patch = tmp_path.parent / "new_exec.diff"
+    patch.write_text("diff --git a/run.sh b/run.sh\nnew file mode 100755\nindex 0000000..1111111\n"
+                     "--- /dev/null\n+++ b/run.sh\n@@ -0,0 +1,2 @@\n+#!/bin/sh\n+echo hi\n", encoding="utf-8")
+    with pytest.raises(claim.ClaimError) as raised:
+        claim.from_diff(tmp_path, patch, "s", "a")
+    assert "run.sh" in str(raised.value) and "100755" in str(raised.value)
+
+
+def test_a_diff_file_that_adds_an_ordinary_file_is_still_read(tmp_path):
+    patch = tmp_path.parent / "new_plain.diff"
+    patch.write_text("diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex 0000000..1111111\n"
+                     "--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+hello\n", encoding="utf-8")
+    read = claim.from_diff(tmp_path, patch, "s", "a")
+    assert [(f.path, f.status, f.after) for f in read.files] == [("notes.txt", "A", b"hello\n")]
+
+
+def test_a_mode_change_is_a_usage_error_before_anything_runs_on_the_command_line(tmp_path, capsys):
+    _repo_with_a_change(tmp_path)
+    (tmp_path / "NOTE.md").chmod(0o755)
+    git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "chmod")
+    code = main(["tagteam", str(tmp_path), "--claim-commit", "HEAD", "--authorize", "william", "--reason", "t",
+                 "--scope", "code"])
+    payload = _payload(capsys)
+    assert code == 2 and payload["decision"] == "USAGE_ERROR"
+    assert "NOTE.md" in payload["reason"] and "100755" in payload["reason"] and "Nothing was run" in payload["reason"]

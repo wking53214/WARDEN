@@ -134,6 +134,12 @@ def from_commit(target: Path, sha: str, repo: Optional[Path] = None) -> Claim:
                                  "submodule), which a write or delete of text cannot express.")
         if status not in "AMD":
             raise ClaimError(f"{path} has a change of kind {status!r}, which a write or delete of text cannot express.")
+        if status == "M" and old_mode != new_mode:
+            raise ClaimError(f"{path}: the change alters the file's mode from {old_mode} to {new_mode}, which a write "
+                             "of text cannot express (a write sets no executable bit).")
+        if status == "A" and new_mode != "100644":
+            raise ClaimError(f"{path}: the change adds the file with mode {new_mode}, which a write of text cannot "
+                             "express (a write sets no executable bit).")
         before = None if status == "A" else _git(repo, "cat-file", "blob", f"{parent}:{path}")
         after = None if status == "D" else _git(repo, "cat-file", "blob", f"{full}:{path}")
         for data, side in ((before, "before"), (after, "after")):
@@ -149,6 +155,31 @@ def from_commit(target: Path, sha: str, repo: Optional[Path] = None) -> Claim:
     subject, author, date = (shown.rstrip("\n").split("\0") + ["", "", ""])[:3]
     return Claim(subject=subject, author=author, diff=diff, files=tuple(files), commit=full, parent=parent,
                  tree=tree, date=date)
+
+
+def _git_header_path(line: str) -> str:
+    """The path a `diff --git a/P b/P` line names (the b side), or "" when it cannot be told."""
+    rest = line[len("diff --git "):]
+    if rest.startswith("a/") and " b/" in rest:
+        return rest[2:].rpartition(" b/")[2]
+    return ""
+
+
+def _mode_problem(section: dict) -> str:
+    """Why the section's mode headers cannot be said as a write of text, naming the path and the modes; else ''."""
+    headers = section["headers"]
+    name = section.get("git_path") or section.get("new") or section.get("old") or "a file"
+    old = next((h.split(" ", 2)[2] for h in headers if h.startswith("old mode ") and h.count(" ") >= 2), None)
+    new = next((h.split(" ", 2)[2] for h in headers if h.startswith("new mode ") and h.count(" ") >= 2), None)
+    if old is not None or new is not None:
+        return (f"{name}: the diff changes the file's mode from {old or 'unstated'} to {new or 'unstated'}, which a "
+                "write of text cannot express (a write sets no executable bit).")
+    for header in headers:
+        parts = header.split(" ")
+        if header.startswith("new file mode ") and len(parts) >= 4 and parts[3] != "100644":
+            return (f"{name}: the diff adds the file with mode {parts[3]}, which a write of text cannot express "
+                    "(a write sets no executable bit).")
+    return ""
 
 
 def _strip_prefix(name: str) -> str:
@@ -214,7 +245,7 @@ def from_diff(target: Path, diff_path: Path, subject: str, author: str) -> Claim
     while index < len(lines):
         line = lines[index]
         if line.startswith("diff --git "):
-            current = {"old": None, "new": None, "hunks": [], "headers": []}
+            current = {"old": None, "new": None, "hunks": [], "headers": [], "git_path": _git_header_path(line)}
             sections.append(current)
         elif line.startswith(_UNSAID):
             raise ClaimError(f"the diff says {line.split(' ')[0]} {line.split(' ')[1]} for a file, which a write or "
@@ -246,14 +277,15 @@ def from_diff(target: Path, diff_path: Path, subject: str, author: str) -> Claim
         index += 1
     files = []
     for section in sections:
+        problem = _mode_problem(section)
+        if problem:
+            raise ClaimError(problem)
         if section["old"] is None or section["new"] is None:
             raise ClaimError("the diff has a file header without both its --- and +++ lines.")
         if not section["hunks"]:
             raise ClaimError("the diff has a file with no hunks (a mode change alone, or an empty section), "
                              "which a write or delete of text cannot express.")
         old_name, new_name = section["old"], section["new"]
-        if any(h.startswith(("old mode", "new mode")) for h in section["headers"]):
-            raise ClaimError(f"{new_name}: the diff changes the file's mode, which a write of text cannot express.")
         if old_name.endswith("/dev/null") or old_name == "/dev/null":
             before = None
         else:
