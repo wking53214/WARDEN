@@ -943,7 +943,10 @@ def _findings_problem(path, err: Exception) -> str:
 def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> int:
     chronicle_dir = getattr(args, "chronicle", None)
     origin = origin_of(Path(args.path).resolve()) if chronicle_dir is not None else None
-    earlier = chronicle.read(chronicle_dir, origin) if chronicle_dir is not None else []
+    try:
+        earlier = chronicle.read(chronicle_dir, origin) if chronicle_dir is not None else []
+    except chronicle.ChronicleError as e:
+        return _stop("USAGE_ERROR", f"The chronicle cannot be read: {e} Nothing was run.")
     team = TagTeam(ghost_tools_root=args.ghost_root, swizzle_root=args.swizzle_root,
                    assay_root=args.assay_root, assay_floor=args.assay_floor,
                    drafter=drafter, finisher=finisher, judge=judge, max_cycles=args.max_cycles,

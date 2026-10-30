@@ -51,17 +51,29 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+class ChronicleError(ValueError):
+    """The chronicle file cannot be read as the run needs it. The message names the file and, where it can, the line."""
+
+
 def read(directory: Path, origin: Optional[str]) -> list[dict]:
-    """Every readable line of the origin's file, in the order it was written. An unreadable line is skipped."""
+    """Every line of the origin's file, in the order it was written. A blank line is ignored; a line that is not
+    valid JSON, or a file that is not valid UTF-8, is a ChronicleError naming the file and the line."""
     path = path_for(directory, origin)
     if not path.is_file():
         return []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ChronicleError(f"the chronicle file {str(path)!r} is not valid UTF-8 text (at byte {exc.start}).") from exc
     out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
         try:
             item = json.loads(line)
-        except ValueError:
-            continue
+        except ValueError as exc:
+            raise ChronicleError(f"line {number} of the chronicle file {str(path)!r} is not valid JSON "
+                                 f"({getattr(exc, 'msg', 'unreadable')}).") from exc
         if isinstance(item, dict):
             out.append(item)
     return out

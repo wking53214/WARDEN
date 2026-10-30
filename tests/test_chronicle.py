@@ -184,3 +184,57 @@ def test_the_slug_never_uses_a_path_as_a_key_and_separates_origins():
     a, b = chronicle.slug("https://github.com/x/y"), chronicle.slug("https://github.com/x/z")
     assert a != b and a.startswith("https-github.com-x-y-") and chronicle.slug(None).startswith("no-origin-")
     assert chronicle.path_for(Path("/d"), "o").name == chronicle.slug("o") + ".jsonl"
+
+
+# -- a chronicle that cannot be read refuses the run, with the file and the line, and nothing runs --------------------
+
+def test_a_line_that_is_not_json_is_a_chronicle_error_naming_the_file_and_the_line(tmp_path):
+    path = chronicle.append(tmp_path, "origin-x", {"ok": 1})
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write("{not json\n")
+    with pytest.raises(chronicle.ChronicleError) as raised:
+        chronicle.read(tmp_path, "origin-x")
+    said = str(raised.value)
+    assert path.name in said and "line 2" in said and "not valid JSON" in said
+
+
+def test_a_file_that_is_not_utf8_is_a_chronicle_error_naming_the_file(tmp_path):
+    path = chronicle.path_for(tmp_path, "origin-y")
+    path.write_bytes(b'{"ok": 1}\n\xff\xfe\n')
+    with pytest.raises(chronicle.ChronicleError) as raised:
+        chronicle.read(tmp_path, "origin-y")
+    assert path.name in str(raised.value) and "not valid UTF-8" in str(raised.value)
+
+
+def test_blank_lines_and_a_missing_file_are_not_errors(tmp_path):
+    assert chronicle.read(tmp_path, "origin-z") == []
+    path = chronicle.append(tmp_path, "origin-z", {"ok": 1})
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write("\n   \n")
+    assert chronicle.read(tmp_path, "origin-z") == [{"ok": 1}]
+
+
+def _corrupt_the_chronicle(chain, data):
+    (file,) = list(chain.where.glob("*.jsonl"))
+    file.write_bytes(data)
+    return file
+
+
+def test_a_run_with_a_chronicle_that_has_a_bad_line_is_refused_with_exit_2(chain):
+    file = _corrupt_the_chronicle(chain, b'{"ok": 1}\nthis is not json\n')
+    before = (chain.target / "NOTE.md").exists()
+    code = main(["tagteam", str(chain.target), "--claim-commit", chain.shas[2], "--claim-repo", str(chain.reference),
+                 "--authorize", "william", "--reason", "chain", "--scope", "code", "--chronicle", str(chain.where)])
+    payload = json.loads(chain.capsys.readouterr().out)
+    assert code == 2 and payload["decision"] == "USAGE_ERROR"
+    assert file.name in payload["reason"] and "line 2" in payload["reason"] and "Nothing was run" in payload["reason"]
+    assert (chain.target / "NOTE.md").exists() == before
+
+
+def test_a_run_with_a_chronicle_that_is_not_utf8_is_refused_with_exit_2(chain):
+    file = _corrupt_the_chronicle(chain, b"\xff\xfe\x00bad")
+    code = main(["tagteam", str(chain.target), "--claim-commit", chain.shas[2], "--claim-repo", str(chain.reference),
+                 "--authorize", "william", "--reason", "chain", "--scope", "code", "--chronicle", str(chain.where)])
+    payload = json.loads(chain.capsys.readouterr().out)
+    assert code == 2 and payload["decision"] == "USAGE_ERROR"
+    assert file.name in payload["reason"] and "not valid UTF-8" in payload["reason"] and "Nothing was run" in payload["reason"]
