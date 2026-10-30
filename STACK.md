@@ -72,7 +72,7 @@ own; none is claimed to be the head of any repository's `main`, none is tagged, 
 set that lands works together is checked by the `stack` job in the CNS repository, not here.
 CNS is the exception: `pyproject.toml` pins it by the tag `v2.1.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag peels to.
-The ASSAY commit (`8f6ef85`, 0.11.7) has its cns extra at the CNS v2.1.0 tag.
+The ASSAY commit (`8f6ef85`, 0.11.7) has its cns extra at the CNS v2.1.0 tag, and the JUDGE commit (`ad3d66f`, 0.5.1) depends on CNS at that tag.
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
 place that states one of them disagrees with the others.
 
@@ -81,7 +81,7 @@ place that states one of them disagrees with the others.
 | ghost_tools | 1.10.10 | `99f3d5209bc98657db91eea1c25e833136ea61ab` |
 | SWIZZLE | 0.8.10 | `b7451ad417cd166d10d4897a6b7dbe076ec02029` |
 | ASSAY | 0.11.7 | `8f6ef8599d9acb2a2672a5a78c36ec0e276fa78c` |
-| JUDGE | 0.4.8 | `e5c3f98f0f3998a8c5dac458ad0fcf4e050eb074` |
+| JUDGE | 0.5.1 | `ad3d66f84a15ad7c320285e4d9ab006de90bdfdd` |
 | CNS | v2.1.0 | `fde931ffa89aebec95647742256ad53033bd3d02` |
 
 ASSAY's answer key needs numpy and matplotlib installed normally, with matplotlib's own dependencies (Pillow,

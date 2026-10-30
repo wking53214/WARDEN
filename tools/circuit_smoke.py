@@ -13,9 +13,12 @@ It builds a small scratch git repository, then runs the real `warden tagteam` co
      receipt must name the ASSAY specimens, and a floor above what Ghost catches must stop the stub Judge's
      ACCEPT.
 
-With `--real-judge` there is a third run: the same governed change judged by the real Judge (`judge.seat:Judge`,
-installed in this Python) against the live instruments and the default ASSAY floor of 3. The real Judge must
-decide on Warden's own evidence: anything but `ACCEPT` or `ACCEPT_UNVERIFIED` fails the smoke test.
+With `--real-judge` there are two more runs. The same governed change judged by the real Judge (`judge.seat:Judge`,
+installed in this Python) against the live instruments and the default ASSAY floor of 3 must decide on Warden's own
+evidence: anything but `ACCEPT` or `ACCEPT_UNVERIFIED` fails the smoke test. Then an edit to a protected path (a test
+file) under a `code` grant must end `ACCEPT_UNVERIFIED`: applied and measured, the real Judge's `INSUFFICIENT` (the
+owner's ruling of 2026-10-28) holding it for a named human, nothing unmeasured, the tree put back and the result held
+by digest.
 
 It exits 0 when every expectation holds and 1 with the first failed one. Integration with the other
 horsemen is exercised here, in CI, and not only on a developer's machine. Nothing is written outside a
@@ -58,6 +61,28 @@ class Drafter:
             affected_files=("NOTE.md",), expected_behavior="none", preservation_requirements=(),
             known_defects=(), transformation_scope="documentation", baseline_reference=baseline, evidence=(),
             edits=(FileEdit(path="NOTE.md", kind="write", new="smoke edit\\n", old=old),),
+            status=TransformationStatus.PROPOSED)
+
+
+class ProtectedDrafter:
+    requires_contract = "1"
+    scope = "code"
+
+    def __init__(self):
+        self.done = False
+
+    def propose(self, target, observed, baseline):
+        if self.done:
+            return None
+        self.done = True
+        test = Path(target) / "tests" / "test_pkg.py"
+        old = test.read_text(encoding="utf-8")
+        new = old + "\\n\\ndef test_value_is_positive():\\n    assert VALUE > 0\\n"
+        return Transformation(
+            target=str(Path(target).resolve()), intent="smoke", architectural_reason="smoke",
+            affected_files=("tests/test_pkg.py",), expected_behavior="none", preservation_requirements=(),
+            known_defects=(), transformation_scope="code", baseline_reference=baseline, evidence=(),
+            edits=(FileEdit(path="tests/test_pkg.py", kind="write", new=new, old=old),),
             status=TransformationStatus.PROPOSED)
 
 
@@ -220,6 +245,27 @@ def main(argv: list[str]) -> int:
                   f"the real Judge's verdict is {out['verdict'] and out['verdict']['decision']}")
             check(bool(out["versions"]["seats"]["judge"]["version"]), "versions names the real Judge's version")
             check((code == 0) == (out["decision"] == "ACCEPT"), "only ACCEPT exits 0")
+            git(target, "checkout", "--", ".")
+
+            # A protected edit is applied, measured and held: the real Judge says INSUFFICIENT, nothing else is
+            # unmeasured, and the tree is put back with the result saved by digest for a named human.
+            protected = ["tagteam", str(target), *instruments, "--drafter", "smoke_seats:ProtectedDrafter",
+                         "--judge", "judge.seat:Judge", "--authorize", "smoke-operator", "--scope", "code",
+                         "--reason", "circuit smoke, protected edit under the real Judge"]
+            code, out, _ = run_warden(protected, base, seats)
+            check(out["decision"] == "ACCEPT_UNVERIFIED" and code == 3,
+                  f"a protected edit under the real Judge ends held: {out['decision']} ({out['reason'][:160]})")
+            check(out["verdict"] is not None and out["verdict"]["decision"] == "INSUFFICIENT"
+                  and any("tests or test settings were changed" in r for r in out["verdict"]["reasons"]),
+                  "the real Judge's verdict is INSUFFICIENT because a test was changed")
+            check(out["unmeasured"] == [], "nothing was unmeasured, so the hold is the Judge's ruling")
+            check(bool(out["held_digest"]) and out["put_back"] is True,
+                  "the result is held by digest and the tree is put back")
+            check((target / "tests" / "test_pkg.py").read_text(encoding="utf-8").count("def test_") == 1,
+                  "the held test edit does not stand")
+            files = out["claim"]["files"]
+            check([(f["path"], f["protected"]) for f in files] == [("tests/test_pkg.py", True)],
+                  "the claim row names the protected path")
             git(target, "checkout", "--", ".")
     print("circuit smoke test passed")
     return 0
