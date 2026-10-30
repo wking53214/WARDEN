@@ -71,7 +71,7 @@ DEFAULT_MAX_DECLINED = 50
 #: Every decision this module can produce. The CLI maps each one to an exit code and
 #: treats anything else as a failure, never as success.
 DECISIONS = ("ACCEPT", "ACCEPT_UNVERIFIED", "REJECT", "JUDGE_REJECTED", "NOT_CONVERGED",
-             "FINISH_REJECTED", "REFUSED", "INCONCLUSIVE", "ERROR", "INTERRUPTED")
+             "FINISH_REJECTED", "REFUSED", "INCONCLUSIVE", "ERROR", "INTERRUPTED", "USAGE_ERROR")
 
 
 PUT_BACK_NOTE = "The tree was put back as it was found because the run did not finish accepted."

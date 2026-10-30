@@ -293,7 +293,7 @@ def test_the_rows_removals_round_trip_through_json_and_the_key_is_in_the_shared_
     commit = _claimed(tmp_path, lambda root: (_delete_old(root), _shrink_big(root)))
     result, _ = _govern(tmp_path, commit)
     row = claim_row(result, _auth(tmp_path))
-    assert tuple(row) == KEYS and KEYS[-1] == "removals"
+    assert tuple(row) == KEYS and KEYS[-3] == "removals"   # 0.16.4: two keys follow removals
     assert json.loads(json.dumps(row)) == row
     assert sorted((r["path"], r["kind"]) for r in row["removals"]) == [("pkg/big.py", "shrunk"),
                                                                         ("pkg/old.py", "deleted")]
