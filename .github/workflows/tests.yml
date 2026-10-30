@@ -15,14 +15,14 @@ permissions:
 # (in every job that checks it out, and the matching `--expect` in the `circuit` job, `pyproject.toml` for
 # ghost_tools, and STACK.md), read the sibling's CHANGELOG for what moved, and run the whole job set once.
 # `tests/test_docs.py` fails if the pins disagree with each other.
-#   ghost_tools 1.10.12 e77f1bc65c91c48703bf767985cbb211df9c6d0e
-#   SWIZZLE     0.8.11  dfef358d542da3488a27b85a703f7e4eb33312f6
-#   ASSAY       0.11.8  fe0179d752835f89e620f871719cfd25ed7cb9a9
-#   JUDGE       0.5.1   ad3d66f84a15ad7c320285e4d9ab006de90bdfdd
+#   ghost_tools 1.10.13 eaf2ae8845f9b4e39d79f50bbfaf70acde9a11a3
+#   SWIZZLE     0.8.12  60ba9fc5bf383c0c4297bf94b8313b33e0ab039c
+#   ASSAY       0.11.9  3faba860a7cfcce6547e5ddcf8d1b0d773a27001
+#   JUDGE       0.5.3   62843b8b807072db4c8b7a95569772b2a3f34cd0
 # These four are the last set this repository's CI tested on its own. None of them is claimed to be the head of any
 # repository's `main`, and a sibling may have moved on. Whether the set that lands works together is checked by the
 # `stack` job in the CNS repository (github.com/wking53214/CNS), not here. The cns extras of the ghost_tools, SWIZZLE and ASSAY commits
-# are at the CNS v2.2.0 tag, like the pin here. The CNS dependency of the JUDGE commit is still the v2.1.0 tag; Judge is
+# are at the CNS v2.2.0 tag, like the pin here, and so is the CNS dependency of the JUDGE commit; Judge is
 # installed with --no-deps, so CNS there is the pin of this repository.
 # CNS is pinned by the tag `v2.2.0` in `pyproject.toml` (a lightweight tag: the tag is the commit ce6bd05).
 # The `assay-latest` job is the one place a sibling is taken at its newest commit, on purpose, and it cannot
@@ -62,19 +62,19 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       # ASSAY is public; checking it out makes test_live_assay_registry run here instead of skipping, so a
-      # broken ASSAY link turns CI red. ASSAY 0.11.8 (fe0179d).
+      # broken ASSAY link turns CI red. ASSAY 0.11.9 (3faba86).
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ASSAY
-          ref: fe0179d752835f89e620f871719cfd25ed7cb9a9
+          ref: 3faba860a7cfcce6547e5ddcf8d1b0d773a27001
           path: _assay
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
-      # The real Judge seat, so the Judge-seat tests run here instead of skipping. JUDGE 0.5.1
-      # (ad3d66f). Its only runtime dependency is cns, already installed.
-      - run: pip install --no-deps "git+https://github.com/wking53214/JUDGE@ad3d66f84a15ad7c320285e4d9ab006de90bdfdd"
+      # The real Judge seat, so the Judge-seat tests run here instead of skipping. JUDGE 0.5.3
+      # (62843b8). Its only runtime dependency is cns, already installed.
+      - run: pip install --no-deps "git+https://github.com/wking53214/JUDGE@62843b8b807072db4c8b7a95569772b2a3f34cd0"
       - run: pytest -q -rs
         env:
           ASSAY_ROOT: ${{ github.workspace }}/_assay
@@ -87,40 +87,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      # ASSAY 0.11.8 (fe0179d)
+      # ASSAY 0.11.9 (3faba86)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ASSAY
-          ref: fe0179d752835f89e620f871719cfd25ed7cb9a9
+          ref: 3faba860a7cfcce6547e5ddcf8d1b0d773a27001
           path: _circuit/ASSAY
-      # ghost_tools 1.10.12 (e77f1bc)
+      # ghost_tools 1.10.13 (eaf2ae8)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ghost_tools
-          ref: e77f1bc65c91c48703bf767985cbb211df9c6d0e
+          ref: eaf2ae8845f9b4e39d79f50bbfaf70acde9a11a3
           path: _circuit/ghost_tools
-      # SWIZZLE 0.8.11 (dfef358)
+      # SWIZZLE 0.8.12 (60ba9fc)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/SWIZZLE
-          ref: dfef358d542da3488a27b85a703f7e4eb33312f6
+          ref: 60ba9fc5bf383c0c4297bf94b8313b33e0ab039c
           path: _circuit/SWIZZLE
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      # JUDGE 0.5.1 (ad3d66f): the real Judge decides the smoke test's governed run and holds a protected edit
+      # JUDGE 0.5.3 (62843b8): the real Judge decides the smoke test's governed run and holds a protected edit
       # for a named human (--real-judge).
-      - run: pip install --no-deps "git+https://github.com/wking53214/JUDGE@ad3d66f84a15ad7c320285e4d9ab006de90bdfdd"
+      - run: pip install --no-deps "git+https://github.com/wking53214/JUDGE@62843b8b807072db4c8b7a95569772b2a3f34cd0"
       # ASSAY's answer key needs numpy and matplotlib: without them its verifier skips those claims and exits 1
       # (the key is then not proven and Ghost is not graded). Exact versions, so a new release cannot move the result.
       - run: pip install numpy==2.5.4 matplotlib==3.11.2
       - run: >
           python tools/circuit_smoke.py
           --ghost-tools _circuit/ghost_tools --swizzle _circuit/SWIZZLE --assay _circuit/ASSAY --real-judge
-          --expect ghost_tools=e77f1bc65c91c48703bf767985cbb211df9c6d0e
-          --expect swizzle=dfef358d542da3488a27b85a703f7e4eb33312f6
-          --expect assay=fe0179d752835f89e620f871719cfd25ed7cb9a9
+          --expect ghost_tools=eaf2ae8845f9b4e39d79f50bbfaf70acde9a11a3
+          --expect swizzle=60ba9fc5bf383c0c4297bf94b8313b33e0ab039c
+          --expect assay=3faba860a7cfcce6547e5ddcf8d1b0d773a27001
 
   # Newest ASSAY, on purpose, to learn early when ASSAY's published answer key drifts from what Warden reads.
   # Never blocks a merge.

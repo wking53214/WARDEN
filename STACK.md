@@ -72,16 +72,16 @@ own; none is claimed to be the head of any repository's `main`, none is tagged, 
 set that lands works together is checked by the `stack` job in the CNS repository, not here.
 CNS is the exception: `pyproject.toml` pins it by the tag `v2.2.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag is (a lightweight tag, so the tag is the commit).
-The ASSAY commit (`fe0179d`, 0.11.8) has its cns extra at the CNS v2.2.0 tag. The JUDGE commit (`ad3d66f`, 0.5.1) still depends on CNS at the v2.1.0 tag; Judge is installed with `--no-deps`, so CNS there is this repository's pin.
+The ASSAY commit (`3faba86`, 0.11.9) has its cns extra at the CNS v2.2.0 tag. The JUDGE commit (`62843b8`, 0.5.3) depends on CNS at the v2.2.0 tag too; Judge is installed with `--no-deps`, so CNS there is this repository's pin. The Judge moved from 0.5.1 to 0.5.3 in this set so that Warden's own `circuit` job exercises the rulings of the Judge that ships.
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
 place that states one of them disagrees with the others.
 
 | Repository | Version | Commit |
 |---|---|---|
-| ghost_tools | 1.10.12 | `e77f1bc65c91c48703bf767985cbb211df9c6d0e` |
-| SWIZZLE | 0.8.11 | `dfef358d542da3488a27b85a703f7e4eb33312f6` |
-| ASSAY | 0.11.8 | `fe0179d752835f89e620f871719cfd25ed7cb9a9` |
-| JUDGE | 0.5.1 | `ad3d66f84a15ad7c320285e4d9ab006de90bdfdd` |
+| ghost_tools | 1.10.13 | `eaf2ae8845f9b4e39d79f50bbfaf70acde9a11a3` |
+| SWIZZLE | 0.8.12 | `60ba9fc5bf383c0c4297bf94b8313b33e0ab039c` |
+| ASSAY | 0.11.9 | `3faba860a7cfcce6547e5ddcf8d1b0d773a27001` |
+| JUDGE | 0.5.3 | `62843b8b807072db4c8b7a95569772b2a3f34cd0` |
 | CNS | v2.2.0 | `ce6bd05578a7a3e3cafa0cfa1e9a2cca8a5f171f` |
 
 ASSAY's answer key needs numpy and matplotlib installed normally, with matplotlib's own dependencies (Pillow,
