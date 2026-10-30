@@ -171,7 +171,7 @@ def test_the_tested_set_is_the_same_everywhere_it_is_stated():
     assert len(re.findall(r"wking53214/JUDGE@", workflow)) == 2
     assert workflow.count("repository: wking53214/ASSAY\n          ref:") == 2
     # The version written next to each pin is the version the repository declares at that commit (kept by hand).
-    for repo, version in (("ghost_tools", "1.10.13"), ("SWIZZLE", "0.8.12"), ("ASSAY", "0.11.9"), ("JUDGE", "0.5.3")):
+    for repo, version in (("ghost_tools", "1.10.14"), ("SWIZZLE", "0.8.13"), ("ASSAY", "0.11.10"), ("JUDGE", "0.5.3")):
         assert re.search(rf"^\| {repo} \| {re.escape(version)} \|", stack, re.MULTILINE), (repo, version)
         assert re.search(rf"^#\s+{repo}\s+{re.escape(version)}\s", workflow, re.MULTILINE), (repo, version)
 
