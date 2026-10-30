@@ -5,9 +5,46 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1` and `0.16.2`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2` and `0.16.3`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
-decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
+decision, and the repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by tag.
+
+## [0.16.3] - 2026-10-30
+
+`CONTRACT` is still `"1"`. Not tagged. One step, one commit.
+
+### Changed
+
+- **Pins.** The pins on ghost_tools, SWIZZLE and ASSAY move to the Stage 4 Wave 1 heads (ghost_tools 1.10.13 `eaf2ae8`,
+  SWIZZLE 0.8.12 `60ba9fc`, ASSAY 0.11.9 `3faba86`: documentation-only releases). The Judge in the tested set moves from 0.5.1
+  (`ad3d66f`) to 0.5.3 (`62843b8`) by owner decision, so that Warden's own `circuit` job exercises the rulings of the Judge that
+  ships. Pre-existing test edited under the exact-behaviour rule: `tests/test_docs.py` (the versions written next to the pins, and
+  the tag sentence, which now lists 0.16.3). Nothing else about those tests changed.
+- The roster text (README, STACK.md) says the circuit is five repositories, that any actor's real change enters through the claim
+  seat, and that DRAFTER, BURNISH and WATCHER_MCU are released from the circuit. A bare `--stack` still requires all six checkouts.
+  The README no longer cites the 0.13.9 run as the most recent: the run for any head is on the Actions page and the last checked
+  runs are listed in the CNS repository's `docs/STATUS.md`. Dated records (the 2026-10-14 run, the 2026-10-22 and 2026-10-23
+  self-hosting record) are labelled as the old circuit and are otherwise unchanged. Every Warden run declines eight Ghost checks
+  (the count is eight because ghost_tools 1.10.11 lists the ledger as declined under `--no-ledger`, not because Warden declined a
+  new check).
+
+### Fixed
+
+- **A claimed mode change was not refused.** The README and the claim module promised it, but a commit whose only change was a mode
+  (identical blobs, 100644 to 100755) was read as a write of the same text and went through, and `new file mode 100755` in a
+  `--claim-diff` file was written without the executable bit. A commit file whose old and new mode differ, a new file whose mode is
+  not 100644 (in a commit or a `--claim-diff` file) and `old mode`/`new mode` headers are now refused with a reason that names the
+  path and both modes (`warden/claim.py`).
+- **The tree fingerprint could collide.** `tagteam._fingerprint` hashed each path and then its bytes with no delimiter, so a shift
+  of the boundary between a path and its content, or between two files, gave two different trees one hash, and the executable bit
+  was not hashed. It now hashes the number of entries and, per entry, the length-prefixed path, the executable bit and the
+  length-prefixed bytes; the output is still 16 hex digits. **Fingerprints, and chronicle `reusable_suite` matches, from Warden
+  0.16.2 and earlier no longer match**: a chronicle line from an older Warden is simply not reused, and a held result saved by an
+  older Warden cannot be kept (its baseline fingerprint differs). The snapshot still does not give back the executable bit of a
+  deleted file it restores; the fingerprint now sees that bit (recorded in the README, not changed here).
+- **A damaged chronicle gave a traceback or was silently skipped.** `chronicle.read` raised on a file that is not UTF-8 and skipped a
+  line that is not JSON without a word. Both now refuse the run with exit 2 (`USAGE_ERROR`, "Nothing was run") with a reason naming
+  the file and the line. Blank lines are ignored. The chronicle stays an unsigned plain file; no tamper detection was added.
 
 ## [0.16.2] - 2026-10-30
 
