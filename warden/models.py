@@ -194,7 +194,8 @@ class Transformation:
                     raise textio.Undecodable(f"{edit.path} is not valid UTF-8, so it will not be edited")
                 if self.claim is not None:
                     # The claim seat: the actor's bytes are the thing governed, so they land exactly, with no
-                    # adaptation to the line endings of the file they replace (a Drafter's or Finisher's write keeps them).
+                    # adaptation to the line endings of the file they replace (a Drafter's or Finisher's write
+                    # keeps them).
                     path.write_bytes(edit.new.encode("utf-8"))
                 else:
                     textio.write_text(path, edit.new)

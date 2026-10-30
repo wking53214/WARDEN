@@ -27,6 +27,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import logging
+import os
 import stat
 import sys
 from contextlib import contextmanager
@@ -1309,7 +1310,7 @@ def _fingerprint(target: Path) -> str:
                if path.is_file() and not skip.intersection(path.relative_to(target).parts)]
     digest.update(len(entries).to_bytes(8, "big"))
     for path in entries:
-        name = str(path.relative_to(target)).encode()
+        name = os.fsencode(str(path.relative_to(target)))  # a name that is not valid UTF-8 still fingerprints
         data = path.read_bytes()
         digest.update(len(name).to_bytes(8, "big"))
         digest.update(name)
