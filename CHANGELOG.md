@@ -5,9 +5,32 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1` and `0.16.0`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0` and `0.16.1`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the satellites (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by tag.
+
+## [0.16.1] - 2026-10-30
+
+`CONTRACT` is still `"1"`. Not tagged. Two steps (Pin22), one commit each. No Warden code changed.
+
+### Changed
+
+- **Pin22 step 1: the CNS pin moves from the tag `v2.1.0` to the tag `v2.2.0`** (`ce6bd05578a7a3e3cafa0cfa1e9a2cca8a5f171f`, a
+  lightweight tag). The `cns` package at v2.2.0 equals v2.1.0 except its version string; the release adds a composition layer
+  beside it that Warden does not import. The pins on the siblings move to the Wave 1 heads: ghost_tools 1.10.12
+  (`e77f1bc`), SWIZZLE 0.8.11 (`dfef358`) and ASSAY 0.11.8 (`fe0179d`), in `pyproject.toml` (the `ghost` extra), the
+  workflow, the `--expect` lines, `STACK.md` and the README. The Judge tested set stays at JUDGE `ad3d66f` (0.5.1), whose own
+  CNS dependency is still `v2.1.0`; it is installed with `--no-deps`, so CNS there is this repository's pin, and the workflow
+  comment now says so. Pre-existing test edited under the exact-behaviour rule: `tests/test_docs.py` (the version table in
+  the pins test, and `test_the_cns_pin_is_the_v2_1_0_tag_and_is_stated_in_stack`, renamed `..._v2_2_0_tag_...`, with the pin
+  text, the commit and the `STACK.md` row). The `circuit` job passes against the new sibling heads.
+- **Pin22 step 2: version 0.16.1**, this entry, and the tag sentence in the README, here and in `tests/test_docs.py`.
+- **A governed run now declines eight checks (`mutate`, `kernel`, `structure`, `tests`, `project`, `secrets`, `correlate`,
+  `ledger`), not seven.** The count is eight because ghost_tools 1.10.11 lists the ledger as declined when it is called with
+  `--no-ledger`, as Warden always does, not because Warden declined a new check. No Warden test hard-coded seven. The README
+  states the eight beside the 2026-10-22 record; that record, and the self-hosting paragraph that quotes the 2026-10-23
+  record, keep their seven because those runs had seven. The claim row's `removals` key (0.16.0) is Warden's own key; nothing
+  in the CNS package reads it.
 
 ## [0.16.0] - 2026-10-30
 

@@ -24,11 +24,11 @@ cycles until the Drafter has nothing left to propose (or a cycle limit is
 hit). Only then does Warden hand the code, once, to the Finisher, together with the facts it measured (the suite result and what Ghost still reports), so the Finisher counts and detects nothing itself. The Finisher beautifies the code and writes the final README. The Finisher's change goes through
 the same gate.
 
-Version `0.16.0` (seat contract `"1"`, unchanged). The history of every release is in
+Version `0.16.1` (seat contract `"1"`, unchanged). The history of every release is in
 [CHANGELOG.md](CHANGELOG.md); the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the exit codes in
 [docs/EXIT_CODES.md](docs/EXIT_CODES.md). The seats (Judge, Drafter, Burnish) pin Warden by full commit SHA, not by
 tag; each seat's `pyproject.toml` names the commit. Release tags exist up to `v0.12.0`; the `0.13.x` releases are not
-tagged, and `0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1` and `0.16.0`. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). Tagging is
+tagged, and `0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0` and `0.16.1`. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). Tagging is
 the owner's decision.
 
 ## HOW TO INSTALL AND RUN
@@ -149,7 +149,7 @@ Each line names the test, the CI job or the recorded run that shows it. A test f
 
 - **Warden makes no change by itself.** With no Drafter it cannot propose anything, and without a Judge a run is never a plain `ACCEPT`.
 - **The loop has not been run live on a repository outside the circuit.** `docs/REGISTRY.json` records runs on scratch repositories built for the run (rows 1 to 4) and two rows (5 and 6) in which `warden tagteam --stack` governed fresh clones of the circuit's own repositories (see SELF-HOSTING). These are self-reported rows written by the people who ran them, not independent records, and none is a third-party repository. A live `ghost-buster` + `warden tagteam` + `swizzle prove` run on a corpus repository outside the circuit is not recorded.
-- **A plain `ACCEPT` does not mean Ghost ran every check.** Checks the caller declines are listed under `ghost_scan.declined` and change nothing by design. On 2026-10-22 a governed run against ghost_tools 5a9154d ended a plain `ACCEPT`, exit 0, `unmeasured` empty, with seven declined checks (`mutate`, `kernel`, `structure`, `tests`, `project`, `secrets`, `correlate`). Read with `cns.run.RunRecord`, that record has seven `gaps()` and is not `clean`. A reader who looks only at `decision` and `unmeasured` is told "nothing missing".
+- **A plain `ACCEPT` does not mean Ghost ran every check.** Checks the caller declines are listed under `ghost_scan.declined` and change nothing by design. On 2026-10-22 a governed run against ghost_tools 5a9154d ended a plain `ACCEPT`, exit 0, `unmeasured` empty, with seven declined checks (`mutate`, `kernel`, `structure`, `tests`, `project`, `secrets`, `correlate`). Read with `cns.run.RunRecord`, that record has seven `gaps()` and is not `clean`. A reader who looks only at `decision` and `unmeasured` is told "nothing missing". Since ghost_tools 1.10.11 a governed run declines eight checks, not seven (the same seven plus `ledger`), because ghost_tools lists the ledger as declined when Warden calls it with `--no-ledger`; Warden did not decline a new check. The seven above are the 2026-10-22 record and stay as recorded.
 - **A Rust project has no recorded live run.** The `cargo test` gate is held by `tests/test_rule7_cargo_runner.py` and nothing else.
 - **No run on macOS or Windows.** CI uses `ubuntu-latest` only.
 - **No recorded run in which a real Judge reads `finisher_ran`.** Warden fills the field and `tests/test_finisher_ran.py` holds that with a stand-in Judge; the JUDGE version in the tested set does not use it yet.
