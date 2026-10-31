@@ -77,19 +77,19 @@ those folders still must have no uncommitted changes. The manifest is the shape 
 Warden's CI runs against these sibling commits, each a full SHA. They are the last set this repository's CI tested on its
 own; none is claimed to be the head of any repository's `main`, none is tagged, and a sibling may have moved on. Whether the
 set that lands works together is checked by the `stack` job in the CNS repository, not here.
-CNS is the exception: `pyproject.toml` pins it by the tag `v2.2.0`, spelled the same way in every repository of the
+CNS is the exception: `pyproject.toml` pins it by the tag `v2.3.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag is (a lightweight tag, so the tag is the commit).
-The ASSAY commit (`f7ea4a4`, 0.11.10) has its cns extra at the CNS v2.2.0 tag. The JUDGE commit (`62843b8`, 0.5.3) depends on CNS at the v2.2.0 tag too; Judge is installed with `--no-deps`, so CNS there is this repository's pin. The Judge moved from 0.5.1 to 0.5.3 in this set so that Warden's own `circuit` job exercises the rulings of the Judge that ships.
+The ASSAY commit (`ae8aa08`, 0.11.10) has its cns extra at the CNS v2.3.0 tag. The JUDGE commit (`8f976c6`, 0.5.5) depends on CNS at the v2.3.0 tag too; Judge is installed with `--no-deps`, so CNS there is this repository's pin. The Judge moved from 0.5.1 to 0.5.3 in this set so that Warden's own `circuit` job exercises the rulings of the Judge that ships.
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
 place that states one of them disagrees with the others.
 
 | Repository | Version | Commit |
 |---|---|---|
-| ghost_tools | 1.10.14 | `a9115b5ed02e923238b96ce0fc627992509371fa` |
-| SWIZZLE | 0.8.13 | `87cddb4b66f248987e135f08e174fc8cc219f582` |
-| ASSAY | 0.11.10 | `f7ea4a4200374ad246d17958f591307369d5e744` |
-| JUDGE | 0.5.3 | `62843b8b807072db4c8b7a95569772b2a3f34cd0` |
-| CNS | v2.2.0 | `ce6bd05578a7a3e3cafa0cfa1e9a2cca8a5f171f` |
+| ghost_tools | 1.10.14 | `5443961c20834257097a02e4125add97b6095e66` |
+| SWIZZLE | 0.8.13 | `63467947f169577e1a56ccc982f057ab32af1798` |
+| ASSAY | 0.11.10 | `ae8aa08fe21c01b2baf8e627643fdabb7fa11e04` |
+| JUDGE | 0.5.5 | `8f976c6875f0564b25792524f24ebc2cea7b420d` |
+| CNS | v2.3.0 | `41592fb7b6735abe140f745353c09ba3eed8e7a2` |
 
 ASSAY's answer key needs numpy and matplotlib installed normally, with matplotlib's own dependencies (Pillow,
 `packaging` and the rest). Installing them with `--no-deps` leaves 56 of the 60 claims proven, so the key is NOT PROVEN
