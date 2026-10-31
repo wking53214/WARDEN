@@ -15,9 +15,9 @@ permissions:
 # (in every job that checks it out, and the matching `--expect` in the `circuit` job, `pyproject.toml` for
 # ghost_tools, and STACK.md), read the sibling's CHANGELOG for what moved, and run the whole job set once.
 # `tests/test_docs.py` fails if the pins disagree with each other.
-#   ghost_tools 1.10.14 5443961c20834257097a02e4125add97b6095e66
+#   ghost_tools 1.10.14 00d94d6dbd32ae3dde7f54d04219e66c814908c4
 #   SWIZZLE     0.8.13  63467947f169577e1a56ccc982f057ab32af1798
-#   ASSAY       0.11.10  ae8aa08fe21c01b2baf8e627643fdabb7fa11e04
+#   ASSAY       0.11.10  11475f30867e1565d3614f5c059d160ee466defd
 #   JUDGE       0.5.5   8f976c6875f0564b25792524f24ebc2cea7b420d
 # These four are the last set this repository's CI tested on its own. None of them is claimed to be the head of any
 # repository's `main`, and a sibling may have moved on. Whether the set that lands works together is checked by the
@@ -62,11 +62,11 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       # ASSAY is public; checking it out makes test_live_assay_registry run here instead of skipping, so a
-      # broken ASSAY link turns CI red. ASSAY 0.11.10 (ae8aa08).
+      # broken ASSAY link turns CI red. ASSAY 0.11.10 (11475f3).
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ASSAY
-          ref: ae8aa08fe21c01b2baf8e627643fdabb7fa11e04
+          ref: 11475f30867e1565d3614f5c059d160ee466defd
           path: _assay
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
@@ -87,17 +87,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      # ASSAY 0.11.10 (ae8aa08)
+      # ASSAY 0.11.10 (11475f3)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ASSAY
-          ref: ae8aa08fe21c01b2baf8e627643fdabb7fa11e04
+          ref: 11475f30867e1565d3614f5c059d160ee466defd
           path: _circuit/ASSAY
-      # ghost_tools 1.10.14 (5443961)
+      # ghost_tools 1.10.14 (00d94d6)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ghost_tools
-          ref: 5443961c20834257097a02e4125add97b6095e66
+          ref: 00d94d6dbd32ae3dde7f54d04219e66c814908c4
           path: _circuit/ghost_tools
       # SWIZZLE 0.8.13 (6346794)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -118,9 +118,9 @@ jobs:
       - run: >
           python tools/circuit_smoke.py
           --ghost-tools _circuit/ghost_tools --swizzle _circuit/SWIZZLE --assay _circuit/ASSAY --real-judge
-          --expect ghost_tools=5443961c20834257097a02e4125add97b6095e66
+          --expect ghost_tools=00d94d6dbd32ae3dde7f54d04219e66c814908c4
           --expect swizzle=63467947f169577e1a56ccc982f057ab32af1798
-          --expect assay=ae8aa08fe21c01b2baf8e627643fdabb7fa11e04
+          --expect assay=11475f30867e1565d3614f5c059d160ee466defd
 
   # Newest ASSAY, on purpose, to learn early when ASSAY's published answer key drifts from what Warden reads.
   # Never blocks a merge.
