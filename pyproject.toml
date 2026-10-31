@@ -24,9 +24,9 @@ classifiers = [
     ]
 # The shared rows (seat contract, defects, run record) come from the hub.
 # Pinned by tag, spelled the same way in every repository of the circuit (CNS's seat_pins check compares the text, and
-# pip treats a tag URL and a commit URL as two sources). The tag is the commit ce6bd05578a7a3e3cafa0cfa1e9a2cca8a5f171f (a lightweight tag).
+# pip treats a tag URL and a commit URL as two sources). The tag is the commit 41592fb7b6735abe140f745353c09ba3eed8e7a2 (a lightweight tag).
 # To bump it, change the tag here and the CNS row in STACK.md together and run the full suite.
-dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v2.2.0"]  # v2.2.0 = ce6bd05578a7a3e3cafa0cfa1e9a2cca8a5f171f
+dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v2.3.0"]  # v2.3.0 = 41592fb7b6735abe140f745353c09ba3eed8e7a2
 
 [project.urls]
 Homepage = "https://github.com/wking53214/Warden"
@@ -42,7 +42,7 @@ dev = ["pytest>=8", "ruff==0.17.1", "mypy==2.4.0"]
 # visible and pinned: `pip install -e '.[ghost]'` from a checkout (a bare `warden` on PyPI is another project). Pinned to a full commit SHA
 # (ghost_tools 1.10.14); to bump it, change the SHA and
 # note the version it corresponds to here, and the same SHA in .github/workflows/tests.yml and STACK.md.
-ghost = ["ghost-tools @ git+https://github.com/wking53214/ghost_tools@a9115b5ed02e923238b96ce0fc627992509371fa"]
+ghost = ["ghost-tools @ git+https://github.com/wking53214/ghost_tools@5443961c20834257097a02e4125add97b6095e66"]
 
 [tool.setuptools]
 packages = ["warden", "warden.horsemen"]
