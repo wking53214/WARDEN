@@ -37,7 +37,7 @@ def _claim_args(tmp_path):
 def _released_stack(tmp_path, absent=(), manifest_omit=(), manifest_extra=None):
     """A git stack folder without the `absent` checkouts, and a manifest naming every checkout it holds except
     `manifest_omit` (plus `manifest_extra`, a name to commit map, for a name the folder lacks)."""
-    names = [n for n in SIX if n not in absent]
+    names = [n for n in SIX if n not in absent] + ["warden"]
     stack = _stack(tmp_path / "stack", names=names)
     for child in stack.iterdir():
         (child / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")

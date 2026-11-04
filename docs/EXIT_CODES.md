@@ -31,7 +31,10 @@ folder it will use is not what it should be. The folders it uses are the three i
 fills in; one whose option was given explicitly is not used from the stack. The rule has three parts:
 
 - With a manifest (`--stack-manifest` or `--cns`), every used folder must be named by it. A folder the
-  manifest leaves out has no pinned commit to be checked against.
+  manifest leaves out has no pinned commit to be checked against. A manifest must also name all five
+  circuit members (`ghost_tools`, `swizzle`, `assay`, `judge`, `warden`), whatever options the run gives:
+  one that omits any is a usage error naming it, and the `warden` checkout in the folder is pinned and
+  vetted like the others.
 - With a manifest, every folder it names must be at exactly the pinned commit.
 - With or without a manifest, every used folder must have no uncommitted changes (see the README for what
   counts). A clone of the target at the same commit as a stack member is still checked; only the join for
