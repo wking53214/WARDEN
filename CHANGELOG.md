@@ -5,9 +5,25 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3` and `0.16.4`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4` and `0.16.5`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by tag.
+
+## [0.16.5] - 2026-11-04
+
+`CONTRACT` is still `"1"`. Not tagged. Owner decision of 2026-11-04 (the option recommended after the round-8 red team).
+This is configuration integrity, a roster check of the same kind as the existing refusals for the other required members;
+it adds no detector, counter or gate rule.
+
+### Fixed
+
+- **A manifest that omitted WARDEN was accepted with a dirty WARDEN checkout.** A `--stack-manifest` or `--cns` manifest that left out `warden` ended exit 0 with a modified `warden` checkout in the stack folder, while one that left out `ghost_tools`, `swizzle`, `assay` or `judge` was refused. A pinned manifest must now name all five circuit members (`ghost_tools`, `swizzle`, `assay`, `judge`, `warden`); one that omits any is a usage error (exit 2, `USAGE_ERROR`, "Nothing was run") naming the missing member, before anything is applied, and the `warden` checkout in the folder is checked for its pinned commit and for uncommitted changes through the path the other four already use (`_joins_from_manifest`). The refusal for the other four used to apply only to folders the run used, so an explicit `--swizzle-root` with a manifest omitting `swizzle` was accepted; that is refused too. Released seats are unchanged: `drafter` and `burnish` may still be left out when the manifest omits them and the folder lacks them. The refusal for an unnamed folder no longer suggests giving the option explicitly, because that does not help. Guard test: `tests/test_stack_roster.py::test_a_manifest_that_omits_warden_with_a_dirty_checkout_is_refused_naming_warden`.
+
+### Changed
+
+- Pre-existing tests edited under the exact-behaviour rule (each asserted the old acceptance or a count the change moves): `tests/test_stack_option.py` (the `_stack` helper's default folder names gain `Warden`, two join counts go from 6 to 7, and `test_a_folder_the_manifest_names_that_the_run_does_not_use_need_not_be_listed_for_it` now asserts the refusal); `tests/test_stack_released.py` (`_released_stack` adds a `warden` checkout); `tests/test_docs.py` (the tag sentence lists 0.16.5).
+- Correction: the 0.16.4 entry below says a manifest omitting WARDEN is not refused (owner decision pending); that is no longer true as of 0.16.5.
+- README: the gap is removed from WHAT DOES NOT WORK and the rule is stated; the `--stack` paragraph, `STACK.md`, `docs/EXIT_CODES.md` (generated) and the `--stack-manifest` help say that all five members must be named.
 
 ## [0.16.4] - 2026-10-30
 
