@@ -87,6 +87,9 @@ STACK_SEATS = {"drafter": ("drafter", "drafter.seat:Drafter"),
 #: The two stack folders a pinned manifest may leave out. The other four (the three instruments and the Judge)
 #: can never be released: they must be named by the manifest and present.
 RELEASABLE = ("drafter", "burnish")
+#: The five circuit members a pinned manifest must name, whatever options the run gives. `warden` is the fifth: it is
+#: not filled from the folder like the others, but its checkout is pinned and vetted like theirs.
+CIRCUIT_MEMBERS = ("ghost_tools", "swizzle", "assay", "judge", "warden")
 
 
 def _manifest_names(args) -> Optional[set[str]]:
@@ -287,7 +290,13 @@ def _joins_from_manifest(manifest_path: Path, stack: Optional[Path], target: Pat
         return [], ("the stack manifest does not name " + ", ".join(unnamed) + ", yet this run uses "
                     + ("it" if len(unnamed) == 1 else "them") + " as an instrument root or a seat, so nothing pins "
                     + ("it" if len(unnamed) == 1 else "them") + " to a commit. Add "
-                    + ("it" if len(unnamed) == 1 else "them") + " to the manifest, or give that option explicitly")
+                    + ("it" if len(unnamed) == 1 else "them") + " to the manifest")
+    omitted = [name for name in CIRCUIT_MEMBERS if name not in covered]
+    if omitted:
+        them = "it" if len(omitted) == 1 else "them"
+        return [], ("the stack manifest does not name " + ", ".join(repr(n) for n in omitted) + ", and a pinned "
+                    "manifest must name all five circuit members, whatever options the run gives, so that each is "
+                    f"pinned to a commit and checked for uncommitted changes. Add {them} to the manifest")
     for name, pinned in repos.items():
         if not _FULL_COMMIT.fullmatch(pinned):
             return [], (f"the stack manifest pins {name!r} to {pinned[:12]!r}, which is not a full "
@@ -587,7 +596,9 @@ def _main(argv: list[str] | None) -> int:
                           "checkout is verified against the folder and joined for Ghost, the target "
                           "itself excepted; a missing, mismatched or uncommitted-changes one (modified or "
                           "untracked files; ignored ones do not count) is a usage error and nothing is run. So is "
-                          "a stack folder the run uses (instrument root or seat) that the manifest does not name")
+                          "a stack folder the run uses (instrument root or seat) that the manifest does not name. The "
+                          "manifest must name all five circuit members (ghost_tools, swizzle, assay, judge and "
+                          "warden); one that omits any, warden included, is a usage error naming it")
     p_t.add_argument("--cns", type=Path, default=None, metavar="DIR",
                      help="with --stack: a checkout of CNS, the hub that holds the circuit's stack manifest at "
                           "contracts/warden-stack.json. The same as --stack-manifest pointed at that file: every "

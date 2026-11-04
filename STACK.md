@@ -67,8 +67,7 @@ gap, and the result is held as `ACCEPT_UNVERIFIED` rather than accepted. Join th
 boundary is measured: `--join PATH` for each, or `--stack-manifest FILE` with a pinned list
 (`{"schema": "warden-stack/1", "contract": "1", "repos": {name: commit}}`, each commit the full
 40 characters); every named checkout is verified at exactly that commit, with no uncommitted changes, and joined,
-the target itself excepted. The manifest must name every stack folder the run uses: `ghost_tools`, `swizzle`, `assay` and `judge` always,
-and `drafter` and `burnish` when the folder holds them (a pinned manifest that omits them, with a folder that lacks them,
+the target itself excepted. The manifest must name all five circuit members, `ghost_tools`, `swizzle`, `assay`, `judge` and `warden` (a manifest that omits any is a usage error naming it; the `warden` checkout in the folder is pinned and vetted like the others), and also `drafter` and `burnish` when the folder holds them (a pinned manifest that omits them, with a folder that lacks them,
 releases them, and the record lists `released_seats`). An unnamed folder that is present is refused. Without a manifest
 those folders still must have no uncommitted changes. The manifest is the shape CNS is meant to hold for the circuit.
 

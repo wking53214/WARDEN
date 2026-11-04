@@ -75,7 +75,7 @@ def _repo(root: Path) -> Path:
     return root
 
 
-def _stack(root: Path, names=("GHOST_TOOLS", "Swizzle", "assay", "DRAFTER", "Judge", "burnish")) -> Path:
+def _stack(root: Path, names=("GHOST_TOOLS", "Swizzle", "assay", "DRAFTER", "Judge", "burnish", "Warden")) -> Path:
     """A folder of checkouts whose names differ in case from the canonical ones, each with a seat package."""
     root.mkdir(parents=True, exist_ok=True)
     for name in names:
@@ -444,13 +444,13 @@ def test_a_joined_checkout_with_only_ignored_files_is_accepted(tmp_path, capsys,
         (folder / "__pycache__" / "x.pyc").write_text("compiled\n", encoding="utf-8")
     code, payload, victim, _ = _dirty_run(tmp_path, capsys, monkeypatch, dirty)
     assert code in (0, 3), payload["reason"]
-    assert len(payload["versions"]["joins"]) == 6
+    assert len(payload["versions"]["joins"]) == 7
 
 
 def test_a_clean_stack_is_still_joined(tmp_path, capsys, measured, monkeypatch):
     code, payload, _, _ = _dirty_run(tmp_path, capsys, monkeypatch, lambda folder: None)
     assert code in (0, 3), payload["reason"]
-    assert len(payload["versions"]["joins"]) == 6
+    assert len(payload["versions"]["joins"]) == 7
 
 
 def test_the_governed_target_is_not_asked_whether_it_is_dirty_as_a_join(tmp_path, measured):
@@ -546,13 +546,14 @@ def test_a_dirty_seat_is_refused_even_when_the_manifest_covers_it_and_the_commit
 
 def test_a_folder_the_manifest_names_that_the_run_does_not_use_need_not_be_listed_for_it(tmp_path, capsys, measured,
                                                                                          monkeypatch):
-    """An explicit option wins over the folder's copy, so the stack's own copy is not used and not required."""
+    """0.16.5: an explicit option wins over the folder's copy, but a manifest still has to name all five circuit
+    members, so omitting swizzle is refused whatever --swizzle-root says."""
     other = tmp_path / "other_swizzle"
     other.mkdir()
     code, payload, target, stack = _stack_run(
         tmp_path, capsys, monkeypatch, lambda commits: {k: v for k, v in commits.items() if k != "Swizzle"},
         extra=("--swizzle-root", other))
-    assert code in (0, 3), payload["reason"]
+    assert code == 2 and payload["decision"] == "USAGE_ERROR" and "does not name 'swizzle'" in payload["reason"]
 
 
 def test_a_stack_without_a_manifest_refuses_a_dirty_folder_it_uses(tmp_path, capsys, measured, monkeypatch):
