@@ -35,6 +35,20 @@ tag; each one's `pyproject.toml` names the commit. Release tags exist up to `v0.
 tagged, and `0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4` and `0.16.5`. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). Tagging is
 the owner's decision.
 
+## ROLE IN THE CIRCUIT
+
+Warden sits in an assurance circuit of five repositories. It is the governor: the only part that writes, and only after a named human approves.
+
+| Part | Repository | Role |
+|---|---|---|
+| Answer key | ASSAY | Supplies known failure modes with independently known answers |
+| Scanner | ghost_tools | Observes the target and reports defects |
+| Attacker | SWIZZLE | Proves its own planted defects, and attacks Warden's governance rules |
+| Governor | Warden | Enforces human approval, measures the test suite, requires rescan, restores rejected changes |
+| Judge | Judge | Reads the run's evidence and returns ACCEPT, REJECT, or INSUFFICIENT |
+
+The circuit is an assurance layer, not the live execution path. CNS holds the shared interoperability contracts and is not a decision-making seat. See [STACK.md](STACK.md) for the full description.
+
 ## HOW TO INSTALL AND RUN
 
 Python 3.11, 3.12 or 3.13. The only runtime dependency is `cns`, installed from GitHub at the tag `v2.3.0`. Dated record: on 2026-10-22 (Warden 0.13.x, before the roster change of 2026-10-29) the first two blocks of commands below were run as written in a fresh virtual environment on Python 3.12 (from a clone of this repository), and `pip check` reported no broken requirements. That says nothing about later versions; CI installs the package on every push.
@@ -809,7 +823,7 @@ A refused root fails closed as it does with nothing installed: Ghost is `INCONCL
 
 ### Tests and CI
 
-Most tests start real `pytest` or `warden` processes, so the full run takes minutes (`pytest -n 2` helps). CI runs the suite on Python 3.11, 3.12 and 3.13, plus `ruff check .`, `mypy`, an install check of the `ghost` extra (`pip check`) and the circuit smoke test, which also seats the real Judge. Every action and every sibling repository is pinned by full commit SHA, and CNS by the tag `v2.0.0` (the tested set is in [STACK.md](STACK.md): the last set this repository's CI tested on its own, not the heads of anything); to bump a sibling, change its SHA in `.github/workflows/tests.yml` (every job that checks it out, and the `--expect` line), in `pyproject.toml` for ghost_tools, and in STACK.md, then run the whole job set. CI sets `WARDEN_FAIL_ON_SKIP=1`, so a skipped test fails the job (`tests/conftest.py`); it installs the pinned Judge and checks out the pinned ASSAY so nothing skips.
+Most tests start real `pytest` or `warden` processes, so the full run takes minutes (`pytest -n 2` helps). CI runs the suite on Python 3.11, 3.12 and 3.13, plus `ruff check .`, `mypy`, an install check of the `ghost` extra (`pip check`) and the circuit smoke test, which also seats the real Judge. Every action and every sibling repository is pinned by full commit SHA, and CNS by the tag `v2.3.0` (the tested set is in [STACK.md](STACK.md): the last set this repository's CI tested on its own, not the heads of anything); to bump a sibling, change its SHA in `.github/workflows/tests.yml` (every job that checks it out, and the `--expect` line), in `pyproject.toml` for ghost_tools, and in STACK.md, then run the whole job set. CI sets `WARDEN_FAIL_ON_SKIP=1`, so a skipped test fails the job (`tests/conftest.py`); it installs the pinned Judge and checks out the pinned ASSAY so nothing skips.
 
 ## ARCHITECTURAL DEBT
 

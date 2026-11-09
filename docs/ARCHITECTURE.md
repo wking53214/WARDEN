@@ -1,10 +1,16 @@
 # Architecture
 
-Warden is the governor of a four-part loop and the only part of the circuit that writes. It decides
+Warden is the governor of the assurance circuit and the only part of that circuit that writes. Within a run it
+repeats one loop: scan the target, take one proposed change, check human approval, measure the test suite, apply the
+change, measure again, and rescan. When the loop converges, Warden re-checks SWIZZLE's proofs, optionally hands the code
+to a seated Finisher once, and asks the Judge for a verdict. It decides
 whether a change may be made, whether it stands once made, and what is recorded. It does not decide
 what a good fix is (Drafter), what better code looks like (Burnish), or whether the evidence is enough
 (Judge); it calls those, and instruments that observe (Ghost Tools), attack (SWIZZLE) and grade (ASSAY),
 without becoming any of them.
+
+Drafter, Burnish and WATCHER_MCU were released from the circuit by owner ruling on 2026-10-29. A seat can still be
+given by explicit option, but those three are not circuit members. Judge remains a circuit member.
 
 ## The run
 
