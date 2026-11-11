@@ -192,11 +192,12 @@ def test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged():
     """Asserts the text only: it never needs the repository's tags to be present (a shallow CI checkout has none)."""
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     changelog = " ".join((ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split())
-    # The docs say "0.13.x is not tagged", "0.14.0 is not tagged either" and "nor are 0.15.0, 0.15.1, 0.16.0, 0.16.1, 0.16.2, 0.16.3, 0.16.4 and 0.16.5"; a newer version makes that
+    # The docs say "0.13.x is not tagged", "0.14.0 is not tagged either" and "nor are 0.15.0, 0.15.1, 0.16.0, 0.16.1, 0.16.2, 0.16.3 and 0.16.4; v0.16.5 is tagged"; a newer version makes that
     # stale, so this fails then and points at the sentence to update.
     assert warden.__version__.startswith(("0.13.", "0.14.0", "0.15.0", "0.15.1", "0.16.0", "0.16.1", "0.16.2", "0.16.3", "0.16.4", "0.16.5")), "update the tag sentence in README.md and CHANGELOG.md"
     for text in (readme, changelog):
         assert "Release tags exist up to `v0.12.0`" in text
+        assert "and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`)" in text and "`0.16.4` and `0.16.5`" not in text
         assert "`0.13.x` releases are not tagged" in text and "`0.14.0` is not tagged either" in text
         assert "last tag is `v0.11.4`" not in text and "newest tag is `v0.11.4`" not in text
         assert "`v0.10.0` tag does not match its tree" in text and "`__version__` is `0.9.0`" in text
