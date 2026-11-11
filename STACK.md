@@ -2,7 +2,7 @@
 
 **ASSURANCE (not the live decision path).**
 
-The governor. Runs the loop and is the only part allowed to write. A named human grant, the target's suite green before and after, the attacker's proofs, the scanner's re-inspection, and a durable record. Never certifies itself.
+The governor. Runs the loop and is the only part allowed to write. A named human grant, the target's suite green before and after, the adversary's proofs, the inspector's re-inspection, and a durable record. Never certifies itself.
 
 ## The circuit
 
@@ -11,13 +11,13 @@ written without a named human.
 
 | # | Part | Repository | Role |
 |---|------|------------|------|
-| 1 | Answer key | [ASSAY](https://github.com/wking53214/ASSAY) | Known failure modes with independently known answers; the scanner is graded against it before anything is written. |
-| 2 | Scanner | [ghost_tools](https://github.com/wking53214/ghost_tools) (Ghost Buster) | Observes: finds defects; findings keep their identity across the loop; says what it could not look at. |
-| 3 | Attacker | [SWIZZLE](https://github.com/wking53214/SWIZZLE) | Proves its own planted defects, scores the scanner against the answer key, attacks the governor's rules. |
+| 1 | Answer key | [ASSAY](https://github.com/wking53214/ASSAY) | Known failure modes with independently known answers; the inspector is graded against it before anything is written. |
+| 2 | Inspector | [ghost_tools](https://github.com/wking53214/ghost_tools) (Ghost Buster) | Observes: finds defects; findings keep their identity across the loop; says what it could not look at. |
+| 3 | Adversary | [SWIZZLE](https://github.com/wking53214/SWIZZLE) | Proves its own planted defects, scores the inspector against the answer key, attacks the governor's rules. |
 | 4 | Governor | [Warden](https://github.com/wking53214/Warden) | Applies, measures, refuses and puts the tree back; the only part allowed to write; human grant, green suite before and after, durable record. |
-| 5 | Judge | [Judge](https://github.com/wking53214/Judge) | Reads the evidence of the whole run and says ACCEPT, REJECT or INSUFFICIENT; Warden reports INSUFFICIENT as a hold. |
+| 5 | Evidence evaluator | [Judge](https://github.com/wking53214/Judge) | Reads the evidence of the whole run and says ACCEPT, REJECT or INSUFFICIENT; Warden reports INSUFFICIENT as a hold. |
 
-Any actor's real change enters through Warden's claim seat (`--claim-commit` or `--claim-diff`);
+**This table is the authoritative description of the circuit.** The README and the other documents repeat it and must agree with it. CNS is the shared contract layer: it supplies interoperability shapes and contracts and makes no governance decisions. Any actor's real change enters through Warden's claim seat (`--claim-commit` or `--claim-diff`);
 an optional Drafter may propose one instead. No finisher is part of the circuit; one can still be seated by the explicit `--finisher` option.
 
 ```text
@@ -25,7 +25,7 @@ CODEBASE
    │
    ▼
 SWIZZLE   proves its own instrument (12 planted-defect proofs must all hold)
-ASSAY     grades the scanner against the answer key (the key is proven first)
+ASSAY     grades the inspector against the answer key (the key is proven first)
    │         nothing is written if either fails
    ▼
 CLAIM SEAT  a real change from any actor (--claim-commit or --claim-diff),

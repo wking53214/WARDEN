@@ -4,7 +4,7 @@
 
 The discipline of change.
 
-**In plain words.** Warden is a command line tool for the person who owns a code project and wants a proposed change checked before it is allowed to stay. You give it a project folder, a change and the name of the person who approves it. It runs the project's own tests before and after, rescans with a scanner (ghost_tools), asks a separate judge (Judge) for a verdict, and undoes the change if anything fails. It prints one JSON record, and only exit code 0 means the change was accepted. It works on Python projects, and on Rust projects through `cargo test`. To do real work it needs checkouts of its four sibling repositories (see ROLE IN THE CIRCUIT).
+**In plain words.** Warden is a command line tool for the person who owns a code project and wants a proposed change checked before it is allowed to stay. You give it a project folder, a change and the name of the person who approves it. It runs the project's own tests before and after, rescans with an inspector (ghost_tools), asks a separate judge (Judge) for a verdict, and undoes the change if anything fails. It prints one JSON record, and only exit code 0 means the change was accepted. It works on Python projects, and on Rust projects through `cargo test`. To do real work it needs checkouts of its four sibling repositories (see ROLE IN THE CIRCUIT).
 
 Warden decides whether a change to code may be made, whether it stands once
 made, and what is recorded about it. It does not decide what makes code
@@ -45,12 +45,12 @@ Warden sits in an assurance circuit of five repositories. It is the governor: th
 | Part | Repository | Role |
 |---|---|---|
 | Answer key | ASSAY | Supplies known failure modes with independently known answers |
-| Scanner | ghost_tools | Observes the target and reports defects |
-| Attacker | SWIZZLE | Proves its own planted defects, and attacks Warden's governance rules |
+| Inspector | ghost_tools | Observes the target and reports defects |
+| Adversary | SWIZZLE | Proves its own planted defects, and attacks Warden's governance rules |
 | Governor | Warden | Enforces human approval, measures the test suite, requires rescan, restores rejected changes |
-| Judge | Judge | Reads the run's evidence and returns ACCEPT, REJECT, or INSUFFICIENT |
+| Evidence evaluator | Judge | Reads the run's evidence and returns ACCEPT, REJECT, or INSUFFICIENT |
 
-The circuit is an assurance layer, not the live execution path. CNS holds the shared interoperability contracts and is not a decision-making seat. See [STACK.md](STACK.md) for the full description.
+The table above matches the authoritative one in [STACK.md](STACK.md). The circuit is an assurance layer, not the live execution path. CNS holds the shared interoperability contracts and is not a decision-making seat. See [STACK.md](STACK.md) for the full description.
 
 ## WHAT THE HUMAN GRANT IS, AND WHAT WARDEN DOES NOT GOVERN
 
@@ -67,9 +67,9 @@ Warden does not:
 
 ## WHERE THIS FITS
 
-Warden belongs to the assurance circuit: five repositories that check changes to code. Their jobs: ASSAY is the answer key, ghost_tools is the scanner, SWIZZLE is the attacker that tests the others, Warden is the governor, and Judge gives the verdict.
+Warden belongs to the assurance circuit: five repositories that check changes to code. Their jobs: ASSAY is the answer key, ghost_tools is the inspector, SWIZZLE is the adversary that tests the others, Warden is the governor, and Judge is the evidence evaluator that gives the verdict.
 
-- **Warden receives** a proposed change (through the claim seat, or from an optional Drafter), the scanner's findings from ghost_tools, the proofs and attacks from SWIZZLE, and the answer-key score from ASSAY.
+- **Warden receives** a proposed change (through the claim seat, or from an optional Drafter), the inspector's findings from ghost_tools, the proofs and attacks from SWIZZLE, and the answer-key score from ASSAY.
 - **Warden hands on** the measured evidence to Judge, and one JSON record (and optionally a receipt) to the person who ran it.
 - **Place in ≡TACK.** ≡TACK is the owner's whole library of repositories. The circuit sits in its assurance layer, beside the live decision path and not on it (see [STACK.md](STACK.md)). Warden is not shared infrastructure: only the circuit uses it, and the released Drafter and Burnish still import its data shapes.
 
