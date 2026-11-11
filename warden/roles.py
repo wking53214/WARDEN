@@ -5,10 +5,13 @@ the loop is done. It does not know what a good fix looks like, and it does not
 know what beautiful code looks like. Two other repositories answer those:
 
   Drafter    in the loop. Looks at what Ghost found and proposes ONE change.
-              A proposal is data. A Drafter never writes.
+              A proposal is data. A Drafter never writes. Optional: a real
+              change normally enters through the claim seat instead, and the
+              Drafter is released from the circuit (2026-10-29).
   Finisher    after the loop, once. Beautifies the converged code and writes
               the final README. Its output is also a proposal; Warden applies
               it under the same gate (grant, green suite, Ghost no worse).
+              Optional: it runs only when one is seated by `--finisher`.
 
 A third seat decides. The Judge is handed the evidence of the whole run and
 returns a verdict; it measures nothing and writes nothing, and Warden may not

@@ -1,19 +1,24 @@
-"""The loop: Ghost sees, Drafter proposes, Warden decides and applies, SWIZZLE checks.
+"""The loop: Ghost sees, a change enters (claim seat or optional Drafter), Warden decides and applies, SWIZZLE checks.
 
     calibrate (SWIZZLE proves its own instrument)
     repeat, up to max_cycles:
-        observe (Ghost) -> Drafter proposes -> authorize (human)
+        observe (Ghost) -> a change is proposed (the claim seat, which
+        proposes a real change once and then nothing, or an optional
+        Drafter) -> authorize (human)
         -> suite before -> apply -> suite after (put back on failure)
         -> Ghost re-inspects
-      until the Drafter has nothing left to propose
+      until nothing is left to propose
     SWIZZLE proofs again
-    hand off ONCE to the Finisher: beautified code and the final README,
+    if a Finisher was seated by explicit option (none is a circuit member):
+      hand off ONCE to it: beautified code and the final README,
       applied by Warden under the same gate and put back if the suite
       breaks or Ghost finds anything new
+    then the Judge reads the evidence
 
-Warden is the only writer and the only one who says the loop is done. The
-Drafter cannot declare itself finished; it can only run out of proposals, and
-Warden checks that Ghost agrees before calling it converged.
+Warden is the only writer and the only one who says the loop is done. A
+proposer cannot declare itself finished; it can only run out of proposals, and
+Warden checks that Ghost agrees before calling it converged. A run with no
+Finisher can still end ACCEPT.
 
 This module refuses three self-certifying loops:
 

@@ -1,4 +1,7 @@
-"""Four Horsemen interface for Warden."""
+"""Four Horsemen interface for Warden.
+
+"Four Horsemen" is the older name of this interface; the circuit now has five seats.
+"""
 from .contracts import Handoff, HandoffKind, EpistemicLabel
 from .authorization_scope import (
     ScopedGrant, ScopeSpec, ChangeClass, grant_scoped, validate_scoped, ScopeViolation,
