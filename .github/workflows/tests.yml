@@ -24,7 +24,7 @@ permissions:
 # `stack` job in the CNS repository (github.com/wking53214/CNS), not here. The cns extras of the ghost_tools, SWIZZLE and ASSAY commits
 # are at the CNS v2.3.0 tag, like the pin here, and so is the CNS dependency of the JUDGE commit; Judge is
 # installed with --no-deps, so CNS there is the pin of this repository.
-# CNS is pinned by the tag `v2.3.0` in `pyproject.toml` (a lightweight tag: the tag is the commit 41592fb).
+# CNS is pinned by the tag `v3.0.0` in `pyproject.toml` (a lightweight tag: the tag is the commit 31cb6f5).
 # The `assay-latest` job is the one place a sibling is taken at its newest commit, on purpose, and it cannot
 # fail the build.
 #

@@ -46,7 +46,7 @@ JUDGE     ACCEPT (stands) · REJECT (whole tree put back) · INSUFFICIENT (repor
 ```
 
 Each seat declares `requires_contract = "1"` and reads and returns the shared rows defined in
-CNS. Warden imports those rows from CNS (a required dependency, pinned at `v2.3.0`) and makes the decisions with them itself; CNS supplies shapes and decides nothing. Warden tells a Drafter, when one is seated, the grant's scope
+CNS. Warden imports those rows from CNS (a required dependency, pinned at `v3.0.0`) and makes the decisions with them itself; CNS supplies shapes and decides nothing. Warden tells a Drafter, when one is seated, the grant's scope
 (`documentation` or `code`) before it asks it.
 
 **One command runs the circuit.** With a clone of each repository in one folder (names matched
@@ -76,7 +76,7 @@ those folders still must have no uncommitted changes. The manifest is the shape 
 Warden's CI runs against these sibling commits, each a full SHA. They are the last set this repository's CI tested on its
 own; none is claimed to be the head of any repository's `main`, none is tagged, and a sibling may have moved on. Whether the
 set that lands works together is checked by the `stack` job in the CNS repository, not here.
-CNS is the exception: `pyproject.toml` pins it by the tag `v2.3.0`, spelled the same way in every repository of the
+CNS is the exception: `pyproject.toml` pins it by the tag `v3.0.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag is (a lightweight tag, so the tag is the commit).
 The ASSAY commit (`11475f3`, 0.11.10) has its cns extra at the CNS v2.3.0 tag. The JUDGE commit (`8f976c6`, 0.5.5) depends on CNS at the v2.3.0 tag too; Judge is installed with `--no-deps`, so CNS there is this repository's pin. CNS's stack manifest (`contracts/warden-stack.json`) names a later JUDGE commit, `b20c76c` (0.5.6), than this tested set's `8f976c6` (0.5.5); this section states the tested set, not the manifest. The Judge moved from 0.5.1 to 0.5.3 in this set so that Warden's own `circuit` job exercises the rulings of the Judge that ships.
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
@@ -88,7 +88,7 @@ place that states one of them disagrees with the others.
 | SWIZZLE | 0.8.13 | `63467947f169577e1a56ccc982f057ab32af1798` |
 | ASSAY | 0.11.10 | `11475f30867e1565d3614f5c059d160ee466defd` |
 | JUDGE | 0.5.5 | `8f976c6875f0564b25792524f24ebc2cea7b420d` |
-| CNS | v2.3.0 | `41592fb7b6735abe140f745353c09ba3eed8e7a2` |
+| CNS | v3.0.0 | `31cb6f568219ef62cf3748701c895aa086abf1b8` |
 
 ASSAY's answer key needs numpy and matplotlib installed normally, with matplotlib's own dependencies (Pillow,
 `packaging` and the rest). Installing them with `--no-deps` leaves 56 of the 60 claims proven, so the key is NOT PROVEN
