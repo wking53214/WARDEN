@@ -18,7 +18,7 @@ written without a named human.
 | 5 | Judge | [Judge](https://github.com/wking53214/Judge) | Reads the evidence of the whole run and says ACCEPT, REJECT or INSUFFICIENT; Warden reports INSUFFICIENT as a hold. |
 
 Any actor's real change enters through Warden's claim seat (`--claim-commit` or `--claim-diff`);
-an optional Drafter may propose one instead. There is no finisher in the loop.
+an optional Drafter may propose one instead. No finisher is part of the circuit; one can still be seated by the explicit `--finisher` option.
 
 ```text
 CODEBASE

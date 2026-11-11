@@ -18,14 +18,15 @@ rewriting bot. Nothing is written without a named human.
 
 ## WHAT THIS IS
 
-A governor, and the only thing in the circuit that writes. It runs a loop. Ghost
-Tools reports what is wrong, a change enters (through the claim seat, `--claim-commit` or `--claim-diff`, from any actor, or from an
-optional Drafter), and Warden asks, in
+A governor, and the only component authorized to apply changes within the assurance circuit. It runs a loop. Ghost
+Tools reports what is wrong, and a change enters. The general way in is the claim seat (`--claim-commit` or `--claim-diff`): a real
+change from any actor, which Warden proposes once and then nothing. A Drafter is an optional extra proposer, not a requirement.
+Warden then asks, in
 order: did a person grant this, are SWIZZLE's own proofs sound, is the target's
 test suite green, did it stay green after the change, and does Ghost agree
 nothing new appeared. Any "no" stops the change or puts it back. The loop
-cycles until the Drafter has nothing left to propose (or a cycle limit is
-hit). Where a Finisher is seated (an explicit `--finisher`; none is part of the circuit), Warden then hands the code to it once, together with the facts it measured (the suite result and what Ghost still reports), so the Finisher counts and detects nothing itself. The Finisher beautifies the code and writes the final README. The Finisher's change goes through
+cycles until nothing is left to propose (or a cycle limit is
+hit). A Finisher is optional and outside the circuit: Burnish was released, and nothing seats one unless you pass `--finisher`. Where one is seated, Warden then hands the code to it once, together with the facts it measured (the suite result and what Ghost still reports), so the Finisher counts and detects nothing itself. The Finisher beautifies the code and writes the final README. The Finisher's change goes through
 the same gate.
 
 The circuit is five repositories: ghost_tools (observes), SWIZZLE and ASSAY (instruments that attack the governor and grade the detector), JUDGE (decides ACCEPT, REJECT or INSUFFICIENT, which Warden reports as a hold) and WARDEN (applies, measures, refuses, puts the tree back). DRAFTER, BURNISH and WATCHER_MCU are released from the circuit by owner ruling (2026-10-29): not seats, nothing deleted, each still works on its own. CNS holds the contracts. See STACK.md.
@@ -50,6 +51,19 @@ Warden sits in an assurance circuit of five repositories. It is the governor: th
 | Judge | Judge | Reads the run's evidence and returns ACCEPT, REJECT, or INSUFFICIENT |
 
 The circuit is an assurance layer, not the live execution path. CNS holds the shared interoperability contracts and is not a decision-making seat. See [STACK.md](STACK.md) for the full description.
+
+## WHAT THE HUMAN GRANT IS, AND WHAT WARDEN DOES NOT GOVERN
+
+`--authorize NAME` is authorization supplied to Warden: a named person says "I approve this change". It is not authentication. Warden does not check that the name is really that person (any text works), so the boundary rests on who is allowed to run the command. Warden also does not sandbox anything: the target's tests and the seats run with the user's own access.
+
+Warden does not:
+
+- govern the live execution path of the owner's wider library (≡TACK); it is an assurance layer beside that path;
+- replace CNS, which supplies shared contracts and makes no decisions;
+- prove who a human is from a supplied name;
+- guarantee isolation of untrusted code;
+- certify its own instruments (ghost_tools, SWIZZLE, ASSAY) or its own Judge's verdict;
+- guarantee that a change that passes every check is correct (the `mutate` check is declined by design).
 
 ## WHERE THIS FITS
 
