@@ -78,16 +78,16 @@ own; none is claimed to be the head of any repository's `main`, none is tagged, 
 set that lands works together is checked by the `stack` job in the CNS repository, not here.
 CNS is the exception: `pyproject.toml` pins it by the tag `v3.0.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag is (a lightweight tag, so the tag is the commit).
-The ASSAY commit (`11475f3`, 0.11.10) has its cns extra at the CNS v2.3.0 tag. The JUDGE commit (`8f976c6`, 0.5.5) depends on CNS at the v2.3.0 tag too; Judge is installed with `--no-deps`, so CNS there is this repository's pin. CNS's stack manifest (`contracts/warden-stack.json`) names a later JUDGE commit, `b20c76c` (0.5.6), than this tested set's `8f976c6` (0.5.5); this section states the tested set, not the manifest. The Judge moved from 0.5.1 to 0.5.3 in this set so that Warden's own `circuit` job exercises the rulings of the Judge that ships.
+The ASSAY commit (`3d50a70`, 0.11.10) has its cns extra at the CNS v2.3.0 tag. The JUDGE commit (`86d44e5`, 0.5.7) depends on CNS at the v2.3.0 tag too; Judge is installed with `--no-deps`, so CNS there is this repository's pin. CNS's stack manifest (`contracts/warden-stack.json`) names a JUDGE commit, `b20c76c` (0.5.6), other than this tested set's `86d44e5` (0.5.7); this section states the tested set, not the manifest. The Judge moved from 0.5.1 to 0.5.3 in an earlier set so that Warden's own `circuit` job exercises the rulings of the Judge that ships.
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
 place that states one of them disagrees with the others.
 
 | Repository | Version | Commit |
 |---|---|---|
-| ghost_tools | 1.10.14 | `48d1a0fc45b9a9607aa417c85da60030d904390c` |
-| SWIZZLE | 0.8.13 | `63467947f169577e1a56ccc982f057ab32af1798` |
-| ASSAY | 0.11.10 | `11475f30867e1565d3614f5c059d160ee466defd` |
-| JUDGE | 0.5.5 | `8f976c6875f0564b25792524f24ebc2cea7b420d` |
+| ghost_tools | 1.10.14 | `99f0e3cb14892ccefa737a01744420914e828cf1` |
+| SWIZZLE | 0.8.13 | `3fcb27f62add4ba4355a55dff6f3a180fda816ed` |
+| ASSAY | 0.11.10 | `3d50a70566f8c2278b0fc5d110309f3ace75bfdf` |
+| JUDGE | 0.5.7 | `86d44e5d001de9ada4bdef525fbf54a2b6e145d9` |
 | CNS | v3.0.0 | `31cb6f568219ef62cf3748701c895aa086abf1b8` |
 
 ASSAY's answer key needs numpy and matplotlib installed normally, with matplotlib's own dependencies (Pillow,
