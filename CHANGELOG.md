@@ -5,13 +5,28 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`), and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3` and `0.16.4`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4` and `0.16.6`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by tag.
 
+## [0.16.6] - 2026-11-11
+
+`CONTRACT` is still `"1"`. Not tagged. Owner decision A of 2026-11-11. This closes a hole in the pin check and the
+dirty check; it adds no detector, counter or gate rule.
+
+### Fixed
+
+- **A `git replace` ref defeated the pin check, the dirty check and the claim read.** `git replace <pin> <new>` then
+  `git checkout <pin>` made a stack checkout report the pinned commit and a clean status while holding other content,
+  and a claimed commit read through a replace ref gave another commit's bytes while the row named the first SHA.
+  Every git call Warden makes takes its environment from `warden.gitstate._env`, which now sets
+  `GIT_NO_REPLACE_OBJECTS=1`. Prevented by `tests/test_replace_refs.py`. Grafts (`.git/info/grafts`) are not honoured
+  by current git; that was not tested separately.
+- `tests/test_docs.py` allows the version 0.16.6 in its tag-sentence guard (the only test edited, and only to say so).
+
 ## [Unreleased]
 
-No version change: `warden/__init__.py` still says 0.16.5 and no code in `warden/` moved.
+No version change: documentation and pin entries below were made before 0.16.6 and are carried in it; no other code in `warden/` moved.
 
 ### Changed
 

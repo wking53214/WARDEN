@@ -61,8 +61,9 @@ With a manifest, each of them must be named by it (a folder the manifest does no
 the run refuses and names it), at the pinned commit, and with no uncommitted changes. Without a manifest,
 each must have no uncommitted changes (a folder that is not a git checkout cannot be asked and is let through). A
 `JUDGE` or `DRAFTER` seat folder that the manifest does not cover is therefore refused, not let through unchecked. What
-is checked is the commit the checkout reports and the files git reports as changed; a `git replace` ref defeats both
-(see KNOWN DEFECTS in [LIMITS.md](LIMITS.md)). The
+is checked is the commit the checkout reports and the files git reports as changed, read with replace refs ignored
+(since 0.16.6 every git call sets `GIT_NO_REPLACE_OBJECTS=1`; `tests/test_replace_refs.py`). Grafts are not honoured by
+current git; that was not separately tested. The
 governed target is excluded, as before; its own dirty policy applies. `--cns DIR`, a checkout of CNS, reads the same manifest from the hub at `contracts/warden-stack.json`
 (CNS 1.5.0, `cns.stack` is its shape); CNS is read, never written. The manifest is what CNS holds for
 the circuit: which versions belong together, decided outside any repository under test. The output's `versions`

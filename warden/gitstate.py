@@ -37,6 +37,9 @@ def _env() -> dict:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_OPTIONAL_LOCKS"] = "0"
+    # Replace refs (`git replace`) let a checkout report one commit while holding another's content. Every git
+    # call Warden makes takes this environment, so none of them honours a replace ref.
+    env["GIT_NO_REPLACE_OBJECTS"] = "1"
     return env
 
 
