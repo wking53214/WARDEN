@@ -50,7 +50,7 @@ Warden sits in an assurance circuit of five repositories. It is the governor: th
 | Governor | Warden | Enforces human approval, measures the test suite, requires rescan, restores rejected changes |
 | Evidence evaluator | Judge | Reads the run's evidence and returns ACCEPT, REJECT, or INSUFFICIENT |
 
-The table above matches the authoritative one in [STACK.md](STACK.md). The circuit is an assurance layer, not the live execution path. CNS holds the shared interoperability contracts and is not a decision-making seat. See [STACK.md](STACK.md) for the full description.
+The table above matches the authoritative one in [STACK.md](STACK.md). The circuit is an assurance layer, not the live execution path. What backs each main claim, and what does not, is in [docs/VERIFICATION.md](docs/VERIFICATION.md). CNS holds the shared interoperability contracts and is not a decision-making seat. See [STACK.md](STACK.md) for the full description.
 
 ## WHAT THE HUMAN GRANT IS, AND WHAT WARDEN DOES NOT GOVERN
 
