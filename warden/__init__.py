@@ -2,9 +2,12 @@
 
 WHAT THIS IS
     The governor of a code change. It decides whether a change may be made,
-    whether it stands, and what is recorded. It does not decide what makes code
-    a good fix or beautiful code look like; a Drafter (in the loop) and a
-    Finisher (once, after it) do, through the seats in `warden.roles`.
+    whether it stands, and what is recorded. A real change normally enters
+    through the claim seat (`warden.claim`). It does not decide what makes code
+    a good fix or beautiful code look like. An optional Drafter (in the loop)
+    and an optional Finisher (once, after it) may be seated through
+    `warden.roles`; neither is a member of the assurance circuit (Drafter and
+    Burnish were released on 2026-10-29).
 
 WHAT IT OWNS
     Transformation proposals as data, the human authorization boundary, the
@@ -13,7 +16,7 @@ WHAT IT OWNS
     becoming any of them.
 
 WHAT IT DOES NOT OWN
-    The proposals (Drafter) and the beautifying and final README (Burnish). Forensic inspection (Ghost
+    The optional proposals (Drafter) and the optional beautifying and final README (Burnish). Forensic inspection (Ghost
     Tools). Adversarial challenge (SWIZZLE). Runtime governance contracts
     (CNS). Live admission, decision, custody.
 

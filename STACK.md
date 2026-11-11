@@ -46,7 +46,7 @@ JUDGE     ACCEPT (stands) · REJECT (whole tree put back) · INSUFFICIENT (repor
 ```
 
 Each seat declares `requires_contract = "1"` and reads and returns the shared rows defined in
-CNS; Warden imports none of them. Warden tells a Drafter, when one is seated, the grant's scope
+CNS. Warden imports those rows from CNS (a required dependency, pinned at `v2.3.0`) and makes the decisions with them itself; CNS supplies shapes and decides nothing. Warden tells a Drafter, when one is seated, the grant's scope
 (`documentation` or `code`) before it asks it.
 
 **One command runs the circuit.** With a clone of each repository in one folder (names matched
