@@ -31,11 +31,11 @@ the same gate.
 
 The circuit is five repositories: ghost_tools (observes), SWIZZLE and ASSAY (instruments that attack the governor and grade the detector), JUDGE (decides ACCEPT, REJECT or INSUFFICIENT, which Warden reports as a hold) and WARDEN (applies, measures, refuses, puts the tree back). DRAFTER, BURNISH and WATCHER_MCU are released from the circuit by owner ruling (2026-10-29): not seats, nothing deleted, each still works on its own. CNS holds the contracts. See STACK.md.
 
-Version `0.16.5` (seat contract `"1"`, unchanged). The history of every release is in
+Version `0.16.6` (seat contract `"1"`, unchanged). The history of every release is in
 [CHANGELOG.md](CHANGELOG.md); the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the exit codes in
 [docs/EXIT_CODES.md](docs/EXIT_CODES.md). The repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by
 tag; each one's `pyproject.toml` names the commit. Release tags exist up to `v0.12.0`, and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`); the `0.13.x` releases are not
-tagged, and `0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3` and `0.16.4`. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). Tagging is
+tagged, and `0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4` and `0.16.6`. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). Tagging is
 the owner's decision.
 
 ## ROLE IN THE CIRCUIT
