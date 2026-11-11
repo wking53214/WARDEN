@@ -15,7 +15,7 @@ permissions:
 # (in every job that checks it out, and the matching `--expect` in the `circuit` job, `pyproject.toml` for
 # ghost_tools, and STACK.md), read the sibling's CHANGELOG for what moved, and run the whole job set once.
 # `tests/test_docs.py` fails if the pins disagree with each other.
-#   ghost_tools 1.10.14 00d94d6dbd32ae3dde7f54d04219e66c814908c4
+#   ghost_tools 1.10.14 48d1a0fc45b9a9607aa417c85da60030d904390c
 #   SWIZZLE     0.8.13  63467947f169577e1a56ccc982f057ab32af1798
 #   ASSAY       0.11.10  11475f30867e1565d3614f5c059d160ee466defd
 #   JUDGE       0.5.5   8f976c6875f0564b25792524f24ebc2cea7b420d
@@ -93,11 +93,11 @@ jobs:
           repository: wking53214/ASSAY
           ref: 11475f30867e1565d3614f5c059d160ee466defd
           path: _circuit/ASSAY
-      # ghost_tools 1.10.14 (00d94d6)
+      # ghost_tools 1.10.14 (48d1a0f)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: wking53214/ghost_tools
-          ref: 00d94d6dbd32ae3dde7f54d04219e66c814908c4
+          ref: 48d1a0fc45b9a9607aa417c85da60030d904390c
           path: _circuit/ghost_tools
       # SWIZZLE 0.8.13 (6346794)
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -118,7 +118,7 @@ jobs:
       - run: >
           python tools/circuit_smoke.py
           --ghost-tools _circuit/ghost_tools --swizzle _circuit/SWIZZLE --assay _circuit/ASSAY --real-judge
-          --expect ghost_tools=00d94d6dbd32ae3dde7f54d04219e66c814908c4
+          --expect ghost_tools=48d1a0fc45b9a9607aa417c85da60030d904390c
           --expect swizzle=63467947f169577e1a56ccc982f057ab32af1798
           --expect assay=11475f30867e1565d3614f5c059d160ee466defd
 

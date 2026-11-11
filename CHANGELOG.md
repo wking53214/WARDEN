@@ -9,6 +9,20 @@ Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`), a
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by tag.
 
+## [Unreleased]
+
+No version change: `warden/__init__.py` still says 0.16.5 and no code in `warden/` moved.
+
+### Changed
+
+- **Pin.** The pin on ghost_tools moves from `00d94d6` to `48d1a0f`, the head of its `main` on 2026-11-10 (still
+  1.10.14), in `pyproject.toml` (the `ghost` extra), `.github/workflows/tests.yml` (every job that checks it out and
+  the `circuit` job's `--expect`) and `STACK.md`. Reason: the `stack` job in CNS has been failing because CNS installs
+  the circuit at each repository's head and pip cannot install two commits of ghost-tools together; Warden's pin was
+  the older one. What moved in ghost_tools between the two commits: with CNS absent its adapter reports `cns_outcome`
+  as None instead of an outcome, a tag pattern accepts a capital `V`, a banner word, and documents. SWIZZLE, ASSAY and
+  JUDGE in the tested set are not moved. No test was edited.
+
 ## [0.16.5] - 2026-11-04
 
 `CONTRACT` is still `"1"`. Not tagged. Owner decision of 2026-11-04 (the option recommended after the round-8 red team).
