@@ -15,6 +15,7 @@ No version change: `warden/__init__.py` still says 0.16.5 and no code in `warden
 
 ### Changed
 
+- **Documentation only, no code.** Five sentences corrected: the stack-checkout check is described as the commit the checkout reports and the files git reports as changed, and a `git replace` ref is listed as an open defect (reproduced 2026-11-11, not fixed); a protected edit's hold is the Judge's ruling, not Warden's; the stale claim that a restored deleted file loses its executable bit is removed; the Judge of the tested set (0.5.5) is no longer called the version CNS's manifest names (it names `b20c76c`, 0.5.6); "the table above" points at `docs/EXIT_CODES.md`. No test was edited.
 - **Pin.** The pin on ghost_tools moves from `00d94d6` to `48d1a0f`, the head of its `main` on 2026-11-10 (still
   1.10.14), in `pyproject.toml` (the `ghost` extra), `.github/workflows/tests.yml` (every job that checks it out and
   the `circuit` job's `--expect`) and `STACK.md`. Reason: the `stack` job in CNS has been failing because CNS installs

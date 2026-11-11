@@ -51,7 +51,7 @@ then measured instead of reported. A joined checkout is read, never imported, an
 outside the target. `--stack-manifest FILE`, with `--stack`, does this from a pinned list: a JSON
 file `{"schema": "warden-stack/1", "contract": "1", "repos": {name: commit}}` naming the circuit's
 checkouts and the commit each must be at, each a full 40-character lowercase commit (a short prefix or any other
-spelling is refused). Every named checkout is verified against the folder
+spelling is refused). Every named checkout is verified against the folder: the commit it reports and the files git reports as changed
 (wrong commit, missing folder, not a git checkout, uncommitted changes in it: usage error, nothing runs; ignored
 files do not count) and joined for Ghost,
 the target itself excepted (a clone of the target at the same commit is verified like the others but not joined,
@@ -60,7 +60,9 @@ since it is the same repository). **Every stack folder the run uses is vetted.**
 With a manifest, each of them must be named by it (a folder the manifest does not cover has no pinned commit, so
 the run refuses and names it), at the pinned commit, and with no uncommitted changes. Without a manifest,
 each must have no uncommitted changes (a folder that is not a git checkout cannot be asked and is let through). A
-tampered `JUDGE` or `DRAFTER` seat therefore cannot ride along because the manifest listed only the others. The
+`JUDGE` or `DRAFTER` seat folder that the manifest does not cover is therefore refused, not let through unchecked. What
+is checked is the commit the checkout reports and the files git reports as changed; a `git replace` ref defeats both
+(see KNOWN DEFECTS in [LIMITS.md](LIMITS.md)). The
 governed target is excluded, as before; its own dirty policy applies. `--cns DIR`, a checkout of CNS, reads the same manifest from the hub at `contracts/warden-stack.json`
 (CNS 1.5.0, `cns.stack` is its shape); CNS is read, never written. The manifest is what CNS holds for
 the circuit: which versions belong together, decided outside any repository under test. The output's `versions`
@@ -348,9 +350,10 @@ config, CI configs (`.github`, `.circleci`, `.gitlab-ci.yml`, `Jenkinsfile`,
 `.gitmodules`, lockfiles, `requirements*.txt` / `constraints*.txt` / `Pipfile`, Docker and
 compose files. An edit to one of them is applied and measured like any other, every such path is
 named in the Judge's `judging_files_touched` and in the claim row's `files` (`protected` true), and
-the Judge decides; the machine does not approve it, so the run ends held (`ACCEPT_UNVERIFIED`) by
-digest for a named person to keep or drop with `warden keep` (the owner's ruling, 2026-10-28; a Judge
-older than that ruling says REJECT instead and the whole tree is put back). Names are compared
+the Judge decides. Warden applies and measures the edit and names it protected; the hold is the Judge's
+ruling. With a Judge that rules it `INSUFFICIENT` (the tested one does), the run ends held (`ACCEPT_UNVERIFIED`) by
+digest for a named person to keep or drop with `warden keep` (the owner's ruling, 2026-10-28); with a Judge that
+returns `ACCEPT` the run ends `ACCEPT`; a Judge older than that ruling says REJECT instead and the whole tree is put back. Names are compared
 without regard to case. A symlink is judged by where it really points, before the check: a link that
 points at a protected file is that file, and one that points outside the target is an escape. In the
 default `documentation` scope only real prose is editable: `.md`, `.rst` and `.txt`, except
