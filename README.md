@@ -4,6 +4,8 @@
 
 The discipline of change.
 
+**In plain words.** Warden is a command line tool for the person who owns a code project and wants a proposed change checked before it is allowed to stay. You give it a project folder, a change and the name of the person who approves it. It runs the project's own tests before and after, rescans with a scanner (ghost_tools), asks a separate judge (Judge) for a verdict, and undoes the change if anything fails. It prints one JSON record, and only exit code 0 means the change was accepted. It works on Python projects, and on Rust projects through `cargo test`. To do real work it needs checkouts of its four sibling repositories (see ROLE IN THE CIRCUIT).
+
 Warden decides whether a change to code may be made, whether it stands once
 made, and what is recorded about it. It does not decide what makes code
 beautiful. That work lived in [Burnish](https://github.com/wking53214/burnish),
@@ -16,7 +18,7 @@ rewriting bot. Nothing is written without a named human.
 
 ## WHAT THIS IS
 
-A governor, and the only thing in the stack that writes. It runs a loop. Ghost
+A governor, and the only thing in the circuit that writes. It runs a loop. Ghost
 Tools reports what is wrong, a change enters (through the claim seat, `--claim-commit` or `--claim-diff`, from any actor, or from an
 optional Drafter), and Warden asks, in
 order: did a person grant this, are SWIZZLE's own proofs sound, is the target's
@@ -31,8 +33,8 @@ The circuit is five repositories: ghost_tools (observes), SWIZZLE and ASSAY (ins
 Version `0.16.5` (seat contract `"1"`, unchanged). The history of every release is in
 [CHANGELOG.md](CHANGELOG.md); the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the exit codes in
 [docs/EXIT_CODES.md](docs/EXIT_CODES.md). The repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by
-tag; each one's `pyproject.toml` names the commit. Release tags exist up to `v0.12.0`; the `0.13.x` releases are not
-tagged, and `0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4` and `0.16.5`. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). Tagging is
+tag; each one's `pyproject.toml` names the commit. Release tags exist up to `v0.12.0`, and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`); the `0.13.x` releases are not
+tagged, and `0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3` and `0.16.4`. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). Tagging is
 the owner's decision.
 
 ## ROLE IN THE CIRCUIT
@@ -48,6 +50,27 @@ Warden sits in an assurance circuit of five repositories. It is the governor: th
 | Judge | Judge | Reads the run's evidence and returns ACCEPT, REJECT, or INSUFFICIENT |
 
 The circuit is an assurance layer, not the live execution path. CNS holds the shared interoperability contracts and is not a decision-making seat. See [STACK.md](STACK.md) for the full description.
+
+## WHERE THIS FITS
+
+Warden belongs to the assurance circuit: five repositories that check changes to code. Their jobs: ASSAY is the answer key, ghost_tools is the scanner, SWIZZLE is the attacker that tests the others, Warden is the governor, and Judge gives the verdict.
+
+- **Warden receives** a proposed change (through the claim seat, or from an optional Drafter), the scanner's findings from ghost_tools, the proofs and attacks from SWIZZLE, and the answer-key score from ASSAY.
+- **Warden hands on** the measured evidence to Judge, and one JSON record (and optionally a receipt) to the person who ran it.
+- **Place in ≡TACK.** ≡TACK is the owner's whole library of repositories. The circuit sits in its assurance layer, beside the live decision path and not on it (see [STACK.md](STACK.md)). Warden is not shared infrastructure: only the circuit uses it, and the released Drafter and Burnish still import its data shapes.
+
+## CNS CONNECTION
+
+CNS is the repository that holds the shared row shapes the circuit repositories agree on.
+
+- **This repository's side:** `warden/suite.py` is the file CNS's connection list (`contracts/cns-links.json` in CNS) names for Warden. Five more modules (`swizzle`, `tagteam`, `roles`, `epistemic`, `models`) also import CNS rows. CNS is required, not optional, and is pinned at the tag `v2.3.0`.
+- **CNS's side:** `contracts/warden-stack.json` in CNS carries Warden.
+- **List status:** two-way (checked against CNS commit `03eca66` on 2026-11-10).
+- **Built, tested, used:** the connection is built. The tests pass with CNS installed (`tests/test_cns_strict.py` and the pin checks in `tests/test_docs.py`). Every normal run uses it: each run builds a CNS suite row and reads CNS finding, attack and seat rows. The connection list does not mark Drafter, Burnish and WATCHER_MCU as released; that is CNS's to update.
+
+## LICENSE
+
+Apache-2.0, copyright William N. King (see `LICENSE` and `NOTICE`).
 
 ## HOW TO INSTALL AND RUN
 
@@ -324,7 +347,7 @@ opinion about what better code looks like. The opinion moved to Burnish on
 - Rule 9, the audit file: `WARDEN_AUDIT.md`, Ghost findings under IDs that never change meaning
 - The SWIZZLE proof gate: SWIZZLE's own proofs must hold before anything is accepted
 - The tag-team loop that *calls* Ghost Tools, SWIZZLE, a Drafter and a Finisher without becoming any of them
-- The Four Horsemen interface: typed handoffs between ASSAY, Ghost Tools, SWIZZLE and Warden. Warden's own command line drives it through `--receipt`; ASSAY's tests import `AssayAdapter`; Judge, Drafter and Burnish do not import it (they import `warden.models`, `warden.roles` and `warden.authorization` only)
+- The Horsemen interface (an older name; the circuit now has five seats): typed handoffs between ASSAY, Ghost Tools, SWIZZLE and Warden. Warden's own command line drives it through `--receipt`; ASSAY's tests import `AssayAdapter`; Judge, Drafter and Burnish do not import it (they import `warden.models`, `warden.roles` and `warden.authorization` only)
 
 ## WHAT IT DOES NOT OWN
 
@@ -336,6 +359,8 @@ opinion about what better code looks like. The opinion moved to Burnish on
 - A numeric elegance score
 
 ## ARCHITECTURAL STORY
+
+The picture below shows the loop with a Drafter and a Finisher seated. Today a real change usually enters through the claim seat instead, and no Finisher is part of the circuit (see [STACK.md](STACK.md)).
 
 ```
 CODEBASE
@@ -384,6 +409,9 @@ ACCEPT / FINISH_REJECTED
 | `warden.gitstate` | read-only questions to git: is the folder dirty, where is its git folder, what is `core.hooksPath` |
 | `warden.guard` | what an edit may touch: the protected-file list, prose-only documentation scope, symlink resolution, and the snapshot that undoes a seat that wrote |
 | `warden.textio` | byte-faithful reads and writes: line endings kept, non-UTF-8 files refused |
+| `warden.deletion` | the removal gate: code is commented out only after two opposite tests pass |
+| `warden.held` | held results: an unverified run's final state, kept for a person to approve with `warden keep` |
+| `warden.versions` | which versions took part in a run, for the `versions` field of the JSON |
 | `warden.claim` | the claim seat: `--claim-commit` and `--claim-diff`, a real change proposed once as writes and deletes of UTF-8 text, refused with a reason when it cannot be said that way |
 | `warden.claimrow` | the claim row: what one run governed, by commit, diff digest, file digests, grant, suite, findings, verdict and held tree |
 | `warden.chronicle` | one line per run keyed by origin and commits, the promises a held result opens, and their settlement by the next run on that tree |
@@ -710,7 +738,7 @@ full commit SHA, not on `main`. After a Warden change that seats must pick up (a
 to `CONTRACT`, or to what a seat is checked for), the owner tags the merge commit `vX.Y.Z` (matching
 the version in `warden/__init__.py`, which `pyproject.toml` reads), then one pull request per seat moves its pin
 (see "Bumping the Warden pin" in each seat's README). Tagging is the owner's decision; this repository's release tags
-run up to `v0.12.0` (see the top of this README). Merge seats before the Warden change that
+run up to `v0.12.0`, plus `v0.16.5` (see the top of this README). Merge seats before the Warden change that
 needs them: this release makes a seat without `requires_contract` refuse to load, so the seats
 must declare it first.
 
