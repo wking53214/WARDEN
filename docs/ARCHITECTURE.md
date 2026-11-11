@@ -80,7 +80,7 @@ The table below is generated from each module's own docstring by `tools/gen_docs
 | `warden.runstate` | Things a run must keep outside the target and outside the temp directory: a lock and a journal. |
 | `warden.suite` | Rule 7, the behavior-preservation gate: the target's own suite, before and after. |
 | `warden.swizzle` | SWIZZLE consumer: is the adversary's own instrument sound? |
-| `warden.tagteam` | The loop: Ghost sees, Drafter proposes, Warden decides and applies, SWIZZLE checks. |
+| `warden.tagteam` | The loop: Ghost sees, a change enters (claim seat or optional Drafter), Warden decides and applies, SWIZZLE checks. |
 | `warden.textio` | Reading and writing files without changing what the author wrote. |
 | `warden.versions` | Which versions took part in a run, for the `versions` field of `warden tagteam`'s JSON. |
 | `warden.horsemen` | Four Horsemen interface for Warden. |

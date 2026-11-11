@@ -1,7 +1,9 @@
 """warden: govern a change: observe, authorize, gate on the suite, record.
 
-Warden does not decide what a good fix or good code looks like. A Drafter
-(in the loop) and a Finisher (once, after it) do; see `warden.roles`.
+Warden does not decide what a good fix or good code looks like. An optional
+Drafter (in the loop) and an optional Finisher (once, after it) may do; neither
+is a member of the circuit; see `warden.roles`. A real change normally enters
+through the claim seat (`--claim-commit` or `--claim-diff`).
 `tagteam --drafter MODULE:FACTORY --finisher MODULE:FACTORY` names them.
 Without a drafter the loop can only observe. Writes require --authorize ACTOR --reason TEXT. There is no
 default actor.

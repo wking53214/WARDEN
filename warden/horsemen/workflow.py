@@ -1,4 +1,7 @@
-"""Four Horsemen workflow orchestration owned by Warden."""
+"""Four Horsemen workflow orchestration owned by Warden.
+
+"Four Horsemen" is the older name; the circuit now has five seats.
+"""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
