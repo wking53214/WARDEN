@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import warden
+from _doctext import full_text
 from warden.cli import EXIT_CODES
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,7 +33,7 @@ def test_generated_docs_are_not_stale():
 
 def test_every_exit_code_decision_is_in_the_exit_code_page_and_the_readme_table():
     page = (ROOT / "docs" / "EXIT_CODES.md").read_text(encoding="utf-8")
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    readme = full_text()  # the exit-code table moved with LIFECYCLE out of the short README
     for decision, code in EXIT_CODES.items():
         assert re.search(rf"\| {code} \|.*`{decision}`", page), decision
     for decision in set(EXIT_CODES) - {"USAGE_ERROR", "SEAT_NOT_LOADED"}:
@@ -91,7 +92,7 @@ def test_ci_runs_the_gates_and_the_supported_pythons():
 
 
 def test_the_readme_says_who_uses_the_horsemen_interface():
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    readme = full_text()
     assert "--receipt" in readme and "Judge, Drafter and Burnish do not import" in readme
 
 
@@ -131,7 +132,7 @@ def test_the_two_assay_floor_defaults_are_the_documented_ones(tmp_path, monkeypa
     page = (ROOT / "docs" / "EXIT_CODES.md").read_text(encoding="utf-8")
     assert "| `warden tagteam` | `--assay-floor 3`" in page
     assert "| `TagTeam(...)` in the library | `assay_floor=0`" in page
-    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    readme = " ".join(full_text().split())
     assert "The default is 3 **on the command line only**" in readme
     assert "`TagTeam(assay_floor=...)` in the library defaults to `0`" in readme
 

@@ -1,4 +1,7 @@
-"""The README's evidence and ledger point at things that exist, and the README keeps the sections it promises.
+"""The documentation's evidence and ledger point at things that exist, and it keeps the sections it promises.
+
+The README is a short entry point; its long sections moved, text unchanged, to docs/ (see tests/_doctext.py). "The README" below
+means that whole set, in the order the sections used to appear.
 
 A claim of "works" in the README names a test, a CI job or a recorded run. This file fails if a named test is gone,
 if the ledger cites a version the CHANGELOG does not have (or dates it differently), if marketing words come back,
@@ -9,8 +12,10 @@ import json
 import re
 from pathlib import Path
 
+from _doctext import full_text
+
 ROOT = Path(__file__).resolve().parents[1]
-README = (ROOT / "README.md").read_text(encoding="utf-8")
+README = full_text()
 CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 WORKFLOW = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
 
@@ -20,9 +25,9 @@ REQUIRED_HEADINGS = (
     "## WHAT WORKS",
     "## WHAT DOES NOT WORK / NOT PROVEN",
     "## KNOWN DEFECTS",
+    "## CEILINGS CODE CANNOT FIX",
     "## WHAT BROKE AND HOW IT WAS FIXED",
     "## SELF-HOSTING",
-    "## CEILINGS CODE CANNOT FIX",
 )
 BANNED_WORDS = ("robust", "powerful", "production-ready", "production ready", "seamless", "comprehensive",
                 "blazing", "enterprise", "battle-tested", "state-of-the-art")

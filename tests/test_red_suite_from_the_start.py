@@ -22,6 +22,7 @@ from warden.authorization import grant
 from warden.cli import EXIT_CODES
 from warden.tagteam import TagTeam
 
+from _doctext import full_text
 from fakes import FakeDrafter, FakeFinisher, FakeJudge
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,7 +85,7 @@ def test_with_nothing_proposed_by_anyone_the_run_is_never_an_accept_on_a_red_sui
 
 
 def test_the_documents_say_what_the_code_does_about_a_red_suite():
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    readme = full_text()
     page = (ROOT / "docs" / "EXIT_CODES.md").read_text(encoding="utf-8")
     row = re.search(r"^\| 6 \| `INCONCLUSIVE` \|.*$", readme, re.MULTILINE)
     assert row, "README exit-code table lacks the INCONCLUSIVE row"
