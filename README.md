@@ -155,4 +155,5 @@ The full list is in [docs/LIMITS.md](docs/LIMITS.md). The ones to know first:
 | [docs/WHAT_WORKS.md](docs/WHAT_WORKS.md) | Each working claim with its test or recorded run |
 | [docs/LIMITS.md](docs/LIMITS.md) | What does not work, open defects, ceilings, architectural debt |
 | [docs/HISTORY.md](docs/HISTORY.md) | What broke and how it was fixed, CNS pin moves, self-hosting records |
+| [docs/RELEASE_1_0_CRITERIA_v1.md](docs/RELEASE_1_0_CRITERIA_v1.md) | What must be true before Warden is called 1.0.0 (a plan, nothing built yet) |
 | [CHANGELOG.md](CHANGELOG.md) | Every release |
