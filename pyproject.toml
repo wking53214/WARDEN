@@ -24,9 +24,9 @@ classifiers = [
     ]
 # The shared rows (seat contract, defects, run record) come from the hub.
 # Pinned by tag, spelled the same way in every repository of the circuit (CNS's seat_pins check compares the text, and
-# pip treats a tag URL and a commit URL as two sources). The tag is the commit 31cb6f568219ef62cf3748701c895aa086abf1b8 (a lightweight tag).
+# pip treats a tag URL and a commit URL as two sources). The tag is the commit eabe6c72d71557b6327b80b42b0afab572acce80 (a lightweight tag).
 # To bump it, change the tag here and the CNS row in STACK.md together and run the full suite.
-dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v3.0.0"]  # v3.0.0 = 31cb6f568219ef62cf3748701c895aa086abf1b8
+dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v4.0.0"]  # v4.0.0 = eabe6c72d71557b6327b80b42b0afab572acce80
 
 [project.urls]
 Homepage = "https://github.com/wking53214/Warden"
