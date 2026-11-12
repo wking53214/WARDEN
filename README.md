@@ -77,7 +77,7 @@ Warden belongs to the assurance circuit: five repositories that check changes to
 
 CNS is the repository that holds the shared row shapes the circuit repositories agree on.
 
-- **This repository's side:** `warden/suite.py` is the file CNS's connection list (`contracts/cns-links.json` in CNS) names for Warden. Five more modules (`swizzle`, `tagteam`, `roles`, `epistemic`, `models`) also import CNS rows. CNS is required, not optional, and is pinned at the tag `v3.0.0`.
+- **This repository's side:** `warden/suite.py` is the file CNS's connection list (`contracts/cns-links.json` in CNS) names for Warden. Five more modules (`swizzle`, `tagteam`, `roles`, `epistemic`, `models`) also import CNS rows. CNS is required, not optional, and is pinned at the tag `v4.0.0`.
 - **CNS's side:** `contracts/warden-stack.json` in CNS carries Warden.
 - **List status:** two-way (checked against CNS commit `03eca66` on 2026-11-10).
 - **Built, tested, used:** the connection is built. The tests pass with CNS installed (`tests/test_cns_strict.py` and the pin checks in `tests/test_docs.py`). Every normal run uses it: each run builds a CNS suite row and reads CNS finding, attack and seat rows. The connection list does not mark Drafter, Burnish and WATCHER_MCU as released; that is CNS's to update.
@@ -88,7 +88,7 @@ Apache-2.0, copyright William N. King (see `LICENSE` and `NOTICE`).
 
 ## HOW TO INSTALL AND RUN
 
-Python 3.11, 3.12 or 3.13. The only runtime dependency is `cns`, installed from GitHub at the tag `v3.0.0`. Dated record: on 2026-10-22 (Warden 0.13.x, before the roster change of 2026-10-29) the first two blocks of commands below were run as written in a fresh virtual environment on Python 3.12 (from a clone of this repository), and `pip check` reported no broken requirements. That says nothing about later versions; CI installs the package on every push.
+Python 3.11, 3.12 or 3.13. The only runtime dependency is `cns`, installed from GitHub at the tag `v4.0.0`. Dated record: on 2026-10-22 (Warden 0.13.x, before the roster change of 2026-10-29) the first two blocks of commands below were run as written in a fresh virtual environment on Python 3.12 (from a clone of this repository), and `pip check` reported no broken requirements. That says nothing about later versions; CI installs the package on every push.
 
 ```
 git clone https://github.com/wking53214/WARDEN.git
