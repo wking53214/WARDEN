@@ -18,11 +18,11 @@ permissions:
 #   ghost_tools 1.10.14 b7c99afa5afecc34052ec2aa15ca3f17379f7d9c
 #   SWIZZLE     0.8.13  3fcb27f62add4ba4355a55dff6f3a180fda816ed
 #   ASSAY       0.11.10  3d50a70566f8c2278b0fc5d110309f3ace75bfdf
-#   JUDGE       0.5.7   86d44e5d001de9ada4bdef525fbf54a2b6e145d9
+#   JUDGE       0.6.0   0880770249bdf91d54fb66f60f536c4c4cb136f7
 # These four are the last set this repository's CI tested on its own. None of them is claimed to be the head of any
 # repository's `main`, and a sibling may have moved on. Whether the set that lands works together is checked by the
 # `stack` job in the CNS repository (github.com/wking53214/CNS), not here. The cns extras of the ghost_tools, SWIZZLE and ASSAY commits
-# are at the CNS v2.3.0 tag, like the pin here, and so is the CNS dependency of the JUDGE commit; Judge is
+# are at the CNS v2.3.0 tag, like the pin here. The CNS dependency of the JUDGE commit is the v3.0.0 tag; Judge is
 # installed with --no-deps, so CNS there is the pin of this repository.
 # CNS is pinned by the tag `v3.0.0` in `pyproject.toml` (a lightweight tag: the tag is the commit 31cb6f5).
 # The `assay-latest` job is the one place a sibling is taken at its newest commit, on purpose, and it cannot
@@ -72,9 +72,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
-      # The real Judge seat, so the Judge-seat tests run here instead of skipping. JUDGE 0.5.7
-      # (86d44e5). Its only runtime dependency is cns, already installed.
-      - run: pip install --no-deps "git+https://github.com/wking53214/JUDGE@86d44e5d001de9ada4bdef525fbf54a2b6e145d9"
+      # The real Judge seat, so the Judge-seat tests run here instead of skipping. JUDGE 0.6.0
+      # (0880770). Its only runtime dependency is cns, already installed.
+      - run: pip install --no-deps "git+https://github.com/wking53214/JUDGE@0880770249bdf91d54fb66f60f536c4c4cb136f7"
       - run: pytest -q -rs
         env:
           ASSAY_ROOT: ${{ github.workspace }}/_assay
@@ -109,9 +109,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      # JUDGE 0.5.7 (86d44e5): the real Judge decides the smoke test's governed run and holds a protected edit
+      # JUDGE 0.6.0 (0880770): the real Judge decides the smoke test's governed run and holds a protected edit
       # for a named human (--real-judge).
-      - run: pip install --no-deps "git+https://github.com/wking53214/JUDGE@86d44e5d001de9ada4bdef525fbf54a2b6e145d9"
+      - run: pip install --no-deps "git+https://github.com/wking53214/JUDGE@0880770249bdf91d54fb66f60f536c4c4cb136f7"
       # ASSAY's answer key needs numpy and matplotlib: without them its verifier skips those claims and exits 1
       # (the key is then not proven and Ghost is not graded). Exact versions, so a new release cannot move the result.
       - run: pip install numpy==2.5.4 matplotlib==3.11.2

@@ -30,6 +30,11 @@ No version change: documentation and pin entries below were made before 0.16.6 a
 
 ### Changed
 
+- **Pin.** The pin on JUDGE moves from `86d44e5` (0.5.7) to `0880770` (0.6.0), the head of its `main` on 2026-11-12, in
+  `.github/workflows/tests.yml` (both jobs that install it) and `STACK.md`. Reason: JUDGE 0.6.0 reads `Evidence.finisher_ran`
+  (plan item 2 in `docs/RELEASE_1_0_CRITERIA_v1.md`). When the field is `False` and no cycle applied anything, a listed edit
+  is held; `True` and `None` behave as before. JUDGE 0.6.0 depends on CNS at the `v3.0.0` tag, the pin here. No version change,
+  no code change. The only test edited is `tests/test_docs.py`, where the hand-kept JUDGE version moves from 0.5.7 to 0.6.0.
 - **Pin.** The pin on ghost_tools moves from `88f5815` to `b7c99af`, the head of its `main` on 2026-11-12 (still
   1.10.14; ghost_tools merged a README-only change after the previous move). Same files as the move below and the same
   reason. No version change, no code change and no test was edited.
