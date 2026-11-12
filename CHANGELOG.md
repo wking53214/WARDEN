@@ -30,6 +30,9 @@ No version change: documentation and pin entries below were made before 0.16.6 a
 
 ### Changed
 
+- **Pin.** The pin on ghost_tools moves from `88f5815` to `b7c99af`, the head of its `main` on 2026-11-12 (still
+  1.10.14; ghost_tools merged a README-only change after the previous move). Same files as the move below and the same
+  reason. No version change, no code change and no test was edited.
 - **Pin.** The pin on ghost_tools moves from `99f0e3c` to `88f5815`, the head of its `main` on 2026-11-11 (still
   1.10.14), in `pyproject.toml` (the `ghost` extra), `.github/workflows/tests.yml` (every job that checks it out and
   the `circuit` job's `--expect`) and `STACK.md`. Reason: `seat_pins` in the CNS `stack` job reports that Warden's pin
