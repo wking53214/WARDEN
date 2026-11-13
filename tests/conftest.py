@@ -45,3 +45,14 @@ def pytest_terminal_summary(terminalreporter):
 def pytest_sessionfinish(session, exitstatus):
     if _enforced() and _skipped and exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.NO_TESTS_COLLECTED):
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+@pytest.fixture(autouse=True)
+def _isolation_off_unless_a_test_is_about_it(request, monkeypatch):
+    """`warden tagteam` isolates seats and the suite by default (cli.ISOLATE_BY_DEFAULT). Most tests are about
+    something else and run seats written inline in the test, so they run with it off. A test that is about the
+    default or about isolation says so with the `isolation_default` marker and gets the shipped value."""
+    if request.node.get_closest_marker("isolation_default") is None:
+        from warden import cli
+
+        monkeypatch.setattr(cli, "ISOLATE_BY_DEFAULT", False)

@@ -153,7 +153,7 @@ def test_the_control_plants_where_plain_python_looks_even_under_a_cache_prefix(a
 
 def test_warden_runs_the_source_not_the_planted_pyc_in_a_vetted_seat(attack):
     args = ["tagteam", str(attack["target"]), "--drafter", "zdrafter:Drafter", "--judge", "zjudge.seat:Judge",
-            "--authorize", "tester", "--reason", "stale bytecode test"]
+            "--authorize", "tester", "--reason", "stale bytecode test", "--no-isolation"]
     done = subprocess.run([sys.executable, "-m", "warden.cli", *args], env=_env(attack), capture_output=True, text=True,
                           cwd=attack["tmp"], timeout=600)
     record = json.loads(done.stdout)

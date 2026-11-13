@@ -144,7 +144,7 @@ def rig(tmp_path):
     r.target, r.seats, r.tmp, r.home = target, seats, tmp_path, home
 
     def run(*extra, drafter="it_seats:Doc", judge="it_seats:Judge", authorize=True, scope="documentation",
-            cwd=None, env=None, path=None, timeout=300):
+            cwd=None, env=None, path=None, timeout=300, default_isolation=False):
         args = [sys.executable, "-m", "warden.cli", "tagteam", str(path or target), "--from-ghost", str(findings)]
         if drafter:
             args += ["--drafter", drafter]
@@ -155,6 +155,8 @@ def rig(tmp_path):
         environment = dict(os.environ, PYTHONPATH=os.pathsep.join([str(REPO_ROOT), str(seats)]),
                            HOME=str(home), XDG_STATE_HOME=str(home / "state"))
         environment.update(env or {})
+        if not default_isolation and "--isolate-seats" not in extra and "--no-isolation" not in extra:
+            args.append("--no-isolation")  # the shipped default is on; these tests run seats written inline
         done = subprocess.run(args + list(extra), cwd=str(cwd or tmp_path), capture_output=True, text=True,
                               timeout=timeout, env=environment)
         try:

@@ -53,6 +53,7 @@ version = { attr = "warden.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["isolation_default: runs with the shipped isolation default (cli.ISOLATE_BY_DEFAULT) instead of off"]
 
 [tool.ruff]
 line-length = 120
@@ -66,6 +67,7 @@ select = ["E", "F", "W", "B"]
 "tests/*" = ["E501"]
 # test_isolated_seat reuses the real-CLI rig fixture by importing it; pytest wants it as an argument name.
 "tests/test_isolated_seat.py" = ["F811"]
+"tests/test_isolation_default.py" = ["F811"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -5,9 +5,26 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`), and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6`, `0.17.0`, `0.18.0` and `0.19.0`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6`, `0.17.0`, `0.18.0`, `0.19.0` and `0.20.0`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by tag.
+
+## [0.20.0] - 2026-11-13
+
+`CONTRACT` is still `"1"`. Not tagged. A change in default behavior; the last code change before 1.0.0.
+
+### Changed
+
+- **Isolation is on by default.** `warden tagteam` runs the Drafter, the Finisher and the Judge each in its own
+  confined program, and the target's own pytest suite closed in the same way, unless `--no-isolation` is given.
+  `--isolate-seats` is still accepted; giving both is a usage error. Where the limits cannot be given (not Linux, no
+  Landlock) the run is refused as `SEAT_NOT_LOADED` and nothing runs, and a Cargo suite is refused, so those need
+  `--no-isolation`. With `--no-isolation` a warning goes to standard error and into the record's notes, and the seat
+  entries carry no `isolated` key. The claim seat is still not isolated. Prevented by `tests/test_isolation_default.py`.
+
+### Added
+
+- `--no-isolation`.
 
 ## [0.19.0] - 2026-11-12
 
