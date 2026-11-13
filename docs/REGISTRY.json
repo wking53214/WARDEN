@@ -194,7 +194,7 @@
       "cns_representation": "none",
       "cns_seam": "none",
       "digest_model": "UNKNOWN",
-      "warden_involvement": "Warden 0.19.0 at 0960aed (main, with --isolate-seats on); authorized by William N. King, scope documentation. The claim seat applied one change: BUILD_STATUS.md said the no-CNS suite is 67 passed, 1 skipped; measured 74 passed, 1 skipped at c77cc71. WARDEN: ACCEPT, exit 0, 1 change applied, converged. The Finisher seat was a do-nothing one (noop_finisher), so the Judge saw a Finisher that ran with no edits. Drafter seat is the claim seat, which runs inside Warden; the Finisher and the Judge ran in separate limited processes, and so did TIE's pytest suite.",
+      "warden_involvement": "Warden 0.20.0 at 2ec8d00 (main, isolation on by default, no isolation flag given); authorized by William N. King, scope documentation. The claim seat applied one change: BUILD_STATUS.md said the no-CNS suite is 67 passed, 1 skipped; measured 74 passed, 1 skipped at c77cc71. WARDEN: ACCEPT, exit 0, 1 change applied, converged. The Finisher seat was a do-nothing one (noop_finisher), so the Judge saw a Finisher that ran with no edits. Drafter seat is the claim seat, which runs inside Warden; the Finisher and the Judge ran in separate limited processes (their entries in the record say isolated), and so did TIE's pytest suite.",
       "epistemic_model": "UNKNOWN",
       "final_sha": "nothing committed to TIE from this run; the change was applied to a scratch clone only.",
       "ghost_tools_involvement": "ghost_tools 1.10.14 at b7c99af: 7 findings at the start and 7 at the end, none new; baseline empty.",
@@ -209,7 +209,7 @@
       "subject_binding": "UNKNOWN",
       "swizzle_involvement": "SWIZZLE 0.8.13 at 3fcb27f: prove 12 of 12, 28 of 28 attacks on the governor held; ASSAY 0.11.10 at 3d50a70: Ghost caught 5 of 7 known failure modes (floor 3), 60/60 manifest claims hold.",
       "tests_executed": "TIE suite 195 passed before and after (CNS installed), run under the seat limits; Judge 0.6.0 (0880770) read finisher_ran = true and returned ACCEPT.",
-      "unknown": "2026-11-13. First recorded live run on a repository outside the circuit, with the seats and the suite isolated, and the real Judge 0.6.0 reading the Finisher field."
+      "unknown": "2026-11-13. First recorded live run on a repository outside the circuit, on Warden 0.20.0 with isolation by default, and the real Judge 0.6.0 reading the Finisher field. An earlier run the same day on 0.19.0 with the flag given also ended ACCEPT; this row replaces it."
     }
   ]
 }
