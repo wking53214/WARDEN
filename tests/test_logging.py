@@ -93,7 +93,8 @@ def test_a_governed_run_logs_seat_instrument_and_verdict_seams(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     done = _cli(["tagteam", str(target), "--from-ghost", str(findings), "--drafter", "exit_seats:Once",
-                 "--judge", "exit_seats:Judge", "--authorize", "william", "--reason", "log test", "-v"],
+                 "--judge", "exit_seats:Judge", "--authorize", "william", "--reason", "log test", "-v",
+                 "--no-isolation"],
                 env={"PYTHONPATH": f"{REPO_ROOT}:{seats}", "HOME": str(home), "XDG_STATE_HOME": str(home / "s")})
     assert done.returncode == 3, done.stderr[-500:]
     payload = json.loads(done.stdout)

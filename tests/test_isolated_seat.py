@@ -272,7 +272,7 @@ def test_the_command_line_runs_the_judge_isolated_and_the_record_says_so(world, 
     code, payload, stderr = _cli(world, tmp_path, "--isolate-seats")
     assert "does not cover" not in stderr and "had no effect" not in stderr
     assert payload["versions"]["seats"]["judge"]["isolated"] is True
-    code_plain, plain, _ = _cli(world, tmp_path)
+    code_plain, plain, _ = _cli(world, tmp_path, "--no-isolation")
     assert "isolated" not in (plain["versions"]["seats"]["judge"] or {})
     assert not (world.target / "planted.txt").exists()
 

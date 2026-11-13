@@ -349,7 +349,8 @@ def _warden(installed_python, tmp_path, *args):
     env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(REPO_ROOT), str(CNS_DIR)]), HOME=str(home),
                XDG_STATE_HOME=str(home / "state"))
     env.pop("WARDEN_LOG_LEVEL", None)
-    done = subprocess.run([installed_python, "-m", "warden.cli", *map(str, args)], capture_output=True, text=True,
+    extra = ["--no-isolation"] if args and str(args[0]) == "tagteam" else []  # the shipped default is on
+    done = subprocess.run([installed_python, "-m", "warden.cli", *map(str, args), *extra], capture_output=True, text=True,
                           env=env, cwd=str(tmp_path), timeout=300)
     try:
         return done.returncode, json.loads(done.stdout), done.stderr

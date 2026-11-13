@@ -10,14 +10,14 @@ Four things are public: the command line, the exit codes, the run record and the
 
 Warden has four commands: `tagteam`, `keep`, `chronicle` and `audit`. Each option below keeps its name and its meaning.
 
-- `tagteam`: `--verbose`, `--ghost-root`, `--drafter`, `--claim-commit`, `--claim-repo`, `--claim-diff`, `--claim-subject`, `--claim-author`, `--judge`, `--finisher`, `--isolate-seats`, `--max-cycles`, `--ghost-timeout`, `--suite-timeout`, `--suite-runner`, `--suite-always`, `--seat-timeout`, `--swizzle-root`, `--assay-root`, `--allow-uncommitted-instruments`, `--assay-floor`, `--from-ghost`, `--stack`, `--join`, `--stack-manifest`, `--cns`, `--authorize`, `--reason`, `--scope`, `--receipt`, `--chronicle`, `--reuse-chronicle-suite`
+- `tagteam`: `--verbose`, `--ghost-root`, `--drafter`, `--claim-commit`, `--claim-repo`, `--claim-diff`, `--claim-subject`, `--claim-author`, `--judge`, `--finisher`, `--isolate-seats`, `--no-isolation`, `--max-cycles`, `--ghost-timeout`, `--suite-timeout`, `--suite-runner`, `--suite-always`, `--seat-timeout`, `--swizzle-root`, `--assay-root`, `--allow-uncommitted-instruments`, `--assay-floor`, `--from-ghost`, `--stack`, `--join`, `--stack-manifest`, `--cns`, `--authorize`, `--reason`, `--scope`, `--receipt`, `--chronicle`, `--reuse-chronicle-suite`
 - `keep`: `--verbose`, `--digest`, `--authorize`, `--reason`, `--chronicle`
 - `chronicle`: `--verbose`, `--origin`
 - `audit`: `--verbose`, `--ghost-root`, `--from-ghost`, `--authorize`, `--reason`
 
 Not promised: the wording of help text, warnings and messages printed to the screen.
 
-**Isolation.** From 1.0.0, seats and the target's test suite run under operating-system limits by default (Linux only; where the limits cannot be applied the run is refused, not run unprotected). `--isolate-seats` stays accepted. A separate option turns isolation off; it is named in the 1.0.0 release notes.
+**Isolation.** Since 0.20.0, and so at 1.0.0, seats and the target's test suite run under operating-system limits by default (Linux only; where the limits cannot be applied the run is refused, not run unprotected, and so is a Rust target). `--isolate-seats` stays accepted. `--no-isolation` turns isolation off, puts a warning in the record, and cannot be given together with `--isolate-seats`.
 
 ## 2. The exit codes
 

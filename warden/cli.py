@@ -42,6 +42,11 @@ CLI_ASSAY_FLOOR = 3
 
 
 #: What `warden tagteam` exits with, by decision. Anything not listed here exits 1, never 0.
+#: Whether `tagteam` runs the seats and the target's suite closed in by the operating system when neither
+#: `--isolate-seats` nor `--no-isolation` is given. True from 0.20.0. The test suite sets it False for the tests
+#: that are about something else; one test holds the shipped value.
+ISOLATE_BY_DEFAULT = True
+
 EXIT_CODES = {
     "ACCEPT": 0,
     "REJECT": 1,
@@ -546,14 +551,22 @@ def _main(argv: list[str] | None) -> int:
                           "Without one, a run cannot be ACCEPTed, only ACCEPT_UNVERIFIED")
     p_t.add_argument("--finisher", default=None, metavar="MODULE:FACTORY",
                      help="after the loop, once: beautifies and writes the final README")
-    p_t.add_argument("--isolate-seats", action="store_true",
-                     help="run the Drafter, the Finisher and the Judge each in its own program, and the target's "
-                          "own pytest suite, all closed in by the operating system: they can read the folder "
-                          "being governed and their own code, write only to a throwaway folder (a suite may also "
-                          "write .pytest_cache, .ruff_cache and .mypy_cache inside the target), and use no "
-                          "network. A suite that needs to write anywhere else goes red and the record says why; "
-                          "it never passes. Linux only; on any other system the run is refused, never run "
-                          "unprotected. Not covered: the claim seat (--claim-*) and a Cargo suite (refused)")
+    iso = p_t.add_mutually_exclusive_group()
+    iso.add_argument("--isolate-seats", action="store_true",
+                     help="(on by default since 0.20.0) run the Drafter, the Finisher and the Judge "
+                          "each in its own program, and the target's own pytest suite, all closed in by "
+                          "the operating system: they can read the folder being governed and their own "
+                          "code, write only to a throwaway folder (a suite may also write "
+                          ".pytest_cache, .ruff_cache and .mypy_cache inside the target), and use no "
+                          "network. A suite that needs to write anywhere else goes red and the record "
+                          "says why; it never passes. Linux only; on any other system the run is "
+                          "refused, never run unprotected. Not covered: the claim seat (--claim-*) and "
+                          "a Cargo suite (refused)")
+    iso.add_argument("--no-isolation", action="store_true",
+                     help="turn the isolation described under --isolate-seats off: seats and the target's suite "
+                          "run in Warden's own process with Warden's own rights. Needed on a system that cannot "
+                          "give the limits (not Linux, or no Landlock) and for a Rust target; the record says "
+                          "when it is used")
     p_t.add_argument("--max-cycles", type=_at_least_one, default=10,
                      help="most proposals that may be applied; declined ones do not use a cycle (default 10)")
     p_t.add_argument("--ghost-timeout", type=_positive_number, default=600,
@@ -677,6 +690,9 @@ def _main(argv: list[str] | None) -> int:
     if args.command == "chronicle":
         return _chronicle(args)
     if args.command == "tagteam":
+        # Isolation is on unless --no-isolation says otherwise; --isolate-seats asks for it by name.
+        args.isolation_asked = args.isolate_seats
+        args.isolate_seats = args.isolate_seats or (ISOLATE_BY_DEFAULT and not args.no_isolation)
         try:
             return _tagteam(args)
         except Unauthorized as e:
@@ -896,10 +912,13 @@ def _tagteam(args) -> int:
                 drafter = claim_drafter if claiming else seat_for(args.drafter, "The Drafter")
                 finisher = seat_for(args.finisher, "The Finisher")
                 judge = seat_for(args.judge, "The Judge")
+                if args.no_isolation:
+                    warnings.append("--no-isolation: the seats and the target's test suite ran in Warden's own "
+                                    "process with Warden's own rights.")
                 if args.isolate_seats and claiming:
                     warnings.append("--isolate-seats does not cover the claim seat: Warden builds it from the "
                                     "claimed change itself and it runs inside Warden.")
-                if args.isolate_seats and not (args.judge or args.finisher or (args.drafter and not claiming)):
+                if args.isolation_asked and not (args.judge or args.finisher or (args.drafter and not claiming)):
                     warnings.append("--isolate-seats had no effect because no seat was named to isolate.")
         except (ContractMismatch, seatproc.SeatRefused) as e:
             return _stop("SEAT_NOT_LOADED", str(e))
