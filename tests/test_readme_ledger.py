@@ -88,7 +88,7 @@ def test_the_readme_uses_no_marketing_words():
 
 def test_the_registry_numbers_the_readme_states_are_the_registry_s():
     rows = json.loads((ROOT / "docs" / "REGISTRY.json").read_text(encoding="utf-8"))["rows"]
-    assert len(rows) == 6 and "rows 1 to 4" in README and "rows 5 and 6" in README
+    assert len(rows) == 7 and "rows 1 to 4" in README and "rows 5 and 6" in README
     assert "3 of 5 known failure modes" in rows[2]["adversarial_validation_executed"] and "(Ghost caught 3 of 5" in README
     assert "5 of 7 known failure modes" in rows[3]["adversarial_validation_executed"] and "(5 of 7)" in README
     five = rows[4]
@@ -96,6 +96,9 @@ def test_the_registry_numbers_the_readme_states_are_the_registry_s():
     assert "seven repositories" in five["repository"] and "ACCEPT_UNVERIFIED" in five["warden_involvement"]
     six = rows[5]
     assert "WARDEN: ACCEPT" in six["warden_involvement"]
+    seven = rows[6]
+    assert seven["unknown"].startswith("2026-11-13") and "wking53214/TIE" in seven["repository"]
+    assert "WARDEN: ACCEPT" in seven["warden_involvement"] and "Judge 0.6.0" in seven["tests_executed"]
     assert re.search(r"^## \[0\.11\.2\] - 2026-10-15", CHANGELOG, re.M) and "2026-10-15 for Warden 0.11.2" in README
 
 
