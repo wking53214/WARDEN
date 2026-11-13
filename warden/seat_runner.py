@@ -20,7 +20,9 @@ from typing import Any
 from . import sandbox, seatwire
 
 #: The only calls Warden may make on a seat, and the only attributes it may set.
-METHODS = frozenset({"propose", "finish", "decide"})
+METHODS = frozenset({"propose", "finish", "decide", "describe_skipped"})
+#: Optional parts of a seat Warden looks for; the runner reports which ones this seat has.
+OPTIONAL = ("scope", "describe_skipped")
 ATTRIBUTES = frozenset({"scope"})
 
 
@@ -58,7 +60,7 @@ def _load(request: dict) -> tuple[Any, dict]:
         raise _Refused("contract", f"The seat {spec} was written for Warden contract {wanted!r} but this Warden "
                                    f"is contract {contract!r}. Nothing was run.")
     return seat, {"requires_contract": wanted, "module_file": getattr(module, "__file__", None),
-                  "class": type(seat).__name__}
+                  "class": type(seat).__name__, "optional": [n for n in OPTIONAL if hasattr(seat, n)]}
 
 
 class _Refused(Exception):

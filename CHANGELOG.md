@@ -5,9 +5,21 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`), and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6` and `0.17.0`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6`, `0.17.0` and `0.18.0`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by tag.
+
+## [0.18.0] - 2026-11-12
+
+`CONTRACT` is still `"1"`. Not tagged. Second slice of 1.0.0 criterion 5.
+
+### Added
+
+- **`--isolate-seats` now covers the Drafter and the Finisher as well as the Judge.** Each named seat runs in its own
+  confined program (see 0.17.0). A seat's optional `scope` attribute and `describe_skipped` method are carried across,
+  so Warden sees them exactly when the seat has them. The claim seat is built by Warden from the claimed change and
+  still runs inside Warden; a warning says so. A seat that writes inside the governed folder (for example into `.git`)
+  is blocked by the operating system. Prevented by `tests/test_isolated_seat.py`.
 
 ## [0.17.0] - 2026-11-12
 

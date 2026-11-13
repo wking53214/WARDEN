@@ -58,6 +58,8 @@ class IsolatedSeat:
         self._proc: Optional[subprocess.Popen] = None
         self._scratch: Optional[str] = None
         self._buffer = b""
+        self._optional: frozenset = frozenset()
+        self._scope: Any = None
 
     # -- starting and stopping --------------------------------------------------------------------
 
@@ -94,6 +96,7 @@ class IsolatedSeat:
             raise SeatFailed(f"{self.who} could not be loaded: {message}")
         self.requires_contract = reply.get("requires_contract")
         self.isolated_module_file = reply.get("module_file")
+        self._optional = frozenset(reply.get("optional") or ())
         logger.info("seat loaded in its own process: %s (%s)", self.spec, reply.get("class"))
         return self
 
@@ -140,8 +143,19 @@ class IsolatedSeat:
     def decide(self, evidence):
         return self._call("decide", evidence)
 
+    def __getattr__(self, name: str) -> Any:
+        """The optional parts the real seat has (`scope`, `describe_skipped`) are there; the others are not,
+        so `hasattr` and `getattr(..., None)` on this stand-in answer as they would on the seat itself."""
+        optional = self.__dict__.get("_optional", frozenset())
+        if name == "scope" and "scope" in optional:
+            return self.__dict__.get("_scope")
+        if name == "describe_skipped" and name in optional:
+            return lambda: self._call("describe_skipped")
+        raise AttributeError(name)
+
     def __setattr__(self, name: str, value: Any) -> None:
-        if name == "scope" and getattr(self, "_proc", None) is not None:
+        if name == "scope" and self.__dict__.get("_proc") is not None and "scope" in self._optional:
+            object.__setattr__(self, "_scope", value)
             try:
                 self._send({"op": "set", "name": "scope", "value": seatwire.to_wire(value)})
                 reply = self._receive(self.who)

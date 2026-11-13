@@ -270,7 +270,7 @@ def test_the_command_line_runs_the_judge_isolated_and_the_record_says_so(world, 
     (world.target / "tests" / "test_a.py").write_text("def test_a():\n    assert True\n", encoding="utf-8")
     commit_all(world.target)
     code, payload, stderr = _cli(world, tmp_path, "--isolate-seats")
-    assert "covers the Judge only in this release" in stderr
+    assert "does not cover" not in stderr and "had no effect" not in stderr
     assert payload["versions"]["seats"]["judge"]["isolated"] is True
     code_plain, plain, _ = _cli(world, tmp_path)
     assert "isolated" not in (plain["versions"]["seats"]["judge"] or {})
@@ -286,3 +286,100 @@ def test_the_command_line_refuses_where_the_limits_cannot_be_given(world, tmp_pa
     code, payload, stderr = _cli(world, tmp_path, "--isolate-seats")
     assert payload["decision"] == "SEAT_NOT_LOADED" and code == 2
     assert "will not run a seat unprotected" in stderr
+
+
+# -- the Drafter and the Finisher ---------------------------------------------------------------------------
+
+from cns.defect import Defect, DefectSeverity  # noqa: E402
+from cns.seat import Facts  # noqa: E402
+from test_cli_integration import rig  # noqa: E402,F401  (the real-CLI rig and its seats)
+
+MAKERS = '''
+import os
+from pathlib import Path
+from warden.models import FileEdit, Transformation, TransformationStatus
+
+def _t(target, baseline, defects=()):
+    return Transformation(
+        target=str(Path(target).resolve()), intent="isolated", architectural_reason="test",
+        affected_files=("NOTE.md",), expected_behavior="none", preservation_requirements=("keep",),
+        known_defects=tuple(defects), transformation_scope="documentation", baseline_reference=baseline,
+        evidence=("e",), edits=(FileEdit(path="NOTE.md", kind="write", new="new\\n", old="old\\n"),),
+        status=TransformationStatus.PROPOSED)
+
+class Maker:
+    requires_contract = "{contract}"
+    scope = None
+    def __init__(self):
+        self.calls = 0
+    def propose(self, target, observed, baseline):
+        self.calls += 1
+        assert isinstance(target, Path), type(target)
+        return _t(target, baseline, observed) if self.calls == 1 else None
+    def finish(self, target, baseline, facts):
+        return _t(target, baseline) if facts.cycles == 2 and self.scope == "documentation" else None
+    def describe_skipped(self):
+        return ("left alone: x",)
+
+class Plain:
+    requires_contract = "{contract}"
+    def propose(self, target, observed, baseline):
+        return None
+'''
+
+
+@needs_limits
+def test_a_drafter_and_a_finisher_answer_through_messages_with_their_own_parts_intact(world):
+    (world.seats / "maker_seats.py").write_text(MAKERS.format(contract=CONTRACT), encoding="utf-8")
+
+    def start(name):
+        seat = seatproc.IsolatedSeat(f"maker_seats:{name}", "The Drafter", 30)
+        return seat.start(target=world.target, sys_path=world.path, contract=CONTRACT)
+
+    maker = start("Maker")
+    try:
+        assert hasattr(maker, "scope") and callable(getattr(maker, "describe_skipped", None))
+        maker.scope = "documentation"
+        assert maker.scope == "documentation"
+        defect = Defect(summary="s", severity=DefectSeverity.HIGH, ghost_id="d1")
+        proposal = maker.propose(world.target, (defect,), "base")
+        assert type(proposal).__name__ == "Transformation" and proposal.edits[0].path == "NOTE.md"
+        assert proposal.known_defects[0].identity == "d1" and proposal.known_defects[0].epistemic == defect.epistemic
+        assert proposal.known_defects[0].lifecycle.value == defect.lifecycle.value
+        assert maker.propose(world.target, (), "base") is None
+        assert maker.describe_skipped() == ("left alone: x",)
+        finish = maker.finish(world.target, "base", Facts(suite=None, remaining=(defect,), cycles=2))
+        assert finish is not None and finish.edits[0].new == "new\n"  # it saw the scope Warden set
+    finally:
+        maker.close()
+    plain = start("Plain")
+    try:
+        assert not hasattr(plain, "scope") and getattr(plain, "describe_skipped", None) is None
+    finally:
+        plain.close()
+
+
+@needs_limits
+def test_the_same_run_gives_the_same_result_with_and_without_isolation(rig):
+    plain_code, plain, _ = rig.run()
+    # put the tree back so the second run starts from the same state
+    subprocess.run(["git", "checkout", "--", "."], cwd=str(rig.target), check=True, capture_output=True)
+    code, isolated, stderr = rig.run("--isolate-seats")
+    assert (code, isolated["decision"]) == (plain_code, plain["decision"])
+    assert isolated["reason"] == plain["reason"]  # the proposal was made, judged and held the same way
+    for who in ("drafter", "judge"):
+        assert isolated["versions"]["seats"][who]["isolated"] is True
+    assert "covers" not in stderr  # every named seat is covered, so no warning
+
+
+@needs_limits
+def test_a_seat_that_writes_into_git_is_blocked_and_leaves_no_lock_behind(rig):
+    code, payload, _ = rig.run("--isolate-seats", drafter="it_seats:LockMaker")
+    assert not (rig.target / ".git" / "index.lock").exists()
+    assert payload["decision"] != "ACCEPT"
+
+
+@needs_limits
+def test_a_hung_drafter_in_isolation_is_stopped_at_the_seat_timeout(rig):
+    code, payload, _ = rig.run("--isolate-seats", "--seat-timeout", "2", drafter="it_seats:Hang", timeout=120)
+    assert payload["decision"] == "ERROR"

@@ -547,10 +547,11 @@ def _main(argv: list[str] | None) -> int:
     p_t.add_argument("--finisher", default=None, metavar="MODULE:FACTORY",
                      help="after the loop, once: beautifies and writes the final README")
     p_t.add_argument("--isolate-seats", action="store_true",
-                     help="run the Judge in its own program, closed in by the operating system: it can read the "
-                          "folder being governed and its own code, write only to a throwaway folder, and use no "
-                          "network. Linux only; on any other system the run is refused, never run unprotected. "
-                          "In this release the Drafter and the Finisher still run inside Warden")
+                     help="run the Drafter, the Finisher and the Judge each in its own program, closed in by the "
+                          "operating system: a seat can read the folder being governed and its own code, write "
+                          "only to a throwaway folder, and use no network. Linux only; on any other system the "
+                          "run is refused, never run unprotected. The claim seat (--claim-*) and the target's "
+                          "own test suite are not covered")
     p_t.add_argument("--max-cycles", type=_at_least_one, default=10,
                      help="most proposals that may be applied; declined ones do not use a cycle (default 10)")
     p_t.add_argument("--ghost-timeout", type=_positive_number, default=600,
@@ -885,18 +886,19 @@ def _tagteam(args) -> int:
         try:
             with runstate.interrupts(), runstate.stdout_to_stderr(), \
                     runstate.seat_timer(args.seat_timeout, "A seat while it was being loaded"):
-                drafter = claim_drafter if claiming else _load_seat(args.drafter, warnings)
-                finisher = _load_seat(args.finisher, warnings)
-                if args.isolate_seats and args.judge:
-                    judge = _load_seat_isolated(args.judge, "The Judge", args.seat_timeout)
-                else:
-                    judge = _load_seat(args.judge, warnings)
-                if args.isolate_seats:
-                    warnings.append(
-                        "--isolate-seats covers the Judge only in this release; any Drafter or Finisher still "
-                        "runs inside Warden." if args.judge else
-                        "--isolate-seats had no effect because no Judge was named; the Drafter and Finisher "
-                        "run inside Warden in this release.")
+                def seat_for(spec, who):
+                    if args.isolate_seats and spec:
+                        return _load_seat_isolated(spec, who, args.seat_timeout)
+                    return _load_seat(spec, warnings)
+
+                drafter = claim_drafter if claiming else seat_for(args.drafter, "The Drafter")
+                finisher = seat_for(args.finisher, "The Finisher")
+                judge = seat_for(args.judge, "The Judge")
+                if args.isolate_seats and claiming:
+                    warnings.append("--isolate-seats does not cover the claim seat: Warden builds it from the "
+                                    "claimed change itself and it runs inside Warden.")
+                if args.isolate_seats and not (args.judge or args.finisher or (args.drafter and not claiming)):
+                    warnings.append("--isolate-seats had no effect because no seat was named to isolate.")
         except (ContractMismatch, seatproc.SeatRefused) as e:
             return _stop("SEAT_NOT_LOADED", str(e))
         except seatproc.SeatFailed as e:
