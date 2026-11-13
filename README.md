@@ -31,11 +31,11 @@ the same gate.
 
 The circuit is five repositories: ghost_tools (observes), SWIZZLE and ASSAY (instruments that attack the governor and grade the detector), JUDGE (decides ACCEPT, REJECT or INSUFFICIENT, which Warden reports as a hold) and WARDEN (applies, measures, refuses, puts the tree back). DRAFTER, BURNISH and WATCHER_MCU are released from the circuit by owner ruling (2026-10-29): not seats, nothing deleted, each still works on its own. CNS holds the contracts. See STACK.md.
 
-Version `0.20.0` (seat contract `"1"`, unchanged). The history of every release is in
+Version `1.0.0` (seat contract `"1"`, unchanged). The history of every release is in
 [CHANGELOG.md](CHANGELOG.md); the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the exit codes in
 [docs/EXIT_CODES.md](docs/EXIT_CODES.md). The repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by
 tag; each one's `pyproject.toml` names the commit. Release tags exist up to `v0.12.0`, and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`); the `0.13.x` releases are not
-tagged, and `0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6`, `0.17.0`, `0.18.0`, `0.19.0` and `0.20.0`. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). Tagging is
+tagged, and `0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6`, `0.17.0`, `0.18.0`, `0.19.0` and `0.20.0`. From 1.0.0 every release is tagged: `v1.0.0` is created by the owner on the commit that merges the release pull request, so it does not exist until then. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). Tagging is
 the owner's decision.
 
 ## ROLE IN THE CIRCUIT
@@ -150,11 +150,11 @@ The full list is in [docs/LIMITS.md](docs/LIMITS.md). The ones to know first:
 | [docs/VERIFICATION.md](docs/VERIFICATION.md) | What backs each main claim: tested, inspected, demonstrated, unverified |
 | [docs/LIFECYCLE.md](docs/LIFECYCLE.md) | How a run works: options, the whole circuit in one command, exit codes, held results, instrument roots, CI |
 | [docs/EXIT_CODES.md](docs/EXIT_CODES.md) | The exit codes (generated from the code) |
-| [docs/STABILITY_v1.md](docs/STABILITY_v1.md) | What Warden 1.x promises not to change: the command line, exit codes, run record and seat contract (takes effect at 1.0.0) |
+| [docs/STABILITY_v1.md](docs/STABILITY_v1.md) | What Warden 1.x promises not to change: the command line, exit codes, run record and seat contract (in force from 1.0.0) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The run step by step, and the module table |
 | [docs/REFERENCE.md](docs/REFERENCE.md) | Why Warden exists, what it owns and does not own, key concepts |
 | [docs/WHAT_WORKS.md](docs/WHAT_WORKS.md) | Each working claim with its test or recorded run |
 | [docs/LIMITS.md](docs/LIMITS.md) | What does not work, open defects, ceilings, architectural debt |
 | [docs/HISTORY.md](docs/HISTORY.md) | What broke and how it was fixed, CNS pin moves, self-hosting records |
-| [docs/RELEASE_1_0_CRITERIA_v1.md](docs/RELEASE_1_0_CRITERIA_v1.md) | What must be true before Warden is called 1.0.0 (a plan, nothing built yet) |
+| [docs/RELEASE_1_0_CRITERIA_v1.md](docs/RELEASE_1_0_CRITERIA_v1.md) | What had to be true before Warden was called 1.0.0 (the plan; each item is met, and the live run is row 7 of `docs/REGISTRY.json`) |
 | [CHANGELOG.md](CHANGELOG.md) | Every release |
