@@ -64,6 +64,8 @@ select = ["E", "F", "W", "B"]
 [tool.ruff.lint.per-file-ignores]
 # Test fixtures embed long source strings and long assertions; the package itself is held to 120.
 "tests/*" = ["E501"]
+# test_isolated_seat reuses the real-CLI rig fixture by importing it; pytest wants it as an argument name.
+"tests/test_isolated_seat.py" = ["F811"]
 
 [tool.mypy]
 python_version = "3.11"

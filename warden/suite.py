@@ -28,13 +28,12 @@ repository's code.
 
 from __future__ import annotations
 
-import json
 import contextlib
+import json
 import logging
 import os
 import platform
 import secrets
-import json
 import shutil
 import signal
 import subprocess
@@ -386,7 +385,8 @@ def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT, con
         reason = "the exit status says the run failed but no test is reported as failing"
     elif code == 0 and (report["failed"] or report["errors"]):
         reason = "the exit status says the run passed but the report lists failures"
-    if confine and not reason and code != 0 and (report["failed"] or report["errors"]) and _refused_write(stdout, stderr):
+    red = bool(report["failed"] or report["errors"])
+    if confine and not reason and code != 0 and red and _refused_write(stdout, stderr):
         reason = _REFUSED_WRITE_HINT
     return PytestSuiteRun(ran=True, passed=report["passed"], failed=report["failed"], errors=report["errors"],
                           skipped=report["skipped"], xfailed=report["xfailed"], xpassed=report["xpassed"],
