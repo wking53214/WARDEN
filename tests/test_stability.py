@@ -29,14 +29,14 @@ def _options_of(command, capsys):
 
 @pytest.mark.parametrize("command", ["tagteam", "keep", "chronicle", "audit"])
 def test_every_option_the_page_lists_exists_and_every_option_is_listed(command, capsys):
-    line = next(l for ln in _section("1. The command line").splitlines() if ln.startswith(f"- `{command}`"))
+    line = next(ln for ln in _section("1. The command line").splitlines() if ln.startswith(f"- `{command}`"))
     listed = set(re.findall(r"`(--[a-z][a-z0-9-]*)`", line))
     real = _options_of(command, capsys)
     assert listed == real, (sorted(listed - real), sorted(real - listed))
 
 
 def test_the_page_names_exactly_the_commands_there_are():
-    line = next(l for ln in _section("1. The command line").splitlines() if ln.startswith("Warden has four commands"))
+    line = next(ln for ln in _section("1. The command line").splitlines() if ln.startswith("Warden has four commands"))
     assert set(re.findall(r"`(\w+)`", line)) == {"tagteam", "keep", "chronicle", "audit"}
 
 
