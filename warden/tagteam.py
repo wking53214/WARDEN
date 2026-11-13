@@ -225,6 +225,7 @@ class TagTeam:
         chronicle_entries: Sequence[Mapping[str, Any]] = (),
         reuse_chronicle_suite: bool = False,
         record_suite_environment: bool = False,
+        confine_suite: bool = False,
     ) -> None:
         #: Let an instrument root that is not a git checkout with a readable version run (see
         #: `isolation.verify_root`). Off: such a root is refused. On: it runs, the run record says so, and the run
@@ -266,6 +267,8 @@ class TagTeam:
         self.chronicle_entries = tuple(chronicle_entries)
         self.reuse_chronicle_suite = reuse_chronicle_suite
         self.record_suite_environment = record_suite_environment or reuse_chronicle_suite
+        #: Run the target's own suite closed in by the operating system (`--isolate-seats`; see `suite.run_suite`).
+        self.confine_suite = confine_suite
 
     def run(
         self,
@@ -1202,7 +1205,8 @@ class TagTeam:
                          "environment, so the suite was run.")
         source_before = _source_hash(target)
         self._suite_ran = True
-        result = run_suite(target, python, self.suite_timeout, self.suite_runner)
+        result = run_suite(target, python, self.suite_timeout, self.suite_runner,
+                           **({"confine": True} if self.confine_suite else {}))
         runner = " (cargo)" if isinstance(result, CargoSuiteRun) else ""
         notes.append(f"Rule 7 suite{runner} {when}: {result.describe()}.")
         self._suite_passes.append({"pass": number, "when": when, "tree_digest": digest, "reused_from": None,

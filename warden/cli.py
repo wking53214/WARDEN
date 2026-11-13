@@ -547,11 +547,13 @@ def _main(argv: list[str] | None) -> int:
     p_t.add_argument("--finisher", default=None, metavar="MODULE:FACTORY",
                      help="after the loop, once: beautifies and writes the final README")
     p_t.add_argument("--isolate-seats", action="store_true",
-                     help="run the Drafter, the Finisher and the Judge each in its own program, closed in by the "
-                          "operating system: a seat can read the folder being governed and its own code, write "
-                          "only to a throwaway folder, and use no network. Linux only; on any other system the "
-                          "run is refused, never run unprotected. The claim seat (--claim-*) and the target's "
-                          "own test suite are not covered")
+                     help="run the Drafter, the Finisher and the Judge each in its own program, and the target's "
+                          "own pytest suite, all closed in by the operating system: they can read the folder "
+                          "being governed and their own code, write only to a throwaway folder (a suite may also "
+                          "write .pytest_cache, .ruff_cache and .mypy_cache inside the target), and use no "
+                          "network. A suite that needs to write anywhere else goes red and the record says why; "
+                          "it never passes. Linux only; on any other system the run is refused, never run "
+                          "unprotected. Not covered: the claim seat (--claim-*) and a Cargo suite (refused)")
     p_t.add_argument("--max-cycles", type=_at_least_one, default=10,
                      help="most proposals that may be applied; declined ones do not use a cycle (default 10)")
     p_t.add_argument("--ghost-timeout", type=_positive_number, default=600,
@@ -987,7 +989,7 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
                    allow_uncommitted_instruments=getattr(args, "allow_uncommitted_instruments", False),
                    suite_always=bool(getattr(args, "suite_always", False)),
                    chronicle_entries=earlier, reuse_chronicle_suite=bool(getattr(args, "reuse_chronicle_suite", False)),
-                   record_suite_environment=chronicle_dir is not None)
+                   record_suite_environment=chronicle_dir is not None, confine_suite=args.isolate_seats)
     # A seat that print()s, or writes straight to file descriptor 1, must not corrupt the JSON on stdout.
     with runstate.stdout_to_stderr():
         result = team.run(args.path, authorization=auth, findings=findings)

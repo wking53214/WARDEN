@@ -5,9 +5,22 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`), and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6`, `0.17.0` and `0.18.0`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6`, `0.17.0`, `0.18.0` and `0.19.0`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by tag.
+
+## [0.19.0] - 2026-11-12
+
+`CONTRACT` is still `"1"`. Not tagged. Completes the code half of 1.0.0 criterion 5.
+
+### Added
+
+- **`--isolate-seats` now also confines the target's own pytest suite.** It runs on the real tree under the rules of
+  `warden/sandbox.py`: no network socket (unnamed local socket pairs are allowed, so asyncio suites run), reads
+  limited to the tree, the interpreter's packages and the suite's `PYTHONPATH`, writes limited to a scratch folder
+  (`TMPDIR`) and `.pytest_cache`, `.ruff_cache` and `.mypy_cache` inside the target. A suite that needs more is red
+  and the result's reason says a write was refused; it never passes. Where the limits cannot be given the suite is
+  not run. A Cargo suite is refused in this mode (not built yet). Prevented by `tests/test_isolated_seat.py`.
 
 ## [0.18.0] - 2026-11-12
 
