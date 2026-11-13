@@ -150,6 +150,7 @@ The full list is in [docs/LIMITS.md](docs/LIMITS.md). The ones to know first:
 | [docs/VERIFICATION.md](docs/VERIFICATION.md) | What backs each main claim: tested, inspected, demonstrated, unverified |
 | [docs/LIFECYCLE.md](docs/LIFECYCLE.md) | How a run works: options, the whole circuit in one command, exit codes, held results, instrument roots, CI |
 | [docs/EXIT_CODES.md](docs/EXIT_CODES.md) | The exit codes (generated from the code) |
+| [docs/STABILITY_v1.md](docs/STABILITY_v1.md) | What Warden 1.x promises not to change: the command line, exit codes, run record and seat contract (takes effect at 1.0.0) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The run step by step, and the module table |
 | [docs/REFERENCE.md](docs/REFERENCE.md) | Why Warden exists, what it owns and does not own, key concepts |
 | [docs/WHAT_WORKS.md](docs/WHAT_WORKS.md) | Each working claim with its test or recorded run |
