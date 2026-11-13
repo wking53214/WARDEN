@@ -22,6 +22,7 @@ for a seat that is checked code, not a promise against a determined attacker wit
 from __future__ import annotations
 
 import ctypes
+import json
 import os
 import platform
 import resource
@@ -149,9 +150,15 @@ def _landlock(read: Iterable[str], write: Iterable[str]) -> None:
         os.close(fd)
 
 
-def _seccomp() -> None:
+#: What a suite needs to talk to its own children over a pair of unnamed local sockets (asyncio's event loop does).
+#: Creating a named or network socket stays refused, so none of this reaches another machine or a socket file.
+_SOCKETPAIR_IO = frozenset({"socketpair", "sendto", "recvfrom", "sendmsg", "recvmsg", "sendmmsg", "recvmmsg"})
+
+
+def _seccomp(allow_socketpair: bool = False) -> None:
     machine = platform.machine()
-    denied = sorted(_DENIED[machine].values())
+    denied = sorted(number for name, number in _DENIED[machine].items()
+                    if not (allow_socketpair and name in _SOCKETPAIR_IO))
     ins = [(_BPF_LD_W_ABS, 0, 0, 4)]  # load the architecture
     ins.append((_BPF_JEQ_K, 1, 0, _AUDIT_ARCH[machine]))
     ins.append((_BPF_RET_K, 0, 0, _SECCOMP_RET_KILL))  # a call from another architecture is refused outright
@@ -171,23 +178,45 @@ def _seccomp() -> None:
         raise OSError(ctypes.get_errno(), "seccomp: the filter could not be installed")
 
 
-def _limits(cpu_seconds: Optional[int], memory_bytes: int) -> None:
+def _limits(cpu_seconds: Optional[int], memory_bytes: Optional[int], file_bytes: int, open_files: int) -> None:
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (64 << 20, 64 << 20))
-    resource.setrlimit(resource.RLIMIT_NOFILE, (256, 256))
-    resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (file_bytes, file_bytes))
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    wanted = min(open_files, hard) if hard != resource.RLIM_INFINITY else open_files
+    resource.setrlimit(resource.RLIMIT_NOFILE, (wanted, wanted))
+    if memory_bytes:
+        resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
     if cpu_seconds:
         resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds + 5))
 
 
 def apply(*, read: Iterable[str], scratch: str, cpu_seconds: Optional[int],
-          memory_bytes: int = 4 << 30) -> None:
-    """Close the process in. Raises OSError, and the caller must stop, if any rule could not be set."""
+          memory_bytes: Optional[int] = 4 << 30, write: Iterable[str] = (), allow_socketpair: bool = False,
+          file_bytes: int = 64 << 20, open_files: int = 256) -> None:
+    """Close the process in. Raises OSError, and the caller must stop, if any rule could not be set.
+
+    `write` names further folders the process may write in, beside its scratch folder. `memory_bytes=None`
+    sets no memory cap (a test suite may legitimately need a lot). `allow_socketpair` lets the process make
+    pairs of unnamed local sockets; it still cannot create any other socket.
+    """
     reason = unavailable()
     if reason:
         raise OSError(reason)
     if _prctl(_PR_SET_NO_NEW_PRIVS, 1) != 0:
         raise OSError(ctypes.get_errno(), "no_new_privs could not be set")
-    _limits(cpu_seconds, memory_bytes)
-    _landlock([*read, *python_read_paths()], [scratch, *(p for p in ("/dev/null",) if Path(p).exists())])
-    _seccomp()
+    _limits(cpu_seconds, memory_bytes, file_bytes, open_files)
+    _landlock([*read, *python_read_paths()],
+              [scratch, *write, *(p for p in ("/dev/null",) if Path(p).exists())])
+    _seccomp(allow_socketpair)
+
+
+def exec_main() -> None:
+    """Close this process in as `sys.argv[1]` (JSON) says, then become the program it names.
+
+    Used to start a target's test suite: the limits survive the exec, so the suite and everything it
+    starts runs under them. Never returns on success.
+    """
+    request = json.loads(sys.argv[1])
+    apply(read=request["read"], scratch=request["scratch"], write=request["write"], cpu_seconds=None,
+          memory_bytes=None, allow_socketpair=True, file_bytes=1 << 30, open_files=4096)
+    os.execve(request["argv"][0], request["argv"], request["env"])

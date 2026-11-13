@@ -6,6 +6,7 @@ the mode instead; one test checks that refusal.
 """
 
 import json
+import tempfile
 import os
 import subprocess
 import sys
@@ -383,3 +384,101 @@ def test_a_seat_that_writes_into_git_is_blocked_and_leaves_no_lock_behind(rig):
 def test_a_hung_drafter_in_isolation_is_stopped_at_the_seat_timeout(rig):
     code, payload, _ = rig.run("--isolate-seats", "--seat-timeout", "2", drafter="it_seats:Hang", timeout=120)
     assert payload["decision"] == "ERROR"
+
+
+# -- the target's own test suite ---------------------------------------------------------------------------
+
+from warden.suite import run_suite  # noqa: E402
+
+
+def _suite_target(tmp_path, body: str, name="proj"):
+    target = tmp_path / name
+    (target / "tests").mkdir(parents=True)
+    (target / "tests" / "test_probe.py").write_text(body, encoding="utf-8")
+    (target / "pyproject.toml").write_text('[project]\nname = "demo"\nversion = "0.0.1"\n', encoding="utf-8")
+    return target
+
+
+SUITE_OK = '''
+import os, tempfile, socket, pathlib
+
+def test_reads_the_tree_and_writes_only_where_allowed():
+    root = pathlib.Path(__file__).resolve().parents[1]
+    assert (root / "pyproject.toml").read_text()
+    with tempfile.NamedTemporaryFile() as handle:          # TMPDIR is the scratch folder
+        handle.write(b"x")
+    (root / ".pytest_cache").mkdir(exist_ok=True)
+    (root / ".pytest_cache" / "note").write_text("x")      # a named cache folder
+
+def test_local_socket_pairs_work_but_the_network_does_not():
+    a, b = socket.socketpair()
+    a.send(b"hi")
+    assert b.recv(2) == b"hi"
+    try:
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    except OSError:
+        return
+    raise AssertionError("a network socket was created")
+'''
+
+
+@needs_limits
+def test_a_confined_suite_runs_green_and_leaves_the_tree_as_it_found_it(tmp_path):
+    target = _suite_target(tmp_path, SUITE_OK)
+    run = run_suite(target, sys.executable, 120, "pytest", confine=True)
+    assert run.ran and run.green and run.passed == 2, run.describe()
+    assert not (target / ".ruff_cache").exists() and not (target / ".mypy_cache").exists()  # made only for the rules
+    scratch = [p for p in Path(tempfile.gettempdir()).glob("warden-suite-scratch-*")]
+    assert scratch == []
+
+
+SUITE_WRITES = '''
+import pathlib
+
+def test_writes_into_its_own_repo():
+    root = pathlib.Path(__file__).resolve().parents[1]
+    (root / "src_output.txt").write_text("not allowed")
+'''
+
+
+@needs_limits
+def test_a_suite_that_writes_inside_its_repo_goes_red_and_says_why_it_never_passes(tmp_path):
+    target = _suite_target(tmp_path, SUITE_WRITES)
+    unconfined = run_suite(target, sys.executable, 120, "pytest")
+    assert unconfined.green  # without the limits it would have passed
+    (target / "src_output.txt").unlink()
+    run = run_suite(target, sys.executable, 120, "pytest", confine=True)
+    assert run.ran and not run.green and run.failed == 1
+    assert "refused write" in run.reason
+    assert not (target / "src_output.txt").exists()
+
+
+@needs_limits
+def test_a_suite_cannot_read_what_is_outside_its_folders(tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("do not read", encoding="utf-8")
+    target = _suite_target(tmp_path, f'def test_reads_secret():\n    open({str(secret)!r}).read()\n')
+    run = run_suite(target, sys.executable, 120, "pytest", confine=True)
+    assert run.ran and not run.green
+
+
+def test_a_suite_is_not_run_unconfined_where_confinement_cannot_be_given(tmp_path, monkeypatch):
+    monkeypatch.setattr(sandbox, "unavailable", lambda: "seat isolation needs Linux, and this is test-os")
+    target = _suite_target(tmp_path, SUITE_OK)
+    run = run_suite(target, sys.executable, 120, "pytest", confine=True)
+    assert not run.ran and "will not run a suite unconfined" in run.reason
+
+
+def test_a_cargo_suite_is_refused_when_confinement_is_asked_for(tmp_path):
+    target = tmp_path / "rust"
+    target.mkdir()
+    (target / "Cargo.toml").write_text('[package]\nname = "x"\nversion = "0.1.0"\n', encoding="utf-8")
+    run = run_suite(target, sys.executable, 120, "cargo", confine=True)
+    assert not run.ran and "Cargo" in run.reason
+
+
+@needs_limits
+def test_the_command_line_confines_the_suite_with_the_flag(rig):
+    code, payload, _ = rig.run("--isolate-seats")
+    assert payload["decision"] != "ERROR"
+    assert "did not run" not in json.dumps(payload.get("notes", ""))

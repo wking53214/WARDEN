@@ -29,10 +29,13 @@ repository's code.
 from __future__ import annotations
 
 import json
+import contextlib
 import logging
 import os
 import platform
 import secrets
+import json
+import shutil
 import signal
 import subprocess
 import sys
@@ -43,6 +46,7 @@ from pathlib import Path
 from typing import Optional
 from cns.suite import SuiteRun  # the shared row: cns 2.0.0
 
+from . import sandbox
 from .isolation import suite_env
 from .textio import clip
 
@@ -233,26 +237,66 @@ def detect_runner(target: Path) -> str:
     return "cargo"
 
 
-def run_suite(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT, runner: str = "auto") -> SuiteRun:
+#: Cache folders inside the target that a confined suite may write to. They are the ones the tree watch already
+#: treats as pure caches (never watched), so a suite filling them changes nothing Warden compares.
+CACHE_DIRS = (".pytest_cache", ".ruff_cache", ".mypy_cache")
+
+#: What a confined suite is told when it went red and its output shows a refused write.
+_REFUSED_WRITE_HINT = ("the suite's output shows a refused write; a confined suite may write only to a scratch "
+                       "folder (TMPDIR) and " + ", ".join(CACHE_DIRS) + " inside the target")
+
+_BOOT = "import sys; sys.path.insert(0, {root!r}); from warden import sandbox; sandbox.exec_main()"
+
+
+def _python_reads(python: str, env: dict) -> list[str]:
+    """Folders the suite's interpreter and its packages live in: the interpreter's own prefix, the one a virtual
+    environment was made from, the user's site folder and every folder on the suite's PYTHONPATH."""
+    found: list[str] = []
+    exe = shutil.which(python, path=env.get("PATH")) or python
+    for path in (exe, os.path.realpath(exe)):
+        found.append(os.path.dirname(os.path.dirname(path)))
+    cfg = Path(os.path.dirname(os.path.dirname(exe))) / "pyvenv.cfg"
+    try:
+        for line in cfg.read_text(encoding="utf-8").splitlines():
+            key, _, value = line.partition("=")
+            if key.strip() == "home" and value.strip():
+                found.append(os.path.dirname(value.strip()))
+    except OSError:
+        pass
+    user_site = Path.home() / ".local" / "lib"
+    if user_site.is_dir():
+        found.append(str(user_site))
+    found += [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p]
+    return [p for p in found if p and os.path.isdir(p)]
+
+
+def run_suite(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT, runner: str = "auto",
+              confine: bool = False) -> SuiteRun:
     """Run the target's own tests with the right runner and return what it reported.
 
-    `runner` is `auto` (see `detect_runner`), `pytest` or `cargo`.
+    `runner` is `auto` (see `detect_runner`), `pytest` or `cargo`. With `confine` the suite runs closed in by the
+    operating system (see `warden.sandbox`): no network, and writes only to a scratch folder and `CACHE_DIRS`
+    inside the target. Where that cannot be given, or for Cargo, the suite is not run and the reason says so.
     """
     if runner not in RUNNERS:
         return SuiteRun(ran=False, reason=f"unknown suite runner {runner!r}")
     chosen = detect_runner(target) if runner == "auto" else runner
-    logger.info("suite: running the target's own tests with %s (timeout %gs)", chosen, timeout)
+    logger.info("suite: running the target's own tests with %s (timeout %gs%s)", chosen, timeout,
+                ", confined" if confine else "")
     started = time.monotonic()
     if chosen == "cargo":
+        if confine:
+            return SuiteRun(ran=False, reason="the suite was not run: confining a Cargo suite is not built yet, "
+                                              "so --isolate-seats cannot be used on a Rust target")
         run = _run_cargo(Path(target), timeout)
     else:
-        run = _run_pytest(target, python, timeout)
+        run = _run_pytest(target, python, timeout, confine=confine)
     logger.info("suite: %s in %.1fs: %s", "ran" if run.ran else "did not run", time.monotonic() - started,
                 run.describe())
     return run
 
 
-def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> SuiteRun:
+def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT, confine: bool = False) -> SuiteRun:
     """Run the target's tests and read pytest's own result, never its printed text.
 
     The result is pytest's exit status plus a count file written by a plugin Warden loads (see
@@ -280,24 +324,53 @@ def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> 
         # The plugin's folder goes last, after everything the target set: its name is random, so nothing can shadow it.
         env["PYTHONPATH"] = os.pathsep.join([p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p]
                                             + [str(private_dir)])
+        argv = [python, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", plugin]
+        scratch: Optional[str] = None
+        made: list[Path] = []
+        if confine:
+            why = sandbox.unavailable()
+            exe = shutil.which(python, path=env.get("PATH"))
+            if why or exe is None:
+                return SuiteRun(ran=False, reason="the suite was not run: " + (
+                    f"{why}; Warden will not run a suite unconfined in this mode" if why
+                    else f"the interpreter {python!r} was not found"))
+            scratch = tempfile.mkdtemp(prefix="warden-suite-scratch-")
+            env["TMPDIR"] = scratch
+            for name in CACHE_DIRS:  # a rule can only name a folder that exists
+                folder = Path(target) / name
+                if not folder.exists():
+                    folder.mkdir()
+                    made.append(folder)
+            import warden
+            request = {"argv": [exe, *argv[1:]], "env": env, "scratch": scratch,
+                       "read": [str(target), str(private_dir), *_python_reads(python, env)],
+                       "write": [str(private_dir), *(str(Path(target) / n) for n in CACHE_DIRS)]}
+            argv = [sys.executable, "-I", "-c", _BOOT.format(root=str(Path(warden.__file__).resolve().parents[1])),
+                    json.dumps(request)]
         try:
-            proc = subprocess.Popen(
-                [python, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", plugin],
-                cwd=str(target), stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
-                text=True, errors="replace", env=env, start_new_session=True)
-        except OSError as exc:
-            return SuiteRun(ran=False, reason=f"pytest could not run: {exc}")
-        try:
-            stdout, stderr = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _kill_group(proc)
-            proc.communicate()
-            return SuiteRun(ran=False, reason=f"pytest could not run: timed out after {timeout:g} seconds")
-        except BaseException:
-            _kill_group(proc)
-            raise
+            try:
+                proc = subprocess.Popen(
+                    argv, cwd=str(target), stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+                    text=True, errors="replace", env=env, start_new_session=True)
+            except OSError as exc:
+                return SuiteRun(ran=False, reason=f"pytest could not run: {exc}")
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                _kill_group(proc)
+                proc.communicate()
+                return SuiteRun(ran=False, reason=f"pytest could not run: timed out after {timeout:g} seconds")
+            except BaseException:
+                _kill_group(proc)
+                raise
+            finally:
+                _kill_group(proc)  # anything the suite left running
         finally:
-            _kill_group(proc)  # anything the suite left running
+            if scratch:
+                shutil.rmtree(scratch, ignore_errors=True)
+            for folder in made:  # put back the folders made for the rules, unless the suite filled them
+                with contextlib.suppress(OSError):
+                    folder.rmdir()
         code = proc.returncode
         report = _read_report(report_path, nonce)
     if code == _NO_TESTS:
@@ -313,9 +386,18 @@ def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT) -> 
         reason = "the exit status says the run failed but no test is reported as failing"
     elif code == 0 and (report["failed"] or report["errors"]):
         reason = "the exit status says the run passed but the report lists failures"
+    if confine and not reason and code != 0 and (report["failed"] or report["errors"]) and _refused_write(stdout, stderr):
+        reason = _REFUSED_WRITE_HINT
     return PytestSuiteRun(ran=True, passed=report["passed"], failed=report["failed"], errors=report["errors"],
                           skipped=report["skipped"], xfailed=report["xfailed"], xpassed=report["xpassed"],
                           exit_code=code, reason=reason, failed_ids=tuple(report["failed_ids"]))
+
+
+def _refused_write(stdout: str, stderr: str) -> bool:
+    """Whether a red suite's own output shows the operating system refusing it a write or a socket."""
+    text = stdout + "\n" + stderr
+    return any(sign in text for sign in ("PermissionError", "Permission denied", "Read-only file system",
+                                         "Operation not permitted"))
 
 
 @dataclass(frozen=True)
