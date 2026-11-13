@@ -247,13 +247,17 @@ def seat(spec: Optional[str], filled, target: Optional[Path] = None) -> Optional
     if not spec or filled is None:
         return None
     module_name = spec.partition(":")[0]
-    try:
-        module_file = getattr(importlib.import_module(module_name), "__file__", None)
-    except Exception:  # noqa: BLE001
-        module_file = None
+    isolated = getattr(filled, "isolated", False) is True
+    if isolated:  # the seat lives in its own process; Warden never imports it, so it is told where it came from
+        module_file = getattr(filled, "isolated_module_file", None)
+    else:
+        try:
+            module_file = getattr(importlib.import_module(module_name), "__file__", None)
+        except Exception:  # noqa: BLE001
+            module_file = None
     declared = getattr(filled, "requires_contract", None)
     return {"spec": spec, "requires_contract": declared if isinstance(declared, str) else None,
-            **_installed(module_name, module_file, target)}
+            **_installed(module_name, module_file, target), **({"isolated": True} if isolated else {})}
 
 
 def report(*, warden_module, contract: str, version: str, ghost_root, swizzle_root, assay_root,

@@ -135,6 +135,8 @@ uses a pipe whose reader is gone, a closed descriptor and a stream that raises `
 seat). A suite past its limit counts as not run; a seat past its limit ends the run as `ERROR`
 and the tree is put back. `--ghost-timeout` is unchanged.
 
+**`--isolate-seats`.** Runs the Judge in its own confined program (details and limits in `docs/LIMITS.md`). Off by default. On a machine that cannot confine it the run stops as `SEAT_NOT_LOADED` and nothing is run. The record's `versions.seats.judge` carries `"isolated": true`; without the flag the key is absent. The Drafter and Finisher still run inside Warden in this release, and a warning on standard error says so.
+
 **`--assay-floor`.** A whole number. Below 0 is a usage error. `0` is the one explicit way to
 skip enforcement: the score is still recorded, the notes say the floor was not enforced, and the
 Judge is told the floor is 0. The default is 3 **on the command line only**: `TagTeam(assay_floor=...)` in the

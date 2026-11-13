@@ -78,6 +78,10 @@ The table below is generated from each module's own docstring by `tools/gen_docs
 | `warden.registry` | Final integration registry. |
 | `warden.roles` | The two seats Warden seats other repositories in. |
 | `warden.runstate` | Things a run must keep outside the target and outside the temp directory: a lock and a journal. |
+| `warden.sandbox` | Operating-system limits for a seat that runs in its own process (Linux only). |
+| `warden.seat_runner` | The program a seat runs in when Warden isolates it (`warden tagteam --isolate-seats`). |
+| `warden.seatproc` | Warden's side of an isolated seat: start the seat's own program, send it questions, read its answers. |
+| `warden.seatwire` | Plain messages for a seat that runs in its own process. |
 | `warden.suite` | Rule 7, the behavior-preservation gate: the target's own suite, before and after. |
 | `warden.swizzle` | SWIZZLE consumer: is the adversary's own instrument sound? |
 | `warden.tagteam` | The loop: Ghost sees, a change enters (claim seat or optional Drafter), Warden decides and applies, SWIZZLE checks. |

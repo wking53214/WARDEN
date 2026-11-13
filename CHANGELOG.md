@@ -5,9 +5,26 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`), and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4` and `0.16.6`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6` and `0.17.0`. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by tag.
+
+## [0.17.0] - 2026-11-12
+
+`CONTRACT` is still `"1"`. Not tagged. First slice of 1.0.0 criterion 5 (`docs/RELEASE_1_0_CRITERIA_v1.md`).
+
+### Added
+
+- **`warden tagteam --isolate-seats`: the Judge runs in its own program.** The Judge is started as a separate process
+  (`warden/seat_runner.py`, started by `warden/seatproc.py`) and closed in by the operating system before any of its code
+  is imported (`warden/sandbox.py`): Landlock file rules (read the folder being governed, its own code and the Python
+  installation; write only in a throwaway folder), a seccomp filter (no network socket, no io_uring, no ptrace) and size
+  limits. Warden and the Judge exchange plain JSON messages (`warden/seatwire.py`); only classes of `cns` and `warden`
+  are rebuilt from them. Linux only: where the kernel cannot give the limits the run stops as `SEAT_NOT_LOADED` and the
+  seat is never run unprotected. A seat that does not answer in time is killed with everything it started, including
+  one stuck outside Python. The record's `versions.seats.judge` gains `"isolated": true` with the flag (absent without it).
+  Off by default; it becomes the default at 1.0.0. The Drafter, the Finisher, the claim seat and the target's own suite
+  are not covered yet. Prevented by `tests/test_isolated_seat.py` (23 tests, the limit tests run real attempts).
 
 ## [0.16.6] - 2026-11-11
 
