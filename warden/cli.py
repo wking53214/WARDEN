@@ -25,7 +25,7 @@ from pathlib import Path
 
 from . import CONTRACT, __version__
 from .authorization import Unauthorized, grant
-from . import audit as audit_file, gitstate, held, isolation, runstate, textio, versions
+from . import audit as audit_file, gitstate, held, isolation, runstate, seatproc, textio, versions
 from . import chronicle
 from . import claim as claimseat
 from . import log as warden_log
@@ -546,6 +546,11 @@ def _main(argv: list[str] | None) -> int:
                           "Without one, a run cannot be ACCEPTed, only ACCEPT_UNVERIFIED")
     p_t.add_argument("--finisher", default=None, metavar="MODULE:FACTORY",
                      help="after the loop, once: beautifies and writes the final README")
+    p_t.add_argument("--isolate-seats", action="store_true",
+                     help="run the Judge in its own program, closed in by the operating system: it can read the "
+                          "folder being governed and its own code, write only to a throwaway folder, and use no "
+                          "network. Linux only; on any other system the run is refused, never run unprotected. "
+                          "In this release the Drafter and the Finisher still run inside Warden")
     p_t.add_argument("--max-cycles", type=_at_least_one, default=10,
                      help="most proposals that may be applied; declined ones do not use a cycle (default 10)")
     p_t.add_argument("--ghost-timeout", type=_positive_number, default=600,
@@ -882,9 +887,20 @@ def _tagteam(args) -> int:
                     runstate.seat_timer(args.seat_timeout, "A seat while it was being loaded"):
                 drafter = claim_drafter if claiming else _load_seat(args.drafter, warnings)
                 finisher = _load_seat(args.finisher, warnings)
-                judge = _load_seat(args.judge, warnings)
-        except ContractMismatch as e:
+                if args.isolate_seats and args.judge:
+                    judge = _load_seat_isolated(args.judge, "The Judge", args.seat_timeout)
+                else:
+                    judge = _load_seat(args.judge, warnings)
+                if args.isolate_seats:
+                    warnings.append(
+                        "--isolate-seats covers the Judge only in this release; any Drafter or Finisher still "
+                        "runs inside Warden." if args.judge else
+                        "--isolate-seats had no effect because no Judge was named; the Drafter and Finisher "
+                        "run inside Warden in this release.")
+        except (ContractMismatch, seatproc.SeatRefused) as e:
             return _stop("SEAT_NOT_LOADED", str(e))
+        except seatproc.SeatFailed as e:
+            return _stop("SEAT_NOT_LOADED", f"A seat could not be loaded ({textio.clip(str(e), 200)}).")
         except runstate.Interrupted as sig:
             return _stop("INTERRUPTED", f"Warden received {sig.signal_name} while loading seats. Nothing was run.")
         except runstate.SeatTimedOut as e:
@@ -898,6 +914,8 @@ def _tagteam(args) -> int:
     finally:
         _governed = None
         sys.path[:] = saved_path
+        while _isolated:
+            _isolated.pop().close()
 
 
 def _reuse_problem(args) -> str:
@@ -1155,6 +1173,20 @@ def _load_seat(spec, warnings: list[str] | None = None):  # `warnings` is kept f
                                f"is contract {CONTRACT!r}. Nothing was run.")
     logger.info("seat loaded: %s (%s, requires_contract=%s)", spec, type(seat).__name__, wanted)
     return seat
+
+
+#: Seats started in their own program for the current `tagteam`; closed when it ends, however it ends.
+_isolated: list = []
+
+
+def _load_seat_isolated(spec: str, who: str, timeout: float):
+    """The seat named MODULE:FACTORY, run in its own program and checked there in the same ways `_load_seat`
+    checks one (the contract it declares, and that its code is not inside the folder being governed)."""
+    if not spec or not spec.partition(":")[0] or not spec.partition(":")[2]:
+        raise ValueError("expected MODULE:FACTORY")
+    seat = seatproc.IsolatedSeat(spec, who, timeout)
+    _isolated.append(seat)
+    return seat.start(target=_governed, sys_path=[p for p in sys.path if p], contract=CONTRACT)
 
 
 def _audit(args) -> int:
