@@ -1188,6 +1188,8 @@ def _load_seat_isolated(spec: str, who: str, timeout: float):
     checks one (the contract it declares, and that its code is not inside the folder being governed)."""
     if not spec or not spec.partition(":")[0] or not spec.partition(":")[2]:
         raise ValueError("expected MODULE:FACTORY")
+    if _governed is None:
+        raise ValueError("no folder is being governed yet")
     seat = seatproc.IsolatedSeat(spec, who, timeout)
     _isolated.append(seat)
     return seat.start(target=_governed, sys_path=[p for p in sys.path if p], contract=CONTRACT)

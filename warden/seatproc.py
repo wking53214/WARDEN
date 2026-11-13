@@ -106,14 +106,16 @@ class IsolatedSeat:
             with contextlib.suppress(Exception):
                 self._send_to(proc, {"op": "close"})
             with contextlib.suppress(Exception):
-                proc.stdin.close()
+                if proc.stdin:
+                    proc.stdin.close()
             try:
                 proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 pass
             _kill_group(proc)  # anything the seat left running
             with contextlib.suppress(Exception):
-                proc.stdout.close()
+                if proc.stdout:
+                    proc.stdout.close()
         scratch, self._scratch = self._scratch, None
         if scratch:
             shutil.rmtree(scratch, ignore_errors=True)
@@ -177,6 +179,7 @@ class IsolatedSeat:
     @staticmethod
     def _send_to(proc: subprocess.Popen, message: dict) -> None:
         try:
+            assert proc.stdin is not None  # the program is started with a pipe on each end
             proc.stdin.write((seatwire.dumps(message) + "\n").encode("ascii"))
             proc.stdin.flush()
         except (BrokenPipeError, OSError):
@@ -187,6 +190,7 @@ class IsolatedSeat:
         if proc is None:
             raise SeatFailed(f"{self.who}'s program is not running")
         deadline = time.monotonic() + self.timeout
+        assert proc.stdout is not None
         fd = proc.stdout.fileno()
         while b"\n" not in self._buffer:
             left = deadline - time.monotonic()

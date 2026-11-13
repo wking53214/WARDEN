@@ -62,11 +62,11 @@ def to_wire(value: Any) -> Any:
             raise WireError("a mapping with a key of the form __name__ cannot be sent to a seat")
         return out
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        cls = type(value)
-        if not _allowed(cls.__module__):
-            raise WireError(f"a row of {_class_name(cls)} cannot be sent to a seat")
+        row_cls = type(value)
+        if not _allowed(row_cls.__module__):
+            raise WireError(f"a row of {_class_name(row_cls)} cannot be sent to a seat")
         fields = {f.name: to_wire(getattr(value, f.name)) for f in dataclasses.fields(value) if f.init}
-        return {"__row__": _class_name(cls), "fields": fields}
+        return {"__row__": _class_name(row_cls), "fields": fields}
     raise WireError(f"a value of type {type(value).__name__} cannot be sent to a seat")
 
 
