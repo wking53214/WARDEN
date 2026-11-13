@@ -1,6 +1,6 @@
 # Stability
 
-*Version 1 of this page. It takes effect with Warden 1.0.0. Until then it is a draft, and the 0.x releases may still change anything it lists.*
+*Version 1 of this page. It is in force from Warden 1.0.0.*
 
 Four things are public: the command line, the exit codes, the run record and the seat contract. Nothing else is. Within 1.x, nothing listed here is removed, and nothing listed here changes its meaning. A release may add new commands, options, record fields and exit codes. Removing or changing a listed thing takes 2.0.0.
 

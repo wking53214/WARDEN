@@ -5,9 +5,45 @@ and the version in `warden/__init__.py` (read by `pyproject.toml`) is the single
 The seat contract (`warden.CONTRACT`) is `"1"` throughout and has not changed.
 
 Release tags exist up to `v0.12.0` (an annotated tag that peels to `72e5745`), and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`); the `0.13.x` releases are not tagged, and
-`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6`, `0.17.0`, `0.18.0`, `0.19.0` and `0.20.0`. The
+`0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6`, `0.17.0`, `0.18.0`, `0.19.0` and `0.20.0`. From 1.0.0 every release is tagged: `v1.0.0` is created by the owner on the commit that merges the release pull request, so it does not exist until then. The
 older `v0.10.0` tag does not match its tree: it points at a tree whose `__version__` is `0.9.0`. Tagging is the owner's
 decision, and the repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by tag.
+
+## [1.0.0] - 2026-11-13
+
+`CONTRACT` is still `"1"`. Tagged `v1.0.0` by the owner on the merge commit of this release (see the tag sentence above).
+The first release that makes promises about what it will not change. No code differs from 0.20.0.
+
+### What 1.0.0 promises
+
+- Four things are public and stay stable through 1.x: the command line, the exit codes, the run record and the seat
+  contract. [docs/STABILITY_v1.md](docs/STABILITY_v1.md) lists each one and what is not promised, such as message
+  wording and the Python modules inside the package. `tests/test_stability.py` fails if the page and the code disagree.
+
+### What changed since 0.19
+
+- Isolation is on by default (0.20.0): the Drafter, Finisher and Judge each run in their own limited process, and the
+  target's test suite runs closed in the same way. `--no-isolation` turns it off and puts a warning in the record.
+
+### What to change when upgrading
+
+- A machine that cannot give the limits (not Linux, or no Landlock) refuses the run: use `--no-isolation`.
+- A Rust (Cargo) target is refused until it can be confined: use `--no-isolation`.
+- A test suite that writes outside a scratch folder and the three cache folders goes red, with the reason in the
+  record. It never passes.
+
+### Evidence
+
+- One live run on TIE, a repository outside the circuit, is row 7 of `docs/REGISTRY.json`: Warden 0.20.0, isolation by
+  default, the real Judge 0.6.0 reading the Finisher field, ACCEPT, TIE's 195 tests green before and after. The first
+  attempt was refused on 5 stale entries in TIE's Ghost baseline, fixed in TIE before the recorded run.
+
+### What it does not do
+
+- The claim seat still runs inside Warden. Row 7's Finisher was a do-nothing seat, the change was applied to a scratch
+  copy and not pushed, and the row is self-reported. CPU and memory are capped, not prevented. Linux only. No live run
+  is recorded on a Rust target, or with Warden's own Drafter on a repository outside the circuit. The full list is
+  [docs/LIMITS.md](docs/LIMITS.md).
 
 ## [0.20.0] - 2026-11-13
 

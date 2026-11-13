@@ -195,7 +195,7 @@ def test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged():
     changelog = " ".join((ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split())
     # The docs say "0.13.x is not tagged", "0.14.0 is not tagged either" and "nor are 0.15.0, 0.15.1, 0.16.0, 0.16.1, 0.16.2, 0.16.3 and 0.16.4; v0.16.5 is tagged"; a newer version makes that
     # stale, so this fails then and points at the sentence to update.
-    assert warden.__version__.startswith(("0.13.", "0.14.0", "0.15.0", "0.15.1", "0.16.0", "0.16.1", "0.16.2", "0.16.3", "0.16.4", "0.16.5", "0.16.6", "0.17.0", "0.18.0", "0.19.0", "0.20.0")), "update the tag sentence in README.md and CHANGELOG.md"
+    assert warden.__version__.startswith(("0.13.", "0.14.0", "0.15.0", "0.15.1", "0.16.0", "0.16.1", "0.16.2", "0.16.3", "0.16.4", "0.16.5", "0.16.6", "0.17.0", "0.18.0", "0.19.0", "0.20.0", "1.0.")), "update the tag sentence in README.md and CHANGELOG.md"
     for text in (readme, changelog):
         assert "Release tags exist up to `v0.12.0`" in text
         assert "and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`)" in text and "`0.16.4` and `0.16.5`" not in text
@@ -203,6 +203,7 @@ def test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged():
         assert "last tag is `v0.11.4`" not in text and "newest tag is `v0.11.4`" not in text
         assert "`v0.10.0` tag does not match its tree" in text and "`__version__` is `0.9.0`" in text
         assert "owner's decision" in text
+        assert "From 1.0.0 every release is tagged" in text
 
 
 def test_the_markdown_code_fences_are_balanced_and_a_fence_ends_where_its_commands_end():
