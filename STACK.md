@@ -84,7 +84,7 @@ place that states one of them disagrees with the others.
 
 | Repository | Version | Commit |
 |---|---|---|
-| ghost_tools | 1.10.14 | `b7c99afa5afecc34052ec2aa15ca3f17379f7d9c` |
+| ghost_tools | 1.10.14 | `572fb31790f702c5503e4ffb3a6dd7e7ce7147cc` |
 | SWIZZLE | 0.8.13 | `3fcb27f62add4ba4355a55dff6f3a180fda816ed` |
 | ASSAY | 0.11.10 | `3d50a70566f8c2278b0fc5d110309f3ace75bfdf` |
 | JUDGE | 0.6.0 | `0880770249bdf91d54fb66f60f536c4c4cb136f7` |
