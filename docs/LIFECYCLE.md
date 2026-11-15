@@ -325,7 +325,14 @@ file. Green means exit status 0, at least one test passed, and no failure or err
 counts. Text the suite prints (at the end, at exit, or anywhere) is never read, so a forged
 `5 passed` line cannot turn a failing run green, and a harmless `2 failed uploads` line cannot
 turn a green one red. A suite that forces exit 1 with every test green is not green, and the
-description says `pytest exited 1`.
+description says `pytest exited 1`. Printed text is used in one direction only, to doubt a report and never to
+approve one: when a line of pytest's own summary (`1 failed, 4 passed in 0.12s`) counts failed or errored tests and
+the report lists none, the report was not written by the plugin, the suite is recorded as not run and the reason says
+so. The plugin also reports which files hold the suite's tests (and its conftest files) and which files other than
+code the suite opened to read. The baseline run's lists are used when the Judge's evidence is built: an applied edit
+to one of those files, to a folder that holds test files, or whose added Python code names the runner's reporting
+surface (`WARDEN_*` variables, `atexit`, `os._exit`, a pytest reporting hook) is named in `judging_files_touched`, so
+the Judge holds the run for a person like any other test change.
 
 **Rust projects.** A target with a `Cargo.toml` and no Python test setup (no `pytest.ini`,
 `conftest.py`, `tox.ini`, `setup.cfg`, `setup.py`, `pyproject.toml`, and no `test_*.py` file) is

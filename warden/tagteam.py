@@ -33,6 +33,7 @@ import dataclasses
 import hashlib
 import logging
 import os
+import re
 import stat
 import sys
 from contextlib import contextmanager
@@ -484,6 +485,29 @@ class TagTeam:
             yield
         self._seat = "Warden"  # not reached on an error, so the handler can still name the seat
 
+    def _judging_files(self, target, cycles, finish, edits, baseline_suite, notes) -> tuple:
+        """The applied paths named to the Judge as files that decide acceptability, so it holds the run for a person.
+
+        Three kinds: a path that is protected by its name (tests, test or build configuration, CI, dependency lists);
+        a path the baseline suite itself named as test material, however it is called (the files that hold its tests
+        and conftest files, the folders that hold them, the data files it read); and a path whose added Python code
+        names the grader's own surface (see `_GRADER_SURFACE`). The second and third are measured, not guessed.
+        """
+        material = _suite_material(baseline_suite)
+        named = {p for p, _ in edits if _judging(target, p)}
+        by_suite = sorted({p for p, _ in edits if p not in named and _is_suite_material(target, p, material)})
+        applied = [e for c in cycles if c.applied and c.proposal for e in c.proposal.edits]
+        applied += list(finish.edits) if finish is not None else []
+        tampering = sorted({e.path for e in applied} & _grader_surface_paths(applied) - named - set(by_suite))
+        if by_suite:
+            notes.append("Held for a person: the baseline suite named these as its own test material (a file that "
+                         f"holds tests, a folder that holds them, or data it read): {', '.join(by_suite[:5])}.")
+        if tampering:
+            notes.append("Held for a person: added code names the test runner's reporting surface (an environment "
+                         "variable of Warden's, atexit, os._exit or a pytest reporting hook): "
+                         f"{', '.join(tampering[:5])}.")
+        return tuple(sorted(named | set(by_suite) | set(tampering)))
+
     def _judge(self, target, authorization, cycles, first, current, finish, finished, sound,
                declined, python, notes, start, finisher_ran):
         """Hand the evidence to the Judge. Only the Judge can turn a run into ACCEPT.
@@ -513,6 +537,8 @@ class TagTeam:
                             f"{sum(a['status'] == 'violated' for a in attacks)} of {len(attacks)} violated"))
         suite_after = self._suite(target, python, notes, "final state, for the Judge")  # may stop the run
         first_suite = next((c.suite_before for c in cycles if c.suite_before is not None), None)
+        judging = self._judging_files(target, cycles, finish if finished else None, edits,
+                                      first_suite if first_suite is not None else suite_after, notes)
         ghost = self.ghost_tools_root is not None
         extra: Dict[str, Any] = {}
         if ghost and "ghost_severity" in {f.name for f in dataclasses.fields(Evidence)}:
@@ -523,7 +549,7 @@ class TagTeam:
         evidence = Evidence(
             target=str(target), scope=authorization.scope if authorization else "",
             cycles=tuple((c.number, c.outcome) for c in cycles), changed=tuple(edits),
-            judging_files_touched=tuple(sorted({p for p, _ in edits if _judging(target, p)})),
+            judging_files_touched=judging,
             suite_before=first_suite if first_suite is not None else suite_after, suite_after=suite_after,
             ghost_before=tuple(sorted(d.identity for d in first)) if ghost else None,
             ghost_after=tuple(sorted(d.identity for d in current)) if ghost else None,
@@ -1296,6 +1322,49 @@ def _red(cycle: Cycle) -> str:
         if run is not None and not run.green:
             return run.describe()
     return ""
+
+
+#: Text that code under test has no ordinary reason to hold and that a forged suite report needs: the names of the
+#: environment variables Warden hands the suite, the plugin's own module name, the hooks that report a result, and the
+#: ways to run code after pytest has finished or to end the process with a chosen exit status.
+_GRADER_SURFACE = re.compile(r"WARDEN_|_warden_|pytest_sessionfinish|pytest_runtest_(?:makereport|logreport)"
+                             r"|os\._exit|\batexit\b|sys\.addaudithook")
+
+
+def _added_text(edit: FileEdit) -> str:
+    """The text an edit adds: a replacement's new text, or the lines of a rewritten file that were not there before."""
+    if edit.kind == "delete":
+        return ""
+    if edit.kind == "write" and edit.old:
+        before = {line.strip() for line in edit.old.splitlines()}
+        return "\n".join(line for line in edit.new.splitlines() if line.strip() not in before)
+    return edit.new
+
+
+def _grader_surface_paths(edits) -> set:
+    """The paths of Python edits whose added text names the grader's own surface."""
+    return {e.path for e in edits if e.path.lower().endswith(".py") and _GRADER_SURFACE.search(_added_text(e))}
+
+
+def _suite_material(run) -> tuple:
+    """(files, folders) the baseline suite named as its own: its test files and conftest files, the data files it read,
+    and the folders other than the project root that hold test files. Empty for a runner that does not say."""
+    tests = tuple(getattr(run, "test_files", ()) or ())
+    files = frozenset(tests) | frozenset(getattr(run, "read_files", ()) or ())
+    return files, tuple(sorted({t.rsplit("/", 1)[0] for t in tests if "/" in t}))
+
+
+def _is_suite_material(target: Path, rel: str, material: tuple) -> bool:
+    files, folders = material
+    for name in (rel, real_rel(target, rel)):
+        if not name:
+            continue
+        name = name.replace("\\", "/")
+        while name.startswith("./"):
+            name = name[2:]
+        if name in files or any(name.startswith(f + "/") for f in folders):
+            return True
+    return False
 
 
 def _judging(target: Path, rel: str) -> bool:

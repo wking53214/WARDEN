@@ -32,6 +32,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import platform
 import secrets
 import shutil
@@ -60,11 +61,44 @@ DEFAULT_TIMEOUT = 900.0
 #: reports it and writes them, with pytest's own exit status, to a file only Warden reads. Text
 #: that the target's code prints is never read.
 _PLUGIN_SOURCE = '''
-import json, os
+import json, os, sys
 
 _COUNTS = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0, "xfailed": 0, "xpassed": 0}
 _STATE = {"collected": 0}
 _FAILED = []  # the ids of the first tests that failed or errored, so the record can name them
+_ROOT = os.path.realpath(os.getcwd())
+_NOT_THE_PROJECT = {".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".venv", "venv", "env",
+                    "node_modules", "site-packages"}
+_CODE = (".py", ".pyc", ".pyi", ".pyd", ".so", ".pth")
+_WRITING = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
+_TESTS = set()  # files that hold tests, and conftest files
+_READ = set()   # files other than code that the suite opened to read: the data the tests compare against
+
+
+def _rel(path):
+    try:
+        real = os.path.realpath(path)
+        if real != _ROOT and not real.startswith(_ROOT + os.sep):
+            return None
+        parts = os.path.relpath(real, _ROOT).split(os.sep)
+    except (OSError, ValueError):
+        return None
+    return None if _NOT_THE_PROJECT.intersection(parts) else "/".join(parts)
+
+
+def _audit(event, args):
+    if event != "open" or len(_READ) >= 500 or not args or not isinstance(args[0], str) or args[0].endswith(_CODE):
+        return
+    mode = args[1] if len(args) > 1 else None
+    flags = args[2] if len(args) > 2 else 0
+    if (isinstance(mode, str) and any(c in mode for c in "wax+")) or (isinstance(flags, int) and flags & _WRITING):
+        return
+    rel = _rel(args[0])
+    if rel is not None:
+        _READ.add(rel)
+
+
+sys.addaudithook(_audit)
 
 
 def _note_failed(report):
@@ -74,6 +108,21 @@ def _note_failed(report):
 
 def pytest_collection_finish(session):
     _STATE["collected"] = len(session.items)
+    try:
+        for item in session.items:
+            if type(item).__name__.startswith("Doctest"):
+                continue  # a docstring in source code is code, not a test file
+            where = getattr(item, "path", None) or getattr(item, "fspath", None)
+            rel = _rel(str(where)) if where else None
+            if rel:
+                _TESTS.add(rel)
+        for plugin in session.config.pluginmanager.get_plugins():
+            where = getattr(plugin, "__file__", None)
+            rel = _rel(where) if isinstance(where, str) and os.path.basename(where) == "conftest.py" else None
+            if rel:
+                _TESTS.add(rel)
+    except Exception:  # naming the test files must never change a result
+        pass
 
 
 def pytest_collectreport(report):
@@ -109,7 +158,8 @@ def pytest_sessionfinish(session, exitstatus):
     if not path:
         return
     body = {"nonce": os.environ.get("WARDEN_SUITE_NONCE"), "exitstatus": int(exitstatus),
-            "collected": _STATE["collected"], "failed_ids": _FAILED, **_COUNTS}
+            "collected": _STATE["collected"], "failed_ids": _FAILED, "test_files": sorted(_TESTS)[:500],
+            "read_files": sorted(_READ)[:500], **_COUNTS}
     tmp = path + ".part"
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(body, handle)
@@ -187,11 +237,33 @@ def _read_report(path: Path, nonce: str) -> Optional[dict]:
     if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
         ids = []  # an older or garbled plugin file: the counts still stand, the names are simply not known
     data["failed_ids"] = [_plain(i) for i in ids[:MAX_FAILED_IDS]]
+    for key in ("test_files", "read_files"):
+        names = data.get(key, [])
+        data[key] = [_plain(n, 240) for n in names[:MAX_FILES]] if (
+            isinstance(names, list) and all(isinstance(n, str) for n in names)) else []
     return data
+
+
+#: A line of pytest's own summary, such as `1 failed, 4 passed in 0.12s`. Every count word is one pytest prints.
+_SUMMARY_LINE = re.compile(
+    r"^\W*(?:\d+ (?:passed|failed|skipped|deselected|xfailed|xpassed|errors?|warnings?|rerun)(?:, )?)+"
+    r" in \d+(?:\.\d+)?s\b.*$", re.M)
+_FAILURE_COUNT = re.compile(r"(\d+) (?:failed|errors?)\b")
+
+
+def _printed_failures(stdout: str) -> int:
+    """How many failed or errored tests pytest's own printed summary lines claim (the most any one line claims).
+    Used only to doubt a report, never to approve one."""
+    most = 0
+    for line in _SUMMARY_LINE.findall(stdout or ""):
+        most = max(most, sum(int(n) for n in _FAILURE_COUNT.findall(line)))
+    return most
 
 
 #: At most this many failing test ids are kept from one suite run.
 MAX_FAILED_IDS = 10
+#: At most this many test files, and this many data files the suite read, are kept from one suite run.
+MAX_FILES = 500
 
 
 def _plain(text: str, limit: int = 160) -> str:
@@ -205,6 +277,10 @@ class PytestSuiteRun(SuiteRun):
     record that says the suite went red can say which tests."""
 
     failed_ids: tuple[str, ...] = ()
+    #: The files that hold the suite's tests (and its conftest files), and the files other than code that the suite
+    #: opened to read, as paths inside the target. What the tests compare against is named here, not guessed.
+    test_files: tuple[str, ...] = ()
+    read_files: tuple[str, ...] = ()
 
     def describe(self) -> str:
         text = super().describe()
@@ -374,6 +450,13 @@ def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT, con
         report = _read_report(report_path, nonce)
     if code == _NO_TESTS:
         return SuiteRun(ran=False, reason="pytest collected no tests", exit_code=code)
+    said = _printed_failures(stdout)
+    if report is not None and said and not (report["failed"] or report["errors"]):
+        # Printed text is never used to approve anything. Here it can only veto: pytest wrote its own summary with
+        # failures in it, and the report that should list them says none, so the report was written by someone else.
+        return SuiteRun(ran=False, exit_code=code, reason=(
+            f"pytest printed a summary with {said} failed or errored test(s) that its report does not list, so the "
+            "report is not believed"))
     if report is None:
         last = (stderr.strip().splitlines() or stdout.strip().splitlines() or [f"exit {code}"])[-1]
         return SuiteRun(ran=False, exit_code=code,
@@ -390,7 +473,8 @@ def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT, con
         reason = _REFUSED_WRITE_HINT
     return PytestSuiteRun(ran=True, passed=report["passed"], failed=report["failed"], errors=report["errors"],
                           skipped=report["skipped"], xfailed=report["xfailed"], xpassed=report["xpassed"],
-                          exit_code=code, reason=reason, failed_ids=tuple(report["failed_ids"]))
+                          exit_code=code, reason=reason, failed_ids=tuple(report["failed_ids"]),
+                          test_files=tuple(report["test_files"]), read_files=tuple(report["read_files"]))
 
 
 def _refused_write(stdout: str, stderr: str) -> bool:

@@ -127,6 +127,20 @@ def _hidden_flags(path: Path, allow: tuple) -> Optional[list]:
     return hidden
 
 
+def _hidden_by_info_exclude(path: Path, shown: set, allow: tuple) -> Optional[list]:
+    """Untracked files that `git status` does not list because of `.git/info/exclude`.
+
+    That file lives inside the repository, so turning off the user's and the system's configuration does not turn it
+    off. `git ls-files --others --exclude-per-directory=.gitignore` consults only the committed `.gitignore` files
+    (no `--exclude-standard`), so a file it lists that `status` did not show is one that only `info/exclude` hides.
+    None when git could not say."""
+    proc = _git(path, "ls-files", "-z", "--others", "--exclude-per-directory=.gitignore", "--full-name", "--", ":/",
+                neutral=True)
+    if proc is None or proc.returncode != 0:
+        return None
+    return [n for n in proc.stdout.split("\0") if n and n not in shown and n not in allow]
+
+
 def tree_state(path: Path, allow: tuple = ()) -> TreeState:
     """Whether `path` is inside a git work tree with anything uncommitted.
 
@@ -167,6 +181,15 @@ def tree_state(path: Path, allow: tuple = ()) -> TreeState:
     if hidden is None:
         return TreeState("unknown", "git would not list the index flags, so a file hidden from git status "
                                     "cannot be ruled out", git_dir=gdir)
+    excluded = _hidden_by_info_exclude(path, {ln[3:].strip().strip('"') for ln in status.stdout.splitlines()}, allow)
+    if excluded is None:
+        return TreeState("unknown", "git would not list the untracked files, so a file hidden from git status by "
+                                    ".git/info/exclude cannot be ruled out", git_dir=gdir)
+    if excluded:
+        said = (f"{len(lines)} path(s) have uncommitted changes, and " if lines else "") + (
+            f"{len(excluded)} untracked file(s) are hidden from git status by .git/info/exclude, such as "
+            f"{clip(excluded[0], 80)}")
+        return TreeState("dirty", said, len(lines) + len(excluded), gdir)
     if hidden:
         said = (f"{len(lines)} path(s) have uncommitted changes, and " if lines else "") + (
             f"{len(hidden)} tracked file(s) are hidden from git status by an index flag (assume-unchanged or "

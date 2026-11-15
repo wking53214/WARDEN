@@ -43,7 +43,10 @@ PROSE = {".md", ".rst", ".txt"}
 _PROTECTED_NAMES = {
     # test and build configuration
     "conftest.py", "pytest.ini", ".pytest.ini", "tox.ini", "setup.cfg", "setup.py", "pyproject.toml",
-    "noxfile.py", ".coveragerc", "makefile", "gnumakefile", "justfile", "tests.py", ".pre-commit-config.yaml",
+    "noxfile.py", ".coveragerc", "makefile", "gnumakefile", "justfile", "tests.py", "test.py",
+    ".pre-commit-config.yaml",
+    # run at interpreter start-up from the folder Python is started in, before any test
+    "sitecustomize.py", "usercustomize.py",
     # Rust: the manifest sets which tests exist and how they run, build.rs runs arbitrary code at build time,
     # the toolchain file picks the compiler
     "cargo.toml", "build.rs", "rust-toolchain", "rust-toolchain.toml", "clippy.toml", "tests.rs",
@@ -52,13 +55,15 @@ _PROTECTED_NAMES = {
     ".travis.yml", "appveyor.yml", "bitbucket-pipelines.yml", "cloudbuild.yaml", "cloudbuild.yml",
     ".drone.yml", "codecov.yml", ".codecov.yml",
     # dependencies and submodules
-    ".gitmodules", "pipfile", "pipfile.lock", "poetry.lock", "uv.lock", "pdm.lock", "package-lock.json",
+    ".gitmodules", ".gitattributes", "package.json", "pipfile", "pipfile.lock", "poetry.lock", "uv.lock", "pdm.lock",
+    "package-lock.json",
     "yarn.lock", "pnpm-lock.yaml", "cargo.lock", "gemfile.lock", "composer.lock", "go.sum",
     # containers
     "dockerfile",
 }
 _PROTECTED_PATTERNS = (
-    "pytest*.ini", ".pytest*.ini", "test_*", "*_test.py", "*_test.rs", "*.lock",
+    "pytest*.ini", ".pytest*.ini", "test_*", "*_test.py", "*_test.rs", "*.lock", "*.pth",
+    "test*.txt",  # pytest collects test*.txt as doctests by default
     "requirements*.txt", "constraints*.txt", "requirements*.in", "constraints*.in",
     "*requirements*.txt", "*constraints*.txt",
     "dockerfile*", "*.dockerfile", "docker-compose*.yml", "docker-compose*.yaml", "compose*.yml", "compose*.yaml",
@@ -70,8 +75,8 @@ _PROTECTED_PATTERNS = (
 #: specimen. Found when the circuit tidied ASSAY's own specimens and the suite caught it.
 _FIXTURE_DIRS = {"fixtures", "fixture", "specimens", "specimen", "testdata", "test_data", "golden", "snapshots",
                  "__snapshots__", "corpus"}
-_PROTECTED_DIRS = {"tests", "test", "testing", ".github", ".circleci", ".githooks", ".gitlab", ".buildkite",
-                   ".husky", ".azure-pipelines", ".cargo"} | _FIXTURE_DIRS
+_PROTECTED_DIRS = {"tests", "test", "testing", "__tests__", ".github", ".circleci", ".githooks", ".git-hooks",
+                   "githooks", ".gitlab", ".buildkite", ".husky", ".azure-pipelines", ".cargo"} | _FIXTURE_DIRS
 #: Any file or folder whose name starts with this is Ghost's own bookkeeping (ledger, baseline, archive marker).
 _PROTECTED_DIR_PATTERNS = (".ghost_*",)
 

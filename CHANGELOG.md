@@ -15,6 +15,36 @@ No version change.
 
 ### Changed
 
+- **Files the suite says are its own are named to the Judge.** The suite plugin now reports which files hold the tests
+  (and conftest files) and which files other than code the suite opened to read (an audit hook on `open`, read mode
+  only). When the Judge's evidence is built, an applied edit to such a file, to a folder that holds test files, or to a
+  Python file whose added text names the runner's reporting surface is listed in `judging_files_touched` (with a note), so
+  the Judge holds the run for a person exactly as it does for a test under `tests/`. Before this, a project that kept its
+  tests in `checks/` (with its own `python_files`) or compared against a plain data file had no protection by name, and
+  a claimed change that rewrote both a result and its expected answer was applied with nothing named. Reproduced on
+  1.0.0 through `warden tagteam --claim-commit` with isolation on, and gone with this change. The report fields are
+  `test_files` and `read_files` on `PytestSuiteRun`; no run record field was added or changed. The Judge's own sentence
+  for these paths still reads "tests or test settings were changed".
+- **A suite report that pytest's printed summary contradicts is not believed.** If a line of pytest's own summary counts
+  failed or errored tests and the report lists none, the run is recorded as not run, with the reason. Printed text is
+  still never used to approve a run. Reproduced on 1.0.0: code under test that read `WARDEN_SUITE_REPORT` and
+  `WARDEN_SUITE_NONCE` and wrote its own all-passed report at exit made a failing suite green, with the sandbox on.
+  This stops that forger, and an obfuscated one; it does not stop one that also silences pytest's summary (see
+  `docs/LIMITS.md`, KNOWN DEFECTS). Tests: `tests/test_suite_forged_report.py`, `tests/test_suite_material.py`.
+- **A file hidden by `.git/info/exclude` now makes the folder dirty.** `.git/info/exclude` lives inside the repository, so
+  turning off the user's and the system's git configuration did not turn it off, and an untracked `conftest.py` named there
+  made a dirty folder look clean. Reproduced on 1.0.0 (README KNOWN DEFECT, `docs/LIMITS.md`): the run went on, and a planted
+  conftest that rewrote failing tests as passed ended with a green start. `gitstate.tree_state` now also lists untracked
+  files with `git ls-files --others --exclude-per-directory=.gitignore` (which reads the committed `.gitignore` files and
+  not `info/exclude`) and reports the ones `git status` did not show. A file a committed `.gitignore` ignores is still
+  not seen, as before. Tests: `tests/test_gitstate_info_exclude.py`.
+- **Warden's protected-file list now covers what the Judge's list covers.** Added: `sitecustomize.py`, `usercustomize.py`,
+  `*.pth`, `test.py`, `test*.txt`, `.gitattributes`, `package.json`, and the folders `__tests__`, `githooks` and
+  `.git-hooks`. The Judge adds its own list to the one Warden names, so a path only one of them knew was still held; this
+  keeps Warden's list from falling behind. The Judge's `hooks/` folder is left out on purpose (Warden protects the folder
+  `core.hooksPath` names). Test: `tests/test_protected_agreement.py`; no existing test was edited.
+- Suggested version for this change: 1.1.0 (behavior added, nothing removed). No version change is made here; releasing
+  is the owner's call.
 - **Pin.** The pin on ghost_tools moves from `572fb31` to `801018f`, the head of its `main` on 2026-11-14 (still
   1.10.14), in `pyproject.toml` (the `ghost` extra), `.github/workflows/tests.yml` (every job that checks it out and the
   `circuit` job's `--expect`) and `STACK.md`. Reason: the CNS `stack` job's repin check requires the manifest to name
