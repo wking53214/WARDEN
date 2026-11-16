@@ -21,8 +21,8 @@ permissions:
 #   JUDGE       0.6.0   0880770249bdf91d54fb66f60f536c4c4cb136f7
 # These four are the last set this repository's CI tested on its own. None of them is claimed to be the head of any
 # repository's `main`, and a sibling may have moved on. Whether the set that lands works together is checked by the
-# `stack` job in the CNS repository (github.com/wking53214/CNS), not here. The cns extras of the ghost_tools, SWIZZLE and ASSAY commits
-# are at the CNS v4.0.0 tag, one release behind the pin here (those extras are not installed here). The CNS dependency of the JUDGE commit is the v4.0.0 tag; Judge is
+# `stack` job in the CNS repository (github.com/wking53214/CNS), not here. The cns extra of the ghost_tools commit is the CNS v4.1.0 tag, the same as
+# the pin here; those of the SWIZZLE and ASSAY commits are at an older tag, behind it (those extras are not installed here). The CNS dependency of the JUDGE commit is the v4.0.0 tag; Judge is
 # installed with --no-deps, so CNS there is the pin of this repository.
 # CNS is pinned by the tag `v4.1.0` in `pyproject.toml` (an annotated tag that peels to the commit c84ef8c).
 # The `assay-latest` job is the one place a sibling is taken at its newest commit, on purpose, and it cannot

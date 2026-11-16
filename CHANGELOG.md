@@ -15,6 +15,11 @@ No version change.
 
 ### Changed
 
+- **Pin.** The pin on ghost_tools moves from `801018f` to `9acd655`, the head of its `main` on 2026-11-16 (still
+  1.10.14), in `pyproject.toml` (the `ghost` extra), `.github/workflows/tests.yml` (every job that checks it out and the
+  `circuit` job's `--expect`) and `STACK.md`. Reason: ghost_tools' `cns` extra at `801018f` is the CNS v4.0.0 tag and at
+  `9acd655` it is v4.1.0, so with the old pin the install file cannot hold ghost-tools and CNS v4.1.0 together, and the
+  CNS `stack` job's `seat_pins` check fails on it. No version change, no code change and no test was edited.
 - **Pin.** The pin on ghost_tools moves from `572fb31` to `801018f`, the head of its `main` on 2026-11-14 (still
   1.10.14), in `pyproject.toml` (the `ghost` extra), `.github/workflows/tests.yml` (every job that checks it out and the
   `circuit` job's `--expect`) and `STACK.md`. Reason: the CNS `stack` job's repin check requires the manifest to name
