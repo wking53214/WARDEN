@@ -1,6 +1,6 @@
 # Stack role: Warden
 
-**ASSURANCE (not the live decision path).**
+**ASSURANCE (not the orchestrator path).**
 
 The governor. Runs the loop and is the only part allowed to write. A named human grant, the target's suite green before and after, the adversary's proofs, the inspector's re-inspection, and a durable record. Never certifies itself.
 
@@ -103,8 +103,8 @@ earlier recorded run (2026-10-14, every seat live on a scratch repository, `ACCE
 see Warden's `docs/REGISTRY.json`) used the older circuit that seated them.
 
 ```text
-Live path: Admission → OBSERVE/Keys → Locks → PERCEIVE → Decision → Conservation → Execution → Custody
-Assurance: ASSAY · ghost_tools · SWIZZLE · Warden · Judge  (this circuit, off the live path)
+Orchestrator path: Admission → OBSERVE/Keys → Locks → PERCEIVE → Decision → Conservation → Execution → Custody
+Assurance: ASSAY · ghost_tools · SWIZZLE · Warden · Judge  (this circuit, off the orchestrator path)
 ```
 
 CNS (public, github.com/wking53214/CNS) holds the interoperability contracts. No repository in the circuit modifies it.

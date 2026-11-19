@@ -50,15 +50,15 @@ Warden sits in an assurance circuit of five repositories. It is the governor: th
 | Governor | Warden | Enforces human approval, measures the test suite, requires rescan, restores rejected changes |
 | Evidence evaluator | Judge | Reads the run's evidence and returns ACCEPT, REJECT, or INSUFFICIENT |
 
-The table above matches the authoritative one in [STACK.md](STACK.md). The circuit is an assurance layer, not the live execution path. What backs each main claim, and what does not, is in [docs/VERIFICATION.md](docs/VERIFICATION.md). CNS holds the shared interoperability contracts and is not a decision-making seat. See [STACK.md](STACK.md) for the full description.
+The table above matches the authoritative one in [STACK.md](STACK.md). The circuit is an assurance layer, not the orchestrator path. What backs each main claim, and what does not, is in [docs/VERIFICATION.md](docs/VERIFICATION.md). CNS holds the shared interoperability contracts and is not a decision-making seat. See [STACK.md](STACK.md) for the full description.
 
 ## WHAT THE HUMAN GRANT IS, AND WHAT WARDEN DOES NOT GOVERN
 
-`--authorize NAME` is authorization supplied to Warden: a named person says "I approve this change". It is not authentication. Warden does not check that the name is really that person (any text works), so the boundary rests on who is allowed to run the command. Warden also does not sandbox anything: the target's tests and the seats run with the user's own access.
+`--authorize NAME` is authorization supplied to Warden: a named person says "I approve this change". It is not authentication. Warden does not check that the name is really that person (any text works), so the boundary rests on who is allowed to run the command. Warden is not a complete sandbox, and what it confines depends on how it is run. By default (since 0.20.0) the Drafter, the Finisher and the Judge each run in their own program, and so does the target's own pytest suite, closed in by the operating system (Linux Landlock file rules and a seccomp filter): they can read the project and their own code, write only to a scratch folder (the suite may also write three cache folders inside the project), and use no network. On a machine that cannot give those limits the run is refused; it is not run open. With `--no-isolation` the target's tests and the seats run with the user's own access, and the claim seat and a Cargo suite are never confined.
 
 Warden does not:
 
-- govern the live execution path of the owner's wider library (≡TACK); it is an assurance layer beside that path;
+- govern the orchestrator path of the owner's wider library (≡TACK); it is an assurance layer beside that path;
 - replace CNS, which supplies shared contracts and makes no decisions;
 - prove who a human is from a supplied name;
 - guarantee isolation of untrusted code (the Drafter, the Finisher and the Judge are each run in their own confined program by default since 0.20.0, and so is the target's own pytest suite, unless `--no-isolation` is given; the claim seat and a Cargo suite are not confined);
@@ -71,7 +71,7 @@ Warden belongs to the assurance circuit: five repositories that check changes to
 
 - **Warden receives** a proposed change (through the claim seat, or from an optional Drafter), the inspector's findings from ghost_tools, the proofs and attacks from SWIZZLE, and the answer-key score from ASSAY.
 - **Warden hands on** the measured evidence to Judge, and one JSON record (and optionally a receipt) to the person who ran it.
-- **Place in ≡TACK.** ≡TACK is the owner's whole library of repositories. The circuit sits in its assurance layer, beside the live decision path and not on it (see [STACK.md](STACK.md)). Warden is not shared infrastructure: only the circuit uses it, and the released Drafter and Burnish still import its data shapes.
+- **Place in ≡TACK.** ≡TACK is the owner's whole library of repositories. The circuit sits in its assurance layer, beside the orchestrator path and not on it (see [STACK.md](STACK.md)). Warden is not shared infrastructure: only the circuit uses it, and the released Drafter and Burnish still import its data shapes.
 
 ## CNS CONNECTION
 
@@ -81,6 +81,19 @@ CNS is the repository that holds the shared row shapes the circuit repositories 
 - **CNS's side:** `contracts/warden-stack.json` in CNS carries Warden.
 - **List status:** two-way (checked against CNS commit `03eca66` on 2026-11-10).
 - **Built, tested, used:** the connection is built. The tests pass with CNS installed (`tests/test_cns_strict.py` and the pin checks in `tests/test_docs.py`). Every normal run uses it: each run builds a CNS suite row and reads CNS finding, attack and seat rows. The connection list does not mark Drafter, Burnish and WATCHER_MCU as released; that is CNS's to update.
+
+## AUTHORITY, TRUST AND FAILURE BEHAVIOR
+
+How the jobs are kept apart in this repository (the text above and `docs/LIMITS.md` hold the detail):
+
+- **Policy and authorization.** A named person, supplied as `--authorize NAME`. Warden does not authenticate it.
+- **Evaluation.** Shared by two seats. Judge returns ACCEPT, REJECT or INSUFFICIENT from the run's evidence. Warden makes the run's decision itself ([STACK.md](STACK.md)): it refuses or stops a run on its own checks before any Judge is asked (a missing or refused grant, SWIZZLE proofs that do not hold, a suite that is not green), and it can lower a Judge's ACCEPT, to a hold when a check did not run or a claimed commit removes code, and to REJECT when Ghost scores under the ASSAY floor. The one thing Warden cannot do alone is say a plain ACCEPT: with no Judge seated a run ends `ACCEPT_UNVERIFIED` at best.
+- **Enforcement.** Warden is the only seat that writes. It applies a change, measures the target's tests before and after, requires a rescan, and puts the tree back if a check fails. Its writes are gated by the human grant.
+- **Evidence generation.** Warden's JSON run record, and an optional receipt. Verification of that evidence is the reader's job: the chronicle file is unsigned.
+- **Fail behavior.** Missing Ghost is treated as unknown, never clean. A SWIZZLE attack that did not run holds the run as `ACCEPT_UNVERIFIED`. Only exit code 0 means accepted. Declined Ghost checks are listed in the record, so a plain ACCEPT is not a claim that every check ran.
+- **Bypass conditions.** Anyone who can run the command can supply any name. `--reuse-chronicle-suite` trusts an editable file. The target's own tests run with the user's access when `--no-isolation` is given (a Cargo suite and the claim seat always do). A forged hub passed with `--cns` is accepted. All of these are in `docs/LIMITS.md`.
+
+Checked 2026-11-17 at commit `26d8128` (EXECUTED, Python 3.13 on Linux with Landlock). The whole suite, run the way CI's `pytest` job runs it (`ASSAY_ROOT` set, the pinned Judge installed, `WARDEN_FAIL_ON_SKIP=1`), passed with nothing skipped; it took about twelve minutes on a two-core machine. `ruff check .` and `mypy` reported nothing. `tools/circuit_smoke.py --real-judge`, against live checkouts of ghost_tools, SWIZZLE and ASSAY at the commits the `circuit` CI job pins, passed: the real Judge returned ACCEPT for a one-line README change, and an edit to a test file ended held as `ACCEPT_UNVERIFIED` with the tree put back. A direct probe of the suite confinement: a test that wrote a file outside the project and a test that opened a network socket both failed when confined, and both passed with confinement off. Not run: CI, Python 3.11 and 3.12, a Cargo target.
 
 ## LICENSE
 
@@ -136,7 +149,7 @@ Count the tests with `pytest --collect-only -q`; this README states no count, be
 The full list is in [docs/LIMITS.md](docs/LIMITS.md). The ones to know first:
 
 - `--authorize` takes a name and does not check that it belongs to a real person. The boundary rests on who can run the command.
-- The target's tests and the seats run with your own access. Warden notices some misbehavior; it is not a sandbox.
+- With `--no-isolation`, the target's tests and the seats run with your own access. By default they are confined as described above, which is a floor for checked code and not a wall against a determined attacker; the claim seat and a Cargo suite are never confined.
 - A change that passes every check can still be wrong: the mutation check is declined by design.
 - A plain `ACCEPT` does not mean every Ghost check ran. Declined checks are listed in the run record.
 - The loop has been run on scratch projects and on the circuit's own repositories, not on a third-party project ([docs/REGISTRY.json](docs/REGISTRY.json)).
