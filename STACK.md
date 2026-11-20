@@ -78,7 +78,7 @@ own; none is claimed to be the head of any repository's `main`, none is tagged, 
 set that lands works together is checked by the `stack` job in the CNS repository, not here.
 CNS is the exception: `pyproject.toml` pins it by the tag `v4.1.0`, spelled the same way in every repository of the
 circuit, and its row gives the commit the tag is (an annotated tag, so the row gives the commit it peels to).
-The ASSAY commit (`3d50a70`, 0.11.10) has its cns extra at the CNS v2.3.0 tag. The JUDGE commit (`0880770`, 0.6.0) depends on CNS at the v3.0.0 tag, the pin here; Judge is installed with `--no-deps`, so CNS there is this repository's pin. CNS's stack manifest (`contracts/warden-stack.json`) names a JUDGE commit, `b20c76c` (0.5.6), other than this tested set's `0880770` (0.6.0); this section states the tested set, not the manifest. The Judge moved from 0.5.1 to 0.5.3 in an earlier set so that Warden's own `circuit` job exercises the rulings of the Judge that ships.
+The ASSAY commit (`4da9641`, 0.11.10) has its cns extra at the CNS v2.3.0 tag. The JUDGE commit (`0880770`, 0.6.0) depends on CNS at the v3.0.0 tag, the pin here; Judge is installed with `--no-deps`, so CNS there is this repository's pin. CNS's stack manifest (`contracts/warden-stack.json`) names a JUDGE commit, `b20c76c` (0.5.6), other than this tested set's `0880770` (0.6.0); this section states the tested set, not the manifest. The Judge moved from 0.5.1 to 0.5.3 in an earlier set so that Warden's own `circuit` job exercises the rulings of the Judge that ships.
 `pyproject.toml` pins the `ghost` extra to the same ghost_tools commit, and `tests/test_docs.py` fails if any
 place that states one of them disagrees with the others.
 
@@ -86,7 +86,7 @@ place that states one of them disagrees with the others.
 |---|---|---|
 | ghost_tools | 1.10.14 | `9acd655f7cc387b4ff355c90b4449fb8bb5e809e` |
 | SWIZZLE | 0.8.13 | `3fcb27f62add4ba4355a55dff6f3a180fda816ed` |
-| ASSAY | 0.11.10 | `3d50a70566f8c2278b0fc5d110309f3ace75bfdf` |
+| ASSAY | 0.11.10 | `4da96411eb09f25e68a024cd1aeb004322c1c99f` |
 | JUDGE | 0.6.0 | `0880770249bdf91d54fb66f60f536c4c4cb136f7` |
 | CNS | v4.1.0 | `c84ef8c60079aae1753f92d9169d89081c670c22` |
 

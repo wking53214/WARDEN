@@ -207,7 +207,7 @@
       "remote_verification": "TIE is a public repository outside the circuit; the target was a fresh clone of main.",
       "repository": "wking53214/TIE (not one of the circuit's repositories)",
       "subject_binding": "UNKNOWN",
-      "swizzle_involvement": "SWIZZLE 0.8.13 at 3fcb27f: prove 12 of 12, 28 of 28 attacks on the governor held; ASSAY 0.11.10 at 3d50a70: Ghost caught 5 of 7 known failure modes (floor 3), 60/60 manifest claims hold.",
+      "swizzle_involvement": "SWIZZLE 0.8.13 at 3fcb27f: prove 12 of 12, 28 of 28 attacks on the governor held; ASSAY 0.11.10 at 4da9641: Ghost caught 5 of 7 known failure modes (floor 3), 60/60 manifest claims hold.",
       "tests_executed": "TIE suite 195 passed before and after (CNS installed), run under the seat limits; Judge 0.6.0 (0880770) read finisher_ran = true and returned ACCEPT.",
       "unknown": "2026-11-13. First recorded live run on a repository outside the circuit, on Warden 0.20.0 with isolation by default, and the real Judge 0.6.0 reading the Finisher field. An earlier run the same day on 0.19.0 with the flag given also ended ACCEPT; this row replaces it."
     }
