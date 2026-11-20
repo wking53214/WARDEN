@@ -38,13 +38,13 @@ def test_an_executable_bit_alone_gives_a_different_fingerprint(tmp_path):
     assert _fingerprint(plain) != _fingerprint(marked)
 
 
-def test_the_same_tree_hashes_the_same_and_the_hash_stays_sixteen_hex_digits(tmp_path):
+def test_the_same_tree_hashes_the_same_and_the_hash_is_the_full_sha256_hex_digest(tmp_path):
     files = {"pkg/__init__.py": b"VALUE = 1\n", "README.md": b"# demo\n", "run.sh": b"echo hi\n"}
     one = _tree(tmp_path / "one", files, executable=("run.sh",))
     two = _tree(tmp_path / "two", files, executable=("run.sh",))
     first = _fingerprint(one)
     assert first == _fingerprint(two) == _fingerprint(one)
-    assert len(first) == 16 and set(first) <= set("0123456789abcdef")
+    assert len(first) == 64 and set(first) <= set("0123456789abcdef")
 
 
 def test_an_empty_tree_and_a_tree_of_one_empty_file_differ(tmp_path):
