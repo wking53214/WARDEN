@@ -86,7 +86,7 @@ place that states one of them disagrees with the others.
 |---|---|---|
 | ghost_tools | 1.10.14 | `9acd655f7cc387b4ff355c90b4449fb8bb5e809e` |
 | SWIZZLE | 0.8.13 | `3fcb27f62add4ba4355a55dff6f3a180fda816ed` |
-| ASSAY | 0.11.10 | `3d50a70566f8c2278b0fc5d110309f3ace75bfdf` |
+| ASSAY | 0.11.10 | `4da96411eb09f25e68a024cd1aeb004322c1c99f` |
 | JUDGE | 0.6.0 | `0880770249bdf91d54fb66f60f536c4c4cb136f7` |
 | CNS | v4.1.0 | `c84ef8c60079aae1753f92d9169d89081c670c22` |
 
