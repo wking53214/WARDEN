@@ -35,7 +35,7 @@ def test_a_tree_with_a_non_utf8_file_name_fingerprints(tmp_path):
     if not created:
         pytest.skip("this filesystem cannot create a file name that is not valid UTF-8 (the attempt was made)")
     first = _fingerprint(tmp_path)
-    assert len(first) == 16
+    assert len(first) == 64
     (tmp_path / "other.py").write_text("y = 2\n", encoding="utf-8")
     assert _fingerprint(tmp_path) != first
 
@@ -62,4 +62,4 @@ def test_the_hash_of_a_tree_with_ordinary_names_is_unchanged(tmp_path):
         encoded = name.encode()
         digest.update(len(encoded).to_bytes(8, "big") + encoded + exec_bit + len(data).to_bytes(8, "big") + data)
     assert stat.S_IMODE((tmp_path / "run.sh").stat().st_mode) & 0o100
-    assert _fingerprint(tmp_path) == digest.hexdigest()[:16]
+    assert _fingerprint(tmp_path) == digest.hexdigest()

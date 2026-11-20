@@ -85,7 +85,7 @@ def test_a_target_that_differs_elsewhere_is_still_accepted_and_the_row_says_fals
     assert code == 3, payload["reason"]          # record only: nothing new is refused
     row = payload["claim"]
     assert row["base_matches_parent"] is False
-    assert row["target_tree_digest"] == row["base_tree_digest"] and len(row["target_tree_digest"]) == 16
+    assert row["target_tree_digest"] == row["base_tree_digest"] and len(row["target_tree_digest"]) == 64
 
 
 def test_a_target_whose_executable_bit_differs_says_false(tmp_path, capsys):
