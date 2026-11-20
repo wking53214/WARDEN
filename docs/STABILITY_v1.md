@@ -31,7 +31,7 @@ Every run prints one JSON document, and its `schema` field says `cns.run/1`. The
 
 `schema`, `decision`, `converged`, `cycles`, `finished`, `put_back`, `held_digest`, `reason`, `notes`, `observed`, `reobserved`, `contract`, `released_seats`, `versions`, `swizzle_sound`, `allow_uncommitted_instruments`, `unmeasured`, `ghost_scan`, `ghost_baseline`, `drafter_skipped`, `informational`, `verdict`, `claim`, `evidence`, `suite_passes`, `chronicle`
 
-Not promised: the wording of `reason` and `notes`, the order of fields, and the order of notes. A field may gain new entries inside it; it does not lose the ones it has.
+Not promised: the wording of `reason` and `notes`, the order of fields, and the order of notes. A field may gain new entries inside it; it does not lose the ones it has. `versions.target.path` names the folder that was governed (a record from an older Warden lacks it).
 
 The record's shape is partly defined by the shared CNS package, which Warden pins. A CNS change that breaks the record is treated as a 2.0.0 change here.
 
