@@ -272,4 +272,6 @@ def report(*, warden_module, contract: str, version: str, ghost_root, swizzle_ro
         "assay": instrument(assay_root, "assay_production"),
         "seats": seats,
         "joins": [instrument(j) for j in joins],
+        # The folder that was governed, so a reader of the record (the Watcher) can refuse to write into it.
+        "target": {"path": str(target)} if target is not None else None,
     }

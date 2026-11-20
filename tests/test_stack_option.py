@@ -148,6 +148,8 @@ def test_the_stack_seats_everyone_with_names_matched_case_blind(tmp_path, capsys
     assert versions["seats"]["judge"]["spec"] == "judge.seat:Judge"
     assert versions["seats"]["finisher"]["spec"] == "burnish.finisher:Burnish"
     assert payload["verdict"]["judge"] == "stack judge"
+    # The record names the folder that was governed, so the Watcher can refuse to write into it.
+    assert versions["target"] == {"path": str(target.resolve())}
     # The seats were told the grant's scope before they were asked.
     assert (target / "NOTE.md").read_text(encoding="utf-8") == "scope=code\n"
     assert (target / "README.md").read_text(encoding="utf-8") == "finished under code\n"
