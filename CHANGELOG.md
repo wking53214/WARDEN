@@ -13,6 +13,12 @@ decision, and the repositories that pin Warden (Judge, and the released Drafter,
 
 No version change.
 
+### Added
+
+- **The run record names the governed folder.** `warden tagteam` prints `governed_folder`, the absolute path of the folder it governed,
+  so a reader of the record (WATCHER_MCU) no longer has to be told where it is. CNS's `RunRecord.from_dict` reads the record unchanged
+  (`tests/test_ghost_honesty.py`). Listed in `docs/STABILITY_v1.md`.
+
 ### Changed
 
 - **Pin.** The pin on ghost_tools moves from `801018f` to `9acd655`, the head of its `main` on 2026-11-16 (still
