@@ -1307,7 +1307,7 @@ def _judging(target: Path, rel: str) -> bool:
 
 
 def _fingerprint(target: Path) -> str:
-    """A hash of the tree, the full SHA-256 and never shortened, so a proposal can say which state it was written against.
+    """A hash of the tree (the full SHA-256, never shortened), so a proposal can say which state it was written against.
 
     The hash covers the number of files, and for each file its length-prefixed path, the file's executable bit and its
     length-prefixed bytes, so no shift of a boundary between a path and its content, or between two files, can give
