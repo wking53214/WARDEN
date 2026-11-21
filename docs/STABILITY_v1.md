@@ -29,9 +29,7 @@ A later release may add a decision. A new decision never exits 0.
 
 Every run prints one JSON document, and its `schema` field says `cns.run/1`. These top-level fields keep their names, their meaning and their kind of value (text, number, true or false, list, or record):
 
-`schema`, `decision`, `converged`, `cycles`, `finished`, `put_back`, `held_digest`, `reason`, `notes`, `observed`, `reobserved`, `contract`, `released_seats`, `versions`, `swizzle_sound`, `allow_uncommitted_instruments`, `unmeasured`, `ghost_scan`, `ghost_baseline`, `drafter_skipped`, `informational`, `verdict`, `claim`, `evidence`, `suite_passes`, `chronicle`, `governed_folder`
-
-`governed_folder` (added 2026-11-19) is the absolute path of the folder the run governed. It is not part of `cns.run/1`; CNS reads the record without it. The Watcher uses it to refuse writing an account into that folder.
+`schema`, `decision`, `converged`, `cycles`, `finished`, `put_back`, `held_digest`, `reason`, `notes`, `observed`, `reobserved`, `contract`, `released_seats`, `versions`, `swizzle_sound`, `allow_uncommitted_instruments`, `unmeasured`, `ghost_scan`, `ghost_baseline`, `drafter_skipped`, `informational`, `verdict`, `claim`, `evidence`, `suite_passes`, `chronicle`
 
 Not promised: the wording of `reason` and `notes`, the order of fields, and the order of notes. A field may gain new entries inside it; it does not lose the ones it has. `versions.target.path` names the folder that was governed (a record from an older Warden lacks it).
 

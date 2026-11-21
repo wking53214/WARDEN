@@ -15,9 +15,7 @@ No version change.
 
 ### Added
 
-- **The run record names the governed folder.** `warden tagteam` prints `governed_folder`, the absolute path of the folder it governed,
-  so a reader of the record (WATCHER_MCU) no longer has to be told where it is. CNS's `RunRecord.from_dict` reads the record unchanged
-  (`tests/test_ghost_honesty.py`). Listed in `docs/STABILITY_v1.md`.
+- **One place names the governed folder.** A separate `governed_folder` field was added on 2026-11-19 beside `versions.target.path`; it was never read by anything, so it is removed again. A reader (WATCHER_MCU) uses `versions.target.path`. CNS's `RunRecord.from_dict` still reads the record (`tests/test_ghost_honesty.py`).
 
 ### Changed
 
