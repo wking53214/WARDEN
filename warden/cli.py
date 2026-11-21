@@ -1038,9 +1038,6 @@ def _run_team(args, auth, findings, drafter, finisher, judge, warnings=()) -> in
         "observed": [d.identity for d in result.observed],
         "reobserved": [d.identity for d in result.reobserved],
         "contract": CONTRACT,
-        # The folder this run governed, resolved to an absolute path, so a reader of the record (the Watcher)
-        # can refuse to write into it without being told where it is. Not part of cns.run/1; CNS ignores it.
-        "governed_folder": str(Path(args.path).resolve()),
         "released_seats": released,
         "versions": report,
         "swizzle_sound": result.swizzle_sound,

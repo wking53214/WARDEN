@@ -305,7 +305,7 @@ def test_the_cli_prints_both_new_fields(tmp_path, monkeypatch, capsys, instrumen
     assert payload["ghost_scan"]["status"] == "ok" and payload["ghost_scan"]["files_scanned"] == 3
 
 
-def test_the_record_names_the_governed_folder_and_cns_still_reads_it(tmp_path, monkeypatch, capsys, instruments):
+def test_the_record_names_the_governed_folder_in_versions_and_cns_still_reads_it(tmp_path, monkeypatch, capsys, instruments):
     from cns.run import RunRecord
     t = _repo(tmp_path / "t")
     (tmp_path / "g").mkdir(), (tmp_path / "s").mkdir(), (tmp_path / "a").mkdir()
@@ -315,8 +315,9 @@ def test_the_record_names_the_governed_folder_and_cns_still_reads_it(tmp_path, m
               "--swizzle-root", str(tmp_path / "s"), "--assay-root", str(tmp_path / "a"),
               "--authorize", "william", "--reason", "x"])
     payload = json.loads(capsys.readouterr().out)
-    assert payload["governed_folder"] == str(t.resolve())
-    RunRecord.from_dict(payload)  # the extra field does not break the shared record contract
+    assert payload["versions"]["target"]["path"] == str(t.resolve())
+    assert "governed_folder" not in payload  # one place names the folder, not two
+    RunRecord.from_dict(payload)  # the shared record contract still reads the record
 
 
 # -- ids change once ----------------------------------------------------------------------------
