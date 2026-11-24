@@ -60,6 +60,7 @@ The table below is generated from each module's own docstring by `tools/gen_docs
 | module | what it is |
 |---|---|
 | `warden` | Warden: the discipline of change. |
+| `warden.approval` | Checking that a person, not a process, approved a change. |
 | `warden.audit` | Rules 5 and 9: the defect audit file, with IDs that never change meaning. |
 | `warden.authorization` | Human authority boundary. |
 | `warden.chronicle` | The chronicle: one line per run, keyed by (origin, base commit, claimed commit); the next run settles its promises. |
