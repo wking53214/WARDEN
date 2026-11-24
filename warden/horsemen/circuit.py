@@ -100,7 +100,8 @@ def receipt_for_run(*, result: Any, target: Path, authorization: Optional[Author
                    subject=authorization.subject, reason=authorization.reason,
                    authority_source=authorization.authority)
     if not authorization.verified_by:
-        state.notes.append("UNKNOWN: the approver's identity was not verified (a name was typed; nobody confirmed it on a terminal)")
+        state.notes.append("UNKNOWN: the approver's identity was not verified "
+                           "(a name was typed; nobody confirmed it on a terminal)")
 
     changed = sorted({e.path for c in result.cycles if c.applied and c.proposal for e in c.proposal.edits}
                      | {e.path for e in (result.finish.edits if result.finish is not None and result.finished else ())})

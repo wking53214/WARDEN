@@ -90,8 +90,9 @@ def grant_scoped(*, actor, operation, subject, scope, change_class, proposal_id,
             f"High-risk change class {change_class.value} requires a prior adversarial verdict id (SWIZZLE)."
         )
     if not authority_provenance.strip():
-        authority_provenance = (f"human grant by {actor}, confirmed on the terminal" if authority_source == "human_operator"
-                                else f"name given as {actor!r}; NOT verified")
+        authority_provenance = (
+            f"human grant by {actor}, confirmed on the terminal" if authority_source == "human_operator"
+            else f"name given as {actor!r}; NOT verified")
     base = base_grant(
         actor=actor, operation=operation, subject=subject,
         scope=f"{scope.repository}:{scope.baseline_id}:{change_class.value}",

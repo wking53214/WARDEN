@@ -12,7 +12,6 @@ import threading
 
 import pytest
 
-import warden.tagteam as tagteam
 from warden import approval, ghost
 from warden.authorization import grant
 from warden.horsemen import receipt_for_run

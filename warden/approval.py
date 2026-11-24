@@ -17,10 +17,8 @@ from __future__ import annotations
 
 import os
 import secrets
-import sys
 from typing import Optional
 
-from .authorization import canonical
 
 #: What `Authorization.verified_by` holds after a person answered on the terminal.
 TERMINAL = "terminal"

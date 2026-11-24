@@ -764,7 +764,8 @@ def _keep(args) -> int:
         return _stop("REFUSED", "a reason is required")
     try:
         auth = grant(args.authorize, KEEP_OPERATION, f"{path.resolve()}@{args.digest}", "held-result", args.reason,
-                     verified_by=approval.confirm_on_terminal(args.authorize, KEEP_OPERATION, f"{path.resolve()}@{args.digest}", args.reason))
+                     verified_by=approval.confirm_on_terminal(
+                         args.authorize, KEEP_OPERATION, f"{path.resolve()}@{args.digest}", args.reason))
         outcome = keep_held(path, args.digest, auth)
     except (Unauthorized, HeldError) as e:
         return _stop("REFUSED", str(e))
@@ -850,7 +851,8 @@ def _tagteam(args) -> int:
             return _stop("REFUSED", "a reason is required")
         try:
             auth = grant(args.authorize, "transform", str(path.resolve()), args.scope, args.reason,
-                         verified_by=approval.confirm_on_terminal(args.authorize, "transform", str(path.resolve()), args.reason))
+                         verified_by=approval.confirm_on_terminal(
+                             args.authorize, "transform", str(path.resolve()), args.reason))
         except Unauthorized as e:
             return _stop("REFUSED", str(e))
     warnings: list[str] = []
