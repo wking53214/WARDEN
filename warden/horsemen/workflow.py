@@ -147,7 +147,7 @@ class HorsemenWorkflow:
         return hof
 
     def authorize(self, workflow_id, *, actor, operation, subject, reason, scope=None,
-                  authority_source="human_operator", authority_provenance=""):
+                  authority_source="unverified_claim", authority_provenance=""):
         st = self.states[workflow_id]
         if not st.proposal_id:
             raise Unauthorized("Cannot authorize without a proposal.")

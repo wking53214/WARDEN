@@ -102,7 +102,7 @@ def _fingerprint_of(files: dict, where: Path) -> str:
 
 
 @pytest.fixture
-def governed(tmp_path, monkeypatch, capsys):
+def governed(tmp_path, monkeypatch, capsys, confirmed_on_terminal):
     """Commit 3 of five governed on a clone that stands at commit 2, with a Finisher that appends to the README."""
     reference = tmp_path / "reference"
     shas = _reference(reference)

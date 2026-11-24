@@ -97,7 +97,10 @@ def receipt_for_run(*, result: Any, target: Path, authorization: Optional[Author
     flow.propose(wid, {"cycles": len(result.cycles), "proposals": len(proposals),
                        "intents": [p.intent for p in proposals][:20]})
     flow.authorize(wid, actor=authorization.actor, operation=authorization.operation,
-                   subject=authorization.subject, reason=authorization.reason)
+                   subject=authorization.subject, reason=authorization.reason,
+                   authority_source=authorization.authority)
+    if not authorization.verified_by:
+        state.notes.append("UNKNOWN: the approver's identity was not verified (a name was typed; nobody confirmed it on a terminal)")
 
     changed = sorted({e.path for c in result.cycles if c.applied and c.proposal for e in c.proposal.edits}
                      | {e.path for e in (result.finish.edits if result.finish is not None and result.finished else ())})
@@ -112,6 +115,8 @@ def receipt_for_run(*, result: Any, target: Path, authorization: Optional[Author
 
     after = baseline_sha + ("+uncommitted" if changed and not result.put_back else "")
     verdict = _FINAL_VERDICTS.get(result.decision, result.decision)
+    if verdict == "APPROVED" and not authorization.verified_by:
+        verdict = "REQUIRES_HUMAN_REVIEW"   # an unverified approver can not carry a change to APPROVED
     receipt = flow.finalize(wid, after_revision=after, final_verdict=verdict, cns_readiness="UNKNOWN")
     logger.info("receipt %s: %s, %d handoff(s)", receipt.receipt_id, receipt.final_verdict, len(receipt.handoff_ids))
     return receipt

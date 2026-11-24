@@ -266,7 +266,7 @@ def claim_row(result: Any, authorization: Any, versions_report: Optional[Mapping
         "diff_bytes": claim.get("diff_bytes"),
         "files": _files(result, target, claim, cycle),
         "actor": None if authorization is None else authorization.actor,
-        "authority": None if authorization is None else HUMAN_AUTHORITY,
+        "authority": None if authorization is None else authorization.authority,
         "authorization_id": _authorization_id(authorization),
         "scope": None if authorization is None else authorization.scope,
         "transformation_id": _transformation_id(proposal),

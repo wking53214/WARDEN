@@ -13,6 +13,11 @@ decision, and the repositories that pin Warden (Judge, and the released Drafter,
 
 No version change.
 
+### Security
+
+- **A typed name no longer earns a `human_operator` receipt.** An outside review approved a credential-shaped change as "Claude Code agent" and the receipt read `authority_source: human_operator`: the approver was a free-text name checked only against a short blocklist. Now `Authorization.verified_by` is set only when someone types a fresh random challenge (`approve <code>`) on the controlling terminal (`warden/approval.py`, read from the tty device, not stdin). Otherwise the receipt says `unverified_claim`, adds an UNKNOWN note, and a run that would be APPROVED becomes REQUIRES_HUMAN_REVIEW. Limit: this is not a signature, since a process that owns a pseudo-terminal can answer. The real fix is a signed approval checked against the HUMANITY/SIGNET roster, which Warden does not yet call.
+- **Ghost secret scanning is back on.** The ghost_buster call no longer passes `--no-secrets`. It may surface findings that were hidden before; it has not been run here against a live ghost_tools.
+
 ### Added
 
 - **One place names the governed folder.** A separate `governed_folder` field was added on 2026-11-19 beside `versions.target.path`; it was never read by anything, so it is removed again. A reader (WATCHER_MCU) uses `versions.target.path`. CNS's `RunRecord.from_dict` still reads the record (`tests/test_ghost_honesty.py`).

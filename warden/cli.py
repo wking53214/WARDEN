@@ -25,6 +25,7 @@ from pathlib import Path
 
 from . import CONTRACT, __version__
 from .authorization import Unauthorized, grant
+from . import approval
 from . import audit as audit_file, gitstate, held, isolation, runstate, seatproc, textio, versions
 from . import chronicle
 from . import claim as claimseat
@@ -762,7 +763,8 @@ def _keep(args) -> int:
     if not args.reason.strip():
         return _stop("REFUSED", "a reason is required")
     try:
-        auth = grant(args.authorize, KEEP_OPERATION, f"{path.resolve()}@{args.digest}", "held-result", args.reason)
+        auth = grant(args.authorize, KEEP_OPERATION, f"{path.resolve()}@{args.digest}", "held-result", args.reason,
+                     verified_by=approval.confirm_on_terminal(args.authorize, KEEP_OPERATION, f"{path.resolve()}@{args.digest}", args.reason))
         outcome = keep_held(path, args.digest, auth)
     except (Unauthorized, HeldError) as e:
         return _stop("REFUSED", str(e))
@@ -847,7 +849,8 @@ def _tagteam(args) -> int:
         if not args.reason.strip():
             return _stop("REFUSED", "a reason is required")
         try:
-            auth = grant(args.authorize, "transform", str(path.resolve()), args.scope, args.reason)
+            auth = grant(args.authorize, "transform", str(path.resolve()), args.scope, args.reason,
+                         verified_by=approval.confirm_on_terminal(args.authorize, "transform", str(path.resolve()), args.reason))
         except Unauthorized as e:
             return _stop("REFUSED", str(e))
     warnings: list[str] = []
@@ -1269,7 +1272,8 @@ def _audit(args) -> int:
               "or move the file aside.", file=sys.stderr)
         return 2
     try:
-        auth = grant(args.authorize, "audit", str(root), "documentation", args.reason)
+        auth = grant(args.authorize, "audit", str(root), "documentation", args.reason,
+                     verified_by=approval.confirm_on_terminal(args.authorize, "audit", str(root), args.reason))
     except Unauthorized as e:
         print(f"warden: {e}", file=sys.stderr)
         return 2

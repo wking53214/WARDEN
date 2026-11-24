@@ -56,3 +56,11 @@ def _isolation_off_unless_a_test_is_about_it(request, monkeypatch):
         from warden import cli
 
         monkeypatch.setattr(cli, "ISOLATE_BY_DEFAULT", False)
+
+
+@pytest.fixture
+def confirmed_on_terminal(monkeypatch):
+    """Stands in for a person who typed the challenge on a real terminal. Only tests may do this; the real
+    `warden.approval.confirm_on_terminal` reads /dev/tty and answers "" when nobody is there."""
+    import warden.approval as approval
+    monkeypatch.setattr(approval, "confirm_on_terminal", lambda *a, **kw: approval.TERMINAL)

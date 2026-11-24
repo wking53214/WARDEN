@@ -39,7 +39,7 @@ def measured(monkeypatch):
 
 
 def _run(target: Path, **kw):
-    auth = grant("william", "transform", str(target.resolve()), "documentation", "receipt test")
+    auth = grant("william", "transform", str(target.resolve()), "documentation", "receipt test", verified_by="terminal")
     team = TagTeam(drafter=FakeDrafter(steps=("new\n",)), judge=FakeJudge("ACCEPT", ("fine",)),
                    ghost_tools_root=Path("."), swizzle_root=Path("."), assay_root=Path("."), **kw)
     return team.run(target, findings=[], authorization=auth), auth
@@ -194,7 +194,7 @@ def cli(tmp_path, monkeypatch, capsys, measured):
     return run
 
 
-def test_the_command_line_writes_a_receipt_and_the_json_contract_is_unchanged(cli):
+def test_the_command_line_writes_a_receipt_and_the_json_contract_is_unchanged(cli, confirmed_on_terminal):
     out = cli.tmp / "receipt.json"
     code, payload, err = cli("--receipt", str(out))
     assert code == 0 and payload["decision"] == "ACCEPT"
@@ -272,7 +272,7 @@ def test_the_receipt_writer_itself_refuses_a_special_file_it_is_handed(cli):
     assert not list(cli.tmp.glob(".*.part"))
 
 
-def test_an_existing_receipt_keeps_its_permission_bits_when_it_is_replaced(cli):
+def test_an_existing_receipt_keeps_its_permission_bits_when_it_is_replaced(cli, confirmed_on_terminal):
     out = cli.tmp / "receipt.json"
     out.write_text("{}", encoding="utf-8")
     out.chmod(0o640)
