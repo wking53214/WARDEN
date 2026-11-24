@@ -47,7 +47,7 @@ class ScopedGrant:
     adversarial_verdict_id: Optional[str] = None
     expiration: Optional[str] = None
     delegation_chain: tuple = ()
-    authority_source: str = "human_operator"
+    authority_source: str = "unverified_claim"
     authority_provenance: str = ""
 
     def permits(self, operation, subject, baseline_id, change_class=None,
@@ -83,14 +83,16 @@ class ScopedGrant:
         return True
 
 def grant_scoped(*, actor, operation, subject, scope, change_class, proposal_id, reason,
-                 adversarial_verdict_id=None, authority_source="human_operator",
+                 adversarial_verdict_id=None, authority_source="unverified_claim",
                  authority_provenance="", expiration=None, delegation_chain=()):
     if change_class in HIGH_RISK_CLASSES and not adversarial_verdict_id:
         raise Unauthorized(
             f"High-risk change class {change_class.value} requires a prior adversarial verdict id (SWIZZLE)."
         )
-    if not authority_provenance.strip() and authority_source == "human_operator":
-        authority_provenance = f"human grant by {actor}"
+    if not authority_provenance.strip():
+        authority_provenance = (
+            f"human grant by {actor}, confirmed on the terminal" if authority_source == "human_operator"
+            else f"name given as {actor!r}; NOT verified")
     base = base_grant(
         actor=actor, operation=operation, subject=subject,
         scope=f"{scope.repository}:{scope.baseline_id}:{change_class.value}",

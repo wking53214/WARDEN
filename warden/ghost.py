@@ -236,7 +236,6 @@ def scan(
         "--json",
         *(["--single-repo"] if not joins else []),
         "--no-tests",
-        "--no-secrets",
         "--no-ledger",
         "--no-structure",
         "--no-project",

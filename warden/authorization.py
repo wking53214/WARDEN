@@ -80,6 +80,15 @@ class Authorization:
     granted: bool
     at: str
     policy_version: str = "warden-0.1"
+    #: How the approver was checked, or "" when nobody checked: the actor is only a name somebody typed.
+    #: "terminal" means a person answered a fresh challenge on the controlling terminal (`warden.approval`).
+    verified_by: str = ""
+
+    @property
+    def authority(self) -> str:
+        """The authority this grant may claim in a receipt. "human_operator" only when the approver was verified;
+        a typed name alone is an `unverified_claim`."""
+        return "human_operator" if self.verified_by else "unverified_claim"
 
     def permits(self, operation: str, subject: str) -> bool:
         return (
@@ -111,6 +120,7 @@ def grant(
     subject: str,
     scope: str,
     reason: str,
+    verified_by: str = "",
 ) -> Authorization:
     if not actor.strip() or not canonical(actor) or is_stack_actor(actor):
         raise Unauthorized(
@@ -128,4 +138,5 @@ def grant(
         reason=reason.strip(),
         granted=True,
         at=now_iso(),
+        verified_by=verified_by,
     )
