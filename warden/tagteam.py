@@ -496,8 +496,11 @@ class TagTeam:
         the changes held and unjudged. A Judge that fails or answers wrongly ends the run as ERROR.
         """
         edits = [(e.path, e.kind) for c in cycles if c.applied and c.proposal for e in c.proposal.edits]
+        # Where each listed edit came from, in the same order: the cycle's number, or "finish" for the Finisher's.
+        sources: list = [c.number for c in cycles if c.applied and c.proposal for _ in c.proposal.edits]
         if finished and finish is not None:
             edits += [(e.path, e.kind) for e in finish.edits]
+            sources += ["finish" for _ in finish.edits]
         attacks = None
         if self.swizzle_root is not None and sound is True:
             import warden
@@ -520,6 +523,10 @@ class TagTeam:
             # absent and nothing here changes; ghost_before and ghost_after stay bare ids either way.
             ids = {d.identity for d in first} | {d.identity for d in current}
             extra["ghost_severity"] = {i: self._ghost_words[i] for i in sorted(ids) if i in self._ghost_words}
+        if "edit_sources" in {f.name for f in dataclasses.fields(Evidence)}:
+            # CNS 4.2.0 and later: one label per listed edit, so the Judge can tell a cycle's edit from a finishing one
+            # and a padded list from a real one. Under an older CNS the field is absent and nothing here changes.
+            extra["edit_sources"] = tuple(sources)
         evidence = Evidence(
             target=str(target), scope=authorization.scope if authorization else "",
             cycles=tuple((c.number, c.outcome) for c in cycles), changed=tuple(edits),
