@@ -65,6 +65,20 @@ import json, os
 _COUNTS = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0, "xfailed": 0, "xpassed": 0}
 _STATE = {"collected": 0}
 _FAILED = []  # the ids of the first tests that failed or errored, so the record can name them
+_OUTCOMES = {}  # every test id and its outcome, so the Judge can compare the tests by name, not only by count
+_NAMES = {"ok": True}  # False once an id is reported twice or there are too many: then no names are given at all
+_MAX_NAMED = 100000
+
+
+def _name(nodeid, outcome):
+    if not _NAMES["ok"]:
+        return
+    key = str(nodeid)
+    if key in _OUTCOMES or len(_OUTCOMES) >= _MAX_NAMED:
+        _NAMES["ok"] = False
+        _OUTCOMES.clear()
+        return
+    _OUTCOMES[key] = outcome
 
 
 def _note_failed(report):
@@ -79,29 +93,39 @@ def pytest_collection_finish(session):
 def pytest_collectreport(report):
     if report.failed:
         _COUNTS["errors"] += 1
+        _name(report.nodeid + " [collect]", "error")
     elif report.skipped:
         _COUNTS["skipped"] += 1
+        _name(report.nodeid + " [collect]", "skipped")
 
 
 def pytest_runtest_logreport(report):
     wasxfail = hasattr(report, "wasxfail")
     if report.when == "call":
         if report.passed:
-            _COUNTS["xpassed" if wasxfail else "passed"] += 1
+            word = "xpassed" if wasxfail else "passed"
+            _COUNTS[word] += 1
+            _name(report.nodeid, word)
         elif report.failed:
             _COUNTS["failed"] += 1
             _note_failed(report)
+            _name(report.nodeid, "failed")
         elif report.skipped:
-            _COUNTS["xfailed" if wasxfail else "skipped"] += 1
+            word = "xfailed" if wasxfail else "skipped"
+            _COUNTS[word] += 1
+            _name(report.nodeid, word)
     elif report.when == "setup":
         if report.failed:
             _COUNTS["errors"] += 1
             _note_failed(report)
+            _name(report.nodeid, "error")
         elif report.skipped:
             _COUNTS["skipped"] += 1
+            _name(report.nodeid, "skipped")
     elif report.when == "teardown" and report.failed:
         _COUNTS["errors"] += 1
         _note_failed(report)
+        _name(report.nodeid + " [teardown]", "error")
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -109,7 +133,8 @@ def pytest_sessionfinish(session, exitstatus):
     if not path:
         return
     body = {"nonce": os.environ.get("WARDEN_SUITE_NONCE"), "exitstatus": int(exitstatus),
-            "collected": _STATE["collected"], "failed_ids": _FAILED, **_COUNTS}
+            "collected": _STATE["collected"], "failed_ids": _FAILED, **_COUNTS,
+            "test_outcomes": sorted(_OUTCOMES.items()) if _NAMES["ok"] else None}
     tmp = path + ".part"
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(body, handle)
@@ -173,7 +198,7 @@ def _kill_group(proc: subprocess.Popen) -> None:
 def _read_report(path: Path, nonce: str) -> Optional[dict]:
     """The plugin's file, or None if it is missing, too big, or not what the plugin writes."""
     try:
-        if path.stat().st_size > 1_000_000:
+        if path.stat().st_size > REPORT_LIMIT:
             return None
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -187,7 +212,16 @@ def _read_report(path: Path, nonce: str) -> Optional[dict]:
     if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
         ids = []  # an older or garbled plugin file: the counts still stand, the names are simply not known
     data["failed_ids"] = [_plain(i) for i in ids[:MAX_FAILED_IDS]]
+    named = data.get("test_outcomes")
+    if not (isinstance(named, list) and all(isinstance(e, list) and len(e) == 2 and all(isinstance(x, str) for x in e)
+                                            for e in named)):
+        named = None  # not given (an older plugin, a repeated id, too many tests) or garbled: the counts still stand
+    data["test_outcomes"] = None if named is None else tuple((e[0], e[1]) for e in named)
     return data
+
+
+#: The plugin's file is not read past this size. Test names make it grow with the suite (about 100 bytes a test).
+REPORT_LIMIT = 16_000_000
 
 
 #: At most this many failing test ids are kept from one suite run.
@@ -205,6 +239,10 @@ class PytestSuiteRun(SuiteRun):
     record that says the suite went red can say which tests."""
 
     failed_ids: tuple[str, ...] = ()
+    #: Every test's id and its outcome (passed, failed, error, skipped, xfailed, xpassed), so the Judge can compare the
+    #: tests by name and see one removed and another added. None: not known (a repeated id, or over 100,000 tests).
+    #: A setup failure is the test's own id; a teardown or collection failure gets " [teardown]" or " [collect]".
+    test_outcomes: Optional[tuple[tuple[str, str], ...]] = None
 
     def describe(self) -> str:
         text = super().describe()
@@ -390,7 +428,8 @@ def _run_pytest(target: Path, python: str, timeout: float = DEFAULT_TIMEOUT, con
         reason = _REFUSED_WRITE_HINT
     return PytestSuiteRun(ran=True, passed=report["passed"], failed=report["failed"], errors=report["errors"],
                           skipped=report["skipped"], xfailed=report["xfailed"], xpassed=report["xpassed"],
-                          exit_code=code, reason=reason, failed_ids=tuple(report["failed_ids"]))
+                          exit_code=code, reason=reason, failed_ids=tuple(report["failed_ids"]),
+                          test_outcomes=report["test_outcomes"])
 
 
 def _refused_write(stdout: str, stderr: str) -> bool:

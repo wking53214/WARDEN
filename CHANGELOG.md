@@ -11,6 +11,16 @@ decision, and the repositories that pin Warden (Judge, and the released Drafter,
 
 ## [Unreleased]
 
+- **Suite results name every test.** The pytest plugin now records each test's id and outcome (`passed`, `failed`,
+  `error`, `skipped`, `xfailed`, `xpassed`) and the pytest runner's result carries them as
+  `PytestSuiteRun.test_outcomes`, sorted by id. A setup failure is the test's own id; a teardown or collection failure
+  gets ` [teardown]` or ` [collect]`, so the names agree with the counts one for one. When an id repeats or there are
+  more than 100,000 tests, no names are given (`None`), never a partial list. The plugin's file may now be up to 16 MB
+  (was 1 MB). Why: JUDGE 0.16.0 compares the suite before and after by name, so a run that removes one passing test
+  and adds another, which keeps every count equal, is rejected. The cargo runner gives no names. The names travel to the Judge in the evidence and appear in the run
+  record's `evidence` and `suite_passes`; the claim row leaves them out and keeps the counts, so a row does not grow with
+  the suite. Held by `tests/test_suite_test_outcomes.py`. No version change; no other behaviour changed.
+
 - CNS pin `v4.1.0` -> `v4.2.0` (`670246fe5006ae15757f90e48350f57b53c56414`), which adds `Evidence.edit_sources`; no code change here.
 
 No version change.

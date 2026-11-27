@@ -218,7 +218,10 @@ empty or blank ends the run as `ERROR` and the tree is put back. Stub Judges tha
 ended as it did; for a plain `ACCEPT` it says what converged, what the Judge said and what was
 measured (the suite's counts before and after, Ghost's counts), and for a run the suite turned
 red (`INCONCLUSIVE` at a proposal, `FINISH_REJECTED` at the finishing change) it names the failing
-tests, ten at most. `unmeasured` is true: it names `ghost`
+tests, ten at most. The pytest runner's result also carries `test_outcomes`, every test's id and its outcome, so the
+Judge can compare the suite before and after by name and see one passing test removed and another added, which the
+counts alone cannot (JUDGE 0.16.0); it is empty (`None`) when an id repeats or there are more than 100,000 tests, and
+the cargo runner gives none. `unmeasured` is true: it names `ghost`
 when Ghost was down, timed out, scanned nothing or gave unreadable output, `suite`
 when the suite was never run, `swizzle` when its proofs failed or could not run, and
 `assay` when the answer key was unusable, `swizzle_attacks` when SWIZZLE's proofs held but its attacks on the governor could not be run or read, and `ghost_partial` when Ghost ran but
