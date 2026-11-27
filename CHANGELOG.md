@@ -17,7 +17,7 @@ No version change.
 
 ### Added
 
-- **The Judge is told where each listed edit came from.** Under a CNS that declares `Evidence.edit_sources` (4.2.0 and later), the Evidence handed to the Judge labels each entry of `changed`, in order, with the number of the cycle whose applied proposal made it or with `"finish"` for the Finisher's edit. Warden already built the list in that order and knew the answer; the Judge could not, so with one applied cycle two listed edits read the same whether the second was the Finisher's or padded in (JUDGE 0.8.0, KNOWN DEFECTS 1). Under the pinned CNS `v4.1.0` the field does not exist and nothing changes. The labels reach an isolated Judge through the seat wire unchanged. `tests/test_edit_sources.py` (each test asserts the branch for the installed CNS, so none is skipped).
+- **The Judge is told where each listed edit came from.** Under a CNS that declares `Evidence.edit_sources` (4.2.0 and later), the Evidence handed to the Judge labels each entry of `changed`, in order, with the number of the cycle whose applied proposal made it or with `"finish"` for the Finisher's edit. Warden already built the list in that order and knew the answer; the Judge could not, so with one applied cycle two listed edits read the same whether the second was the Finisher's or padded in (JUDGE 0.8.0, KNOWN DEFECTS 1). Under CNS `v4.1.0` the field does not exist and nothing changes. The labels reach an isolated Judge through the seat wire unchanged. `tests/test_edit_sources.py` (each test asserts the branch for the installed CNS, so none is skipped).
 
 ### Security
 
