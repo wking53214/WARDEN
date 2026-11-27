@@ -88,7 +88,9 @@ def _suite(run: Any, passes: tuple, last: bool = False) -> Optional[dict]:
         return None
     found = [p for p in passes if p.get("result") is run]
     where = (found[-1] if last else found[0]) if found else {}
-    plain = {k: (list(v) if isinstance(v, tuple) else v) for k, v in asdict(run).items()}
+    # The per-test names (`test_outcomes`, for the Judge) stay out of the row: it keeps the counts, and a large suite's
+    # names would make every row as long as the suite.
+    plain = {k: (list(v) if isinstance(v, tuple) else v) for k, v in asdict(run).items() if k != "test_outcomes"}
     return {**plain, "pass": where.get("pass"), "reused_from": where.get("reused_from")}
 
 
