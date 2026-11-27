@@ -11,6 +11,8 @@ decision, and the repositories that pin Warden (Judge, and the released Drafter,
 
 ## [Unreleased]
 
+- CNS pin `v4.1.0` -> `v4.2.0` (`670246fe5006ae15757f90e48350f57b53c56414`), which adds `Evidence.edit_sources`; no code change here.
+
 No version change.
 
 ### Added

@@ -183,10 +183,10 @@ def test_the_cns_pin_is_the_v4_0_0_tag_and_is_stated_in_stack():
     peels to."""
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     stack = (ROOT / "STACK.md").read_text(encoding="utf-8")
-    assert pyproject.count("cns @ git+https://github.com/wking53214/CNS.git@v4.1.0") == 1
-    assert 'dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v4.1.0"]' in pyproject
-    peeled = "c84ef8c60079aae1753f92d9169d89081c670c22"
-    assert re.search(rf"^\| CNS \| v4\.1\.0 \| `{peeled}` \|", stack, re.MULTILINE)
+    assert pyproject.count("cns @ git+https://github.com/wking53214/CNS.git@v4.2.0") == 1
+    assert 'dependencies = ["cns @ git+https://github.com/wking53214/CNS.git@v4.2.0"]' in pyproject
+    peeled = "670246fe5006ae15757f90e48350f57b53c56414"
+    assert re.search(rf"^\| CNS \| v4\.2\.0 \| `{peeled}` \|", stack, re.MULTILINE)
 
 
 def test_the_tags_are_described_without_claiming_a_release_that_is_not_tagged():

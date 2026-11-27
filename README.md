@@ -35,7 +35,7 @@ Version `1.0.0` (seat contract `"1"`, unchanged). The history of every release i
 [CHANGELOG.md](CHANGELOG.md); the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the exit codes in
 [docs/EXIT_CODES.md](docs/EXIT_CODES.md). The repositories that pin Warden (Judge, and the released Drafter, Burnish and WATCHER_MCU) pin it by full commit SHA, not by
 tag; each one's `pyproject.toml` names the commit. Release tags exist up to `v0.12.0`, and one more, `v0.16.5` (created 2026-11-05 on commit `8f808d9`); the `0.13.x` releases are not
-tagged, and `0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6`, `0.17.0`, `0.18.0`, `0.19.0` and `0.20.0`. From 1.0.0 every release is tagged: `v1.0.0` is created by the owner on the commit that merges the release pull request, so it does not exist until then. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). The `v1.0.0` tag is on `0339c09`, which requires CNS v4.0.0; the pinned `26d8128` also reports `1.0.0` but requires CNS v4.1.0. The consumers pin that commit by SHA and the tag is left where it is (decided 2026-11-20). Tagging is
+tagged, and `0.14.0` is not tagged either, nor are `0.15.0`, `0.15.1`, `0.16.0`, `0.16.1`, `0.16.2`, `0.16.3`, `0.16.4`, `0.16.6`, `0.17.0`, `0.18.0`, `0.19.0` and `0.20.0`. From 1.0.0 every release is tagged: `v1.0.0` is created by the owner on the commit that merges the release pull request, so it does not exist until then. The older `v0.10.0` tag does not match its tree (it points at a tree whose `__version__` is `0.9.0`). The `v1.0.0` tag is on `0339c09`, which requires CNS v4.0.0; the pinned `26d8128` also reports `1.0.0` but requires CNS v4.2.0. The consumers pin that commit by SHA and the tag is left where it is (decided 2026-11-20). Tagging is
 the owner's decision.
 
 ## ROLE IN THE CIRCUIT
@@ -77,7 +77,7 @@ Warden belongs to the assurance circuit: five repositories that check changes to
 
 CNS is the repository that holds the shared row shapes the circuit repositories agree on.
 
-- **This repository's side:** `warden/suite.py` is the file CNS's connection list (`contracts/cns-links.json` in CNS) names for Warden. Five more modules (`swizzle`, `tagteam`, `roles`, `epistemic`, `models`) also import CNS rows. CNS is required, not optional, and is pinned at the tag `v4.1.0`.
+- **This repository's side:** `warden/suite.py` is the file CNS's connection list (`contracts/cns-links.json` in CNS) names for Warden. Five more modules (`swizzle`, `tagteam`, `roles`, `epistemic`, `models`) also import CNS rows. CNS is required, not optional, and is pinned at the tag `v4.2.0`.
 - **CNS's side:** `contracts/warden-stack.json` in CNS carries Warden.
 - **List status:** two-way (checked against CNS commit `03eca66` on 2026-11-10).
 - **Built, tested, used:** the connection is built. The tests pass with CNS installed (`tests/test_cns_strict.py` and the pin checks in `tests/test_docs.py`). Every normal run uses it: each run builds a CNS suite row and reads CNS finding, attack and seat rows. The connection list does not mark Drafter, Burnish and WATCHER_MCU as released; that is CNS's to update.
@@ -101,7 +101,7 @@ Apache-2.0, copyright William N. King (see `LICENSE` and `NOTICE`).
 
 ## HOW TO INSTALL AND RUN
 
-Python 3.11, 3.12 or 3.13. The only runtime dependency is `cns`, installed from GitHub at the tag `v4.1.0`. Dated record: on 2026-10-22 (Warden 0.13.x, before the roster change of 2026-10-29) the first two blocks of commands below were run as written in a fresh virtual environment on Python 3.12 (from a clone of this repository), and `pip check` reported no broken requirements. That says nothing about later versions; CI installs the package on every push.
+Python 3.11, 3.12 or 3.13. The only runtime dependency is `cns`, installed from GitHub at the tag `v4.2.0`. Dated record: on 2026-10-22 (Warden 0.13.x, before the roster change of 2026-10-29) the first two blocks of commands below were run as written in a fresh virtual environment on Python 3.12 (from a clone of this repository), and `pip check` reported no broken requirements. That says nothing about later versions; CI installs the package on every push.
 
 ```
 git clone https://github.com/wking53214/WARDEN.git
