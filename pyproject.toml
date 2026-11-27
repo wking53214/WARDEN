@@ -42,7 +42,7 @@ dev = ["pytest>=8", "ruff==0.17.1", "mypy==2.4.0"]
 # visible and pinned: `pip install -e '.[ghost]'` from a checkout (a bare `warden` on PyPI is another project). Pinned to a full commit SHA
 # (ghost_tools 1.10.14); to bump it, change the SHA and
 # note the version it corresponds to here, and the same SHA in .github/workflows/tests.yml and STACK.md.
-ghost = ["ghost-tools @ git+https://github.com/wking53214/ghost_tools@9acd655f7cc387b4ff355c90b4449fb8bb5e809e"]
+ghost = ["ghost-tools @ git+https://github.com/wking53214/ghost_tools@491b8708c9bcefc67051a074db93295198b1a022"]
 
 [tool.setuptools]
 packages = ["warden", "warden.horsemen"]

@@ -12,6 +12,7 @@ decision, and the repositories that pin Warden (Judge, and the released Drafter,
 ## [Unreleased]
 
 - CNS pin `v4.1.0` -> `v4.2.0` (`670246fe5006ae15757f90e48350f57b53c56414`), which adds `Evidence.edit_sources`; no code change here.
+- Pin: ghost_tools moves from `9acd655` to `491b870` (ghost_tools PR #140: its `main` at `bfe70fe` plus its own CNS pin move to `v4.2.0`; still 1.10.14 with unreleased changes listed in its CHANGELOG), in `pyproject.toml` (the `ghost` extra), `.github/workflows/tests.yml` (the checkout and the `circuit` job's `--expect`) and `STACK.md`. Reason: the `cns` extra of `9acd655` is `v4.1.0`, so the CNS repin canary found the circuit seats on two CNS tags. The header comment of `tests.yml` said the extra of the pinned ghost_tools commit was already `v4.2.0`; that was wrong for `9acd655` and is true for `491b870`. No version change, no code change and no test was edited.
 
 No version change.
 
